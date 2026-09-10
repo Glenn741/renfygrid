@@ -41,9 +41,9 @@ código, no por fecha. Complementa el Plan de sprints (`04-plan-sprints.md`).
 |---|---|---|---|
 | F14 | Validación de rangos (min/max configurable) | 3 | 🟢 |
 | F15 | Validación de formato/coherencia/integridad | 3 | 🟡 (formato sí, coherencia entre canales diferida — ver bitácora) |
-| F16 | Detección de intervalos faltantes | 4 | ⚪ |
-| F17 | Estimación (método configurable por tenant) | 4 | ⚪ |
-| F18 | Edición manual auditada | 4 | ⚪ |
+| F16 | Detección de intervalos faltantes | 4 | 🟢 |
+| F17 | Estimación (método configurable por tenant) | 4 | 🟡 (solo `linear_interpolation` — ver bitácora) |
+| F18 | Edición manual auditada | 4 | 🟢 |
 | F19 | Versionado de reglas VEE (trazabilidad) | 0, 3-4 | 🟢 |
 | F20 | Patrón de configuración cacheada (cero hardcode) | 0 | 🟢 |
 
@@ -235,3 +235,25 @@ hasta que exista ese caso concreto, no por olvido.
 tal como estaba planeado — no se tocaron.
 
 *(Esta tabla se sigue completando a medida que avanza el Sprint 3 real.)*
+
+### Sprint 4 — Motor VEE: Estimación y Edición
+
+**Objetivo:** estimación (método configurable) + edición manual auditada; historias de usuario
+de diseño (`03-diseno.md` §5) verificadas una a una (`04-plan-sprints.md` §4). **Estado:** 🟢
+objetivo cumplido con evidencia real — iniciado y cerrado 2026-09-10.
+
+| Fecha | Avance | Función(es) | Evidencia |
+|---|---|---|---|
+| 2026-09-10 | **Gap encontrado**: para editar una lectura de forma auditada sin poder reescribir el historial ("registro no editable (append-only)", `03-diseno.md` §5), hacía falta una tabla de auditoría separada de `validated_reading` (que sí se sigue actualizando in place al editar). Migración `0005_validated_reading_edit.sql`: tabla `validated_reading_edit` con **`REVOKE UPDATE, DELETE`** al rol `renfygrid_app` — inmutabilidad forzada por Postgres, no solo por convención de código | F18 | `infra/db/migrations/0005_validated_reading_edit.sql` |
+| 2026-09-10 | **F16/F17 construidos**: `vee_engine.py` ampliado con `detect_gaps` (huecos entre lecturas validadas consecutivas, dado un intervalo esperado + tolerancia — ambos desde `vee_rule.type='missing_interval'`) y `estimate_gap` (interpolación lineal entre el valor anterior y el siguiente conocidos). `run_vee_estimation.py` orquesta: busca pares medidor/canal con lecturas, detecta huecos, inserta lecturas `estimated` con el `vee_rule_id` trazable | F16, F17 | `services/vee-engine/vee_engine.py`, `run_vee_estimation.py` |
+| 2026-09-10 | **F17, alcance explícito**: de los 3 métodos de estimación mencionados en el diseño (`linear_interpolation`, `customer_historical_average`, `similar_customers_average`), solo el primero está implementado — los otros dos necesitan agregados históricos por cliente/grupo de clientes que no existen todavía (series más largas que las del piloto actual). `estimate_gap` lanza `NotImplementedError` para un método no soportado en vez de fallar en silencio o adivinar | F17 | Docstring de `vee_engine.py` |
+| 2026-09-10 | **F18 construido**: `manual_edit.py::edit_reading` — actualiza `validated_reading.value` (pasa `source` a `'edited'`) y en la misma transacción inserta la fila de auditoría en `validated_reading_edit` (valor anterior capturado por el propio código con `SELECT ... FOR UPDATE`, no confiado al llamador). `user_name`/`justification` obligatorios | F18 | `services/vee-engine/manual_edit.py` |
+| 2026-09-10 | **6 pruebas unitarias puras nuevas** sobre `detect_gaps`/`estimate_gap` (sin huecos cuando todo llega a tiempo, jitter pequeño dentro de tolerancia no cuenta como hueco, cuenta correcta de lecturas faltantes, dos huecos separados se reportan por separado, interpolación lineal da puntos parejos, método no soportado lanza en vez de adivinar) — 13/13 en total en `vee-engine` | F16, F17 | `python -m unittest discover -s tests -v` → **Ran 13 tests in 0.005s / OK** |
+| 2026-09-10 | **`verify_estimation_and_edit_end_to_end.py` — corrida real, exitosa, 4 verificaciones en una sola pasada**: (1) inserta 2 lecturas reales con un hueco de 3 intervalos, corre el pase de estimación real y confirma exactamente 3 lecturas `estimated` con los valores interpolados exactos (1250/1500/1750); (2) edita la primera lectura real con `edit_reading` y confirma `value`/`source` actualizados; (3) confirma que `validated_reading_edit` tiene exactamente 1 fila con el valor anterior correcto; (4) **intenta un `UPDATE` directo sobre `validated_reading_edit` con el rol de aplicación real y confirma que Postgres lo rechaza** (`InsufficientPrivilege`) — no es una promesa de diseño, es una regla de acceso verificada contra la BD real | F16, F17, F18 | `python verify_estimation_and_edit_end_to_end.py "postgresql://renfygrid_app:...@localhost:5455/renfygrid"` → las 4 verificaciones en **OK**, exit code 0 |
+
+**F17 en 🟡 a propósito**: un método de estimación implementado (`linear_interpolation`), dos
+pendientes de un caso de uso real con historial más largo. El resto del alcance de Sprint 4
+(F16, F18) está en 🟢 con evidencia real, incluyendo la garantía de inmutabilidad verificada
+contra Postgres, no solo documentada.
+
+*(Esta tabla se sigue completando a medida que avanza el Sprint 4 real.)*
