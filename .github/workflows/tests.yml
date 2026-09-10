@@ -1,0 +1,25 @@
+name: tests
+
+# CI basico de Sprint 0 (ver docs/05-ejecucion.md): corre las pruebas que NO
+# necesitan Postgres/k3s (config_cache + auth, ver services/common/tests/).
+# La verificacion de RLS (infra/db/verify_rls.py) requiere una instancia
+# Postgres real -- se agrega como job separado cuando el Sprint 1 traiga un
+# entorno de CI con ese servicio levantado, no antes (no sumar infraestructura
+# de CI antes de necesitarla, mismo principio que el resto del proyecto).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run services/common unit tests
+        working-directory: services/common
+        run: python -m unittest discover -s tests -v
