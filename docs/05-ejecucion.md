@@ -16,11 +16,11 @@ código, no por fecha. Complementa el Plan de sprints (`04-plan-sprints.md`).
 
 | # | Función | Sprint | Estado |
 |---|---|---|---|
-| F01 | Registro de medidores/concentradores | 0-1 | ⚪ |
+| F01 | Registro de medidores/concentradores | 0-1 | 🟢 |
 | F02 | Adaptador de protocolo DLMS/COSEM (Gurux) | 1 | 🟢 |
-| F03 | Lectura remota programada (polling) | 1 | 🟡 |
+| F03 | Lectura remota programada (polling) | 1 | 🟢 |
 | F04 | Lectura remota bajo demanda | 8 | ⚪ |
-| F05 | Recepción de eventos/alarmas del medidor | 1-2 | ⚪ |
+| F05 | Recepción de eventos/alarmas del medidor | 1-2 | ⚪ (diferido a Sprint 2, ver bitácora) |
 | F06 | Mapeo OBIS configurable por marca/modelo (cacheado) | 2 | ⚪ |
 | F07 | Envío de comandos SCR al medidor | 7 | ⚪ |
 | F08 | Reintentos / cola ante caída de concentrador | 2 | ⚪ |
@@ -31,7 +31,7 @@ código, no por fecha. Complementa el Plan de sprints (`04-plan-sprints.md`).
 | # | Función | Sprint | Estado |
 |---|---|---|---|
 | F10 | Ingesta de lecturas crudas (hypertable Timescale) | 1 | 🟡 |
-| F11 | Metadatos de medidor/ubicación/catastro | 0-1 | ⚪ |
+| F11 | Metadatos de medidor/ubicación/catastro | 0-1 | 🟢 |
 | F12 | Retención histórica configurable por tenant | 10 | ⚪ |
 | F13 | Respaldo y recuperación | 9 | ⚪ |
 
@@ -145,7 +145,8 @@ que es la misma que ya usa `docker-compose.yml`).
 
 **Objetivo:** adaptador real que se asocia a un medidor/concentrador DLMS/COSEM, lee un
 registro (OBIS) y lo normaliza a una fila de `raw_reading` (`04-plan-sprints.md`).
-**Estado:** 🟡 En progreso, iniciado 2026-09-10.
+**Estado:** 🟢 Objetivo del sprint cumplido con evidencia real end-to-end (2026-09-10) —
+F05 diferido a Sprint 2 (ver bitácora), F10 con el gap de TimescaleDB de siempre (no nuevo).
 
 | Fecha | Avance | Función(es) | Evidencia |
 |---|---|---|---|
@@ -161,11 +162,25 @@ registro (OBIS) y lo normaliza a una fila de `raw_reading` (`04-plan-sprints.md`
 
 **F02 pasa a 🟢**: el adaptador se asoció (AARQ/AARE) y leyó un objeto COSEM real por TCP contra
 una implementación real (no mock) del protocolo servidor DLMS/COSEM de Gurux, con el valor
-correcto llegando hasta `raw_reading`. **F03 y F10 quedan en 🟡, no 🟢, a propósito**: F03 exige
-lectura *programada* (con scheduler) — lo construido es un disparo manual (CLI), correcto pero
-sin el componente de programación periódica todavía; F10 menciona explícitamente la hypertable de
-**TimescaleDB**, que sigue sin poder probarse en esta máquina (Postgres portable de Windows, sin
-esa extensión — ver README de `.devdb/`) — el INSERT/RLS sobre la tabla plana sí está probado,
-la extensión Timescale en sí, no.
+correcto llegando hasta `raw_reading`. **F10 queda en 🟡 a propósito**: menciona explícitamente
+la hypertable de **TimescaleDB**, que sigue sin poder probarse en esta máquina (Postgres portable
+de Windows, sin esa extensión — ver README de `.devdb/`) — el INSERT/RLS sobre la tabla plana sí
+está probado, la extensión Timescale en sí, no.
+
+| 2026-09-10 | **Gap de esquema encontrado al construir F03**: ni `meter` ni `gateway` tenían dónde guardar la información de conexión de red (host/puerto TCP, dirección DLMS) — sin eso, un poller no puede saber "a quién conectarse" sin hardcodearlo. Migración `0003_gateway_connection.sql`: `gateway.connection` (jsonb, host/port/client_address) y `meter.server_address` (la dirección DLMS del medidor dentro de ese gateway). Aplicada contra Postgres real | F01, F03 | `infra/db/migrations/0003_gateway_connection.sql`, aplicada con `psql` |
+| 2026-09-10 | **F01/F11 construidos**: `meter_registry.py` — `register_gateway`, `register_meter`, `link_meter_to_gateway` (todas dentro de `tenant_scope`, nada fijo: marca/modelo/protocolo/ubicación/conexión llegan por parámetro) | F01, F11 | `services/hes-adapter-dlms/meter_registry.py` |
+| 2026-09-10 | **F03 construido**: `poller.py` — recorre los medidores activos y enlazados a un gateway (`due_meters`, un JOIN `meter`+`meter_gateway`+`gateway`), y por cada uno corre el mismo pipeline de `main.py` (asociar, leer, normalizar, insertar). Intervalo y `--iterations` (para pruebas) por argumento, nunca fijo. Alcance explícito, no más: el código OBIS/canal se aplica igual a todos los medidores del tenant (el mapeo por marca/modelo, F06, sigue siendo Sprint 2); un medidor que falla en un ciclo no tumba el resto ni se reintenta dentro del mismo ciclo (la cola/reintento, F08, también Sprint 2) | F03 | `services/hes-adapter-dlms/poller.py` |
+| 2026-09-10 | **`verify_poller_end_to_end.py` — corrida real, exitosa**: registra un gateway+medidor reales (apuntando al mismo simulador de `dlms_simulator_server.py`, puerto distinto), corre el poller 2 ciclos (`--iterations 2`) y confirma **2 filas** en `raw_reading` con el valor correcto — prueba F01/F11 (registro) y F03 (polling) juntos, de punta a punta, no solo un disparo manual | F01, F03, F11 | `python verify_poller_end_to_end.py "postgresql://renfygrid_app:...@localhost:5455/renfygrid"` → **"E2E poller OK"** |
+
+**F01/F11/F03 pasan a 🟢**: registro real de medidor+gateway en Postgres, y el poller
+encontrándolos solo (sin que se le pase el medidor por parámetro) y leyéndolos 2 veces reales
+contra el simulador, con las filas resultantes confirmadas en `raw_reading`.
+
+**F05 (eventos/alarmas) diferido a Sprint 2, decisión explícita**: el objetivo de Sprint 1 en
+`04-plan-sprints.md` §4 es literalmente "conecta a un medidor/simulador... lectura real ingresa a
+raw_reading" — no menciona eventos. Recepción de eventos/alarmas requeriría infraestructura de
+notificación push (`GXDLMSNotify`, un listener aparte del ciclo de polling), una pieza
+suficientemente distinta como para no colarla dentro de Sprint 1 sin que el usuario lo decida
+explícitamente. Queda como primer candidato de Sprint 2, junto con F06/F08.
 
 *(Esta tabla se sigue completando a medida que avanza el Sprint 1 real.)*
