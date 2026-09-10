@@ -51,10 +51,10 @@ código, no por fecha. Complementa el Plan de sprints (`04-plan-sprints.md`).
 
 | # | Función | Sprint | Estado |
 |---|---|---|---|
-| F21 | Agregación de lecturas validadas en consumo | 5 | ⚪ |
-| F22 | Reglas de crítica/desviación configurables | 5 | ⚪ |
-| F23 | Órdenes de relectura/inspección | 5 | ⚪ |
-| F24 | API de consulta de consumo por período | 5 | ⚪ |
+| F21 | Agregación de lecturas validadas en consumo | 5 | 🟢 |
+| F22 | Reglas de crítica/desviación configurables | 5 | 🟢 |
+| F23 | Órdenes de relectura/inspección | 5 | 🟢 |
+| F24 | API de consulta de consumo por período | 5 | 🟢 |
 | F25 | Preparación de datos para facturación (entrega a CIS) | 10 | ⚪ |
 
 ### Control (SCR)
@@ -257,3 +257,24 @@ pendientes de un caso de uso real con historial más largo. El resto del alcance
 contra Postgres, no solo documentada.
 
 *(Esta tabla se sigue completando a medida que avanza el Sprint 4 real.)*
+
+### Sprint 5 — Gestión de Consumos
+
+**Objetivo:** API de consumo facturable responde para el tenant piloto (`04-plan-sprints.md`
+§4). **Estado:** 🟢 objetivo cumplido con evidencia real — iniciado y cerrado 2026-09-10.
+
+Nuevo servicio independiente `services/consumption/` (mismo patrón que `vee-engine`: servicio
+Python aparte, no dentro de `hes-adapter-dlms`).
+
+| Fecha | Avance | Función(es) | Evidencia |
+|---|---|---|---|
+| 2026-09-10 | **Decisión de diseño**: el "canal facturable" de un medidor se marca en el mismo `meter_protocol.obis_mapping` de Sprint 2 (`{"active_energy": {..., "billable": true}}`) en vez de crear una tabla nueva — reusa la configuración cacheada que ya existe. Las "órdenes de relectura/inspección" (F23) se representan como filas de `meter_event` (ya existente, `type` = `consumption_anomaly_rule.action`) en vez de una tabla nueva — gap encontrado: le faltaba forma de saber de qué consumo salió la orden. Migración `0006_meter_event_consumption_link.sql`: agrega `meter_event.consumption_id` (FK, nullable) | F21, F23 | `infra/db/migrations/0006_meter_event_consumption_link.sql` |
+| 2026-09-10 | **Motor construido**: `consumption_engine.py` (`compute_consumption` — cierre menos apertura, porque un registro DLMS típico es acumulativo desde la instalación, no ya viene como "consumo del periodo"; `detect_deviation` — compara contra el consumo del periodo anterior usando `consumption_anomaly_rule` cacheada, la regla más estricta gana si hay varias) + `consumption_rules_cache.py` (mismo patrón de config cacheada) + `run_consumption_pass.py` (agrega por medidor/periodo, genera la orden si corresponde) + `get_consumption.py` (F24, contrato de función entre servicios — la API pública HTTP sigue siendo Sprint 8) | F21, F22, F23, F24 | `services/consumption/*.py` |
+| 2026-09-10 | **6/6 pruebas unitarias puras** sobre `consumption_engine` (consumo = cierre-apertura, sin consumo previo no hay anomalía, desviación chica no dispara, desviación grande dispara y traza la regla, la regla más estricta gana entre varias, sin reglas configuradas no hay anomalía pero sí se reporta el % de desviación) | F21, F22 | `python -m unittest discover -s tests -v` (en `services/consumption/`) → **Ran 6 tests in 0.012s / OK** |
+| 2026-09-10 | **`verify_consumption_end_to_end.py` — corrida real, exitosa**: registra un medidor con canal facturable, inserta 3 lecturas validadas reales (apertura + 2 cierres de periodo), corre el pase de consumo dos veces (periodo 1: 500, sin anomalía; periodo 2: 5000, +900% vs. el anterior con una regla de 10%) y confirma **`anomaly_status='under_review'`** en el segundo periodo + una fila de `meter_event` (`type='reread_order'`) trazable a esa fila exacta de `consumption` vía `consumption_id`. `get_consumption` (F24) devuelve ambos periodos correctamente | F21, F22, F23, F24 | `python verify_consumption_end_to_end.py "postgresql://renfygrid_app:...@localhost:5455/renfygrid"` → **"F21/F22/F24 OK"**, **"F23 OK"**, exit code 0 |
+
+**F25 (preparación de datos para facturación, entrega a CIS) sigue en Sprint 10**, tal como
+estaba planeado — no se tocó; requiere definir el contrato de entrega con un CIS real, que
+todavía no existe para el piloto de referencia.
+
+*(Esta tabla se sigue completando a medida que avanza el Sprint 5 real.)*
