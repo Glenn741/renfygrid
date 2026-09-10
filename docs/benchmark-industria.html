@@ -1,0 +1,512 @@
+<!doctype html>
+<title>RenfyGrid frente al mercado AMI/MDM</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap');
+
+:root{
+  --paper:#f9f9f7; --surface:#fcfcfb; --surface-2:#f1f0eb;
+  --ink:#14181f; --ink-2:#52514e; --ink-muted:#898781;
+  --line:#e1e0d9; --line-strong:#c3c2b7;
+  --accent:#4F46E5; --accent-ink:#3730A3; --accent-wash:#EEF0FE;
+  --s1:#2a78d6; --s1-wash:#e8f0fb;
+  --s2:#eb6834; --s2-wash:#fcede4;
+  --s3:#1baf7a; --s3-wash:#e6f6ef;
+  --good:#0ca30c; --warn:#c98500; --crit:#d03b3b;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#0d0d0d; --surface:#1a1a19; --surface-2:#212120;
+    --ink:#ffffff; --ink-2:#c3c2b7; --ink-muted:#898781;
+    --line:#2c2c2a; --line-strong:#383835;
+    --accent:#8b83f0; --accent-ink:#c3bdf7; --accent-wash:#211f3a;
+    --s1:#3987e5; --s1-wash:#152332;
+    --s2:#d95926; --s2-wash:#2c1a10;
+    --s3:#199e70; --s3-wash:#0f2a20;
+    --good:#0ca30c; --warn:#c98500; --crit:#e66767;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#0d0d0d; --surface:#1a1a19; --surface-2:#212120;
+  --ink:#ffffff; --ink-2:#c3c2b7; --ink-muted:#898781;
+  --line:#2c2c2a; --line-strong:#383835;
+  --accent:#8b83f0; --accent-ink:#c3bdf7; --accent-wash:#211f3a;
+  --s1:#3987e5; --s1-wash:#152332;
+  --s2:#d95926; --s2-wash:#2c1a10;
+  --s3:#199e70; --s3-wash:#0f2a20;
+  --good:#0ca30c; --warn:#c98500; --crit:#e66767;
+  color-scheme: dark;
+}
+
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{
+  background:var(--paper); color:var(--ink);
+  font-family:'Inter',system-ui,-apple-system,'Segoe UI',sans-serif;
+  font-size:15px; line-height:1.62; -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3,.disp{font-family:'IBM Plex Sans',system-ui,sans-serif; text-wrap:balance; letter-spacing:-0.01em}
+.mono,.tabnum,td.num,th.num{font-family:'IBM Plex Mono',ui-monospace,Consolas,monospace}
+.tabnum{font-variant-numeric:tabular-nums}
+a{color:var(--accent)}
+.wrap{max-width:1120px;margin:0 auto;padding:0 28px}
+.wrap-narrow{max-width:760px;margin:0 auto;padding:0 28px}
+
+/* ── Masthead ── */
+header.masthead{border-bottom:1px solid var(--line); padding:38px 0 30px; background:var(--surface)}
+.eyebrow{font-size:11.5px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--accent-ink); margin-bottom:10px}
+header.masthead h1{font-size:clamp(26px,3.4vw,36px); font-weight:700; margin-bottom:10px; max-width:820px}
+header.masthead .sub{color:var(--ink-2); font-size:16px; max-width:680px; margin-bottom:18px}
+.meta-row{display:flex; gap:22px; flex-wrap:wrap; font-size:13px; color:var(--ink-muted)}
+.meta-row b{color:var(--ink-2); font-weight:600}
+
+/* ── Sections ── */
+section{padding:44px 0}
+section + section{border-top:1px solid var(--line)}
+section h2{font-size:21px; font-weight:700; margin-bottom:6px}
+section .lede{color:var(--ink-2); font-size:14.5px; max-width:680px; margin-bottom:24px}
+h3{font-size:15.5px; font-weight:600; margin:22px 0 10px}
+
+.callout{
+  border:1px solid var(--line); border-left:3px solid var(--accent);
+  background:var(--accent-wash); border-radius:6px; padding:16px 20px;
+  font-size:13.8px; color:var(--ink-2); margin:18px 0;
+}
+.callout b{color:var(--ink)}
+
+/* ── Exec summary grid ── */
+.exec-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:1px; background:var(--line); border:1px solid var(--line); border-radius:8px; overflow:hidden; margin-top:6px}
+.exec-cell{background:var(--surface); padding:18px 20px}
+.exec-cell .k{font-size:11px; font-weight:600; letter-spacing:.05em; text-transform:uppercase; color:var(--ink-muted); margin-bottom:8px}
+.exec-cell .v{font-size:14px; color:var(--ink-2)}
+@media (max-width:760px){ .exec-grid{grid-template-columns:1fr} }
+
+/* ── Chart ── */
+.chart-card{border:1px solid var(--line); border-radius:10px; background:var(--surface); padding:20px 22px 14px; overflow-x:auto}
+.chart-head{display:flex; justify-content:space-between; align-items:baseline; gap:16px; flex-wrap:wrap; margin-bottom:8px}
+.chart-head h3{margin:0; font-size:15px}
+.legend{display:flex; gap:16px; flex-wrap:wrap; font-size:12.5px; color:var(--ink-2)}
+.legend .li{display:flex; align-items:center; gap:6px}
+.legend .sw{width:9px;height:9px;border-radius:50%;display:inline-block}
+svg#quad text{font-family:'IBM Plex Sans',system-ui,sans-serif}
+.axis-label{font-size:12px; fill:var(--ink-muted); font-weight:500}
+.quad-caption{font-size:10.5px; fill:var(--ink-muted); font-style:italic}
+.grid-line{stroke:var(--line); stroke-width:1}
+.mid-line{stroke:var(--line-strong); stroke-width:1; stroke-dasharray:3 3}
+.pt-label{font-size:11px; fill:var(--ink-2); font-weight:500}
+.pt-dot{stroke:var(--surface); stroke-width:1.5; cursor:pointer}
+.rf-star{cursor:pointer}
+.rf-path{stroke:var(--accent); stroke-width:1.6; stroke-dasharray:4 3; fill:none; opacity:.75}
+#tooltip{
+  position:absolute; pointer-events:none; z-index:5; opacity:0; transition:opacity .1s;
+  background:var(--ink); color:var(--paper); font-size:12.5px; padding:8px 11px; border-radius:6px;
+  max-width:220px; line-height:1.4; box-shadow:0 6px 18px rgba(0,0,0,.18);
+}
+:root:not([data-theme="light"]) #tooltip{ background:var(--surface-2); color:var(--ink); border:1px solid var(--line-strong) }
+:root[data-theme="dark"] #tooltip{ background:var(--surface-2); color:var(--ink); border:1px solid var(--line-strong) }
+#tooltip .tt-name{font-weight:600; margin-bottom:2px}
+#tooltip .tt-grp{opacity:.72; font-size:11px}
+
+/* ── Vertical sections (Energía/Agua/Gas) ── */
+.vert-head{display:flex; align-items:center; gap:10px; margin-bottom:4px}
+.vert-icon{width:26px;height:26px;flex:none}
+.vert-head h3{margin:0; font-size:17px}
+
+.table-wrap{overflow-x:auto; margin:14px 0 6px; border:1px solid var(--line); border-radius:8px}
+table{width:100%; border-collapse:collapse; font-size:13.3px; min-width:640px}
+thead th{
+  background:var(--surface-2); text-align:left; font-size:10.5px; font-weight:600;
+  letter-spacing:.05em; text-transform:uppercase; color:var(--ink-muted);
+  padding:9px 14px; border-bottom:1px solid var(--line);
+}
+tbody td{padding:10px 14px; border-bottom:1px solid var(--line); color:var(--ink-2); vertical-align:top}
+tbody tr:last-child td{border-bottom:none}
+tbody td.name{color:var(--ink); font-weight:600}
+tbody tr:hover td{background:var(--surface-2)}
+
+/* ── Capability matrix ── */
+.matrix .num{text-align:center}
+.chip{
+  display:inline-flex; align-items:center; justify-content:center;
+  width:22px; height:22px; border-radius:50%; font-size:12px; font-weight:700;
+}
+.chip.yes{background:color-mix(in srgb, var(--good) 16%, transparent); color:var(--good)}
+.chip.partial{background:color-mix(in srgb, var(--warn) 18%, transparent); color:var(--warn)}
+.chip.no{background:color-mix(in srgb, var(--crit) 14%, transparent); color:var(--crit)}
+.matrix td.rf{background:var(--accent-wash)}
+.matrix th.rf{background:var(--accent-wash); color:var(--accent-ink)}
+
+/* ── Gap / recs ── */
+.two-col{display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-top:8px}
+@media (max-width:760px){ .two-col{grid-template-columns:1fr} }
+.panel{border:1px solid var(--line); border-radius:8px; padding:18px 20px; background:var(--surface)}
+.panel h4{font-size:13px; font-weight:700; margin-bottom:10px; display:flex; align-items:center; gap:7px}
+.panel ul{list-style:none; display:flex; flex-direction:column; gap:9px}
+.panel li{font-size:13.5px; color:var(--ink-2); padding-left:16px; position:relative}
+.panel li::before{content:"";position:absolute; left:0; top:8px; width:6px; height:6px; border-radius:50%}
+.panel.strength li::before{background:var(--good)}
+.panel.gap li::before{background:var(--crit)}
+
+.rec-list{counter-reset:rec; display:flex; flex-direction:column; gap:16px; margin-top:10px}
+.rec{display:flex; gap:16px; align-items:flex-start}
+.rec .n{
+  counter-increment:rec; flex:none; width:30px;height:30px; border-radius:50%;
+  background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center;
+  font-family:'IBM Plex Mono',monospace; font-weight:600; font-size:13px;
+}
+.rec .n::before{content:counter(rec)}
+.rec .t{font-weight:600; margin-bottom:2px}
+.rec .d{color:var(--ink-2); font-size:13.6px}
+
+footer{padding:30px 0 50px; color:var(--ink-muted); font-size:12.5px}
+footer .src{margin-top:10px; display:flex; flex-direction:column; gap:4px}
+footer a{color:var(--ink-muted)}
+</style>
+
+<header class="masthead">
+  <div class="wrap">
+    <div class="eyebrow">RenfyGrid · Análisis competitivo</div>
+    <h1>Dónde queda RenfyGrid frente al mercado real de AMI/MDM</h1>
+    <p class="sub">Benchmark del planteamiento de producto contra las soluciones que hoy dominan la medición inteligente en energía, agua y gas — y contra el puñado de retadores que compiten en el mismo segmento que RenfyGrid dice atender.</p>
+    <div class="meta-row">
+      <span><b>Fecha</b> 2026-09-10</span>
+      <span><b>Alcance</b> Energía · Agua · Gas</span>
+      <span><b>Estado de RenfyGrid</b> pre-MVP (fase de planeación)</span>
+    </div>
+  </div>
+</header>
+
+<section id="resumen">
+  <div class="wrap">
+    <h2>Resumen ejecutivo</h2>
+    <p class="lede">RenfyGrid no compite hoy con Itron o Landis+Gyr — compite, en el papel, con un puñado de plataformas SaaS multi-tenant para utilities pequeñas que sí ya tienen clientes reales.</p>
+    <div class="exec-grid">
+      <div class="exec-cell">
+        <div class="k">El mercado grande</div>
+        <div class="v">Dos jugadores (Itron, Landis+Gyr) controlan el extremo end-to-end hardware+software; Oracle Utilities MDM domina el software puro. Ninguno vende barato ni rápido a una ESP chica.</div>
+      </div>
+      <div class="exec-cell">
+        <div class="k">El segmento real de RenfyGrid</div>
+        <div class="v">Bynry (SMART360), Kalki.io (MDAS) y Energyworx ya operan SaaS multi-tenant para utilities de 3.000–100.000 conexiones — el mismo ICP que se definió en el planteamiento de RenfyGrid, con años de ventaja.</div>
+      </div>
+      <div class="exec-cell">
+        <div class="k">La brecha honesta</div>
+        <div class="v">Cero clientes, cero código. La ventaja no es tecnológica todavía — es el conocimiento de dominio (VEE, HES multi-protocolo) ya documentado en el plan, sin construir.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="metodologia">
+  <div class="wrap-narrow">
+    <h2>Nota metodológica — sobre "el cuadrante Gartner"</h2>
+    <div class="callout">
+      <b>Gartner no publica hoy un Magic Quadrant de Meter Data Management.</b> El último específico de la industria de medición ("Magic Quadrant for Meter Data Management Products") es de 2015 y fue descontinuado — la búsqueda por "MDM" en 2026 devuelve el Magic Quadrant de <i>Master Data Management</i>, una categoría de TI totalmente distinta (gestión de datos maestros empresariales, no medición de servicios públicos). El analista que sí sigue cubriendo este mercado es <b>Guidehouse Insights</b> (Leaderboard de Smart Meter Analytics, con Oracle/Landis+Gyr/Itron como líderes en su última edición pública), aunque tampoco tiene una edición 2025-2026 específica de MDM disponible públicamente.
+    </div>
+    <p style="color:var(--ink-2); font-size:13.8px">Por eso el gráfico de abajo <b>no es un Magic Quadrant de Gartner</b> ni una calificación de ningún analista — es una lectura propia de Rensoft Labs, con ejes propios, construida a partir de investigación de mercado pública (ver fuentes al pie). Trátese como una hipótesis de posicionamiento, no como una métrica certificada.</p>
+  </div>
+</section>
+
+<section id="mapa">
+  <div class="wrap">
+    <h2>Mapa de posicionamiento</h2>
+    <p class="lede">Eje horizontal: alcance funcional real (HES propio, VEE, gestión de consumos, control remoto, cobertura multi-utility). Eje vertical: presencia de mercado instalada hoy — no potencial, no promesa.</p>
+
+    <div class="chart-card">
+      <div class="chart-head">
+        <h3>Alcance funcional vs. presencia de mercado</h3>
+        <div class="legend">
+          <span class="li"><span class="sw" style="background:var(--s1)"></span>Líderes incumbentes</span>
+          <span class="li"><span class="sw" style="background:var(--s2)"></span>Especialistas por utility</span>
+          <span class="li"><span class="sw" style="background:var(--s3)"></span>Retadores cloud-native</span>
+          <span class="li"><span class="sw" style="background:var(--accent)"></span>RenfyGrid</span>
+        </div>
+      </div>
+      <svg id="quad" viewBox="0 0 960 620" role="img" aria-label="Mapa de posicionamiento de RenfyGrid frente a proveedores de AMI y MDM">
+        <!-- filled in by script -->
+      </svg>
+    </div>
+  </div>
+</section>
+
+<section id="energia">
+  <div class="wrap">
+    <div class="vert-head">
+      <svg class="vert-icon" viewBox="0 0 24 24" fill="none" stroke="var(--s2)" stroke-width="2"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z" stroke-linejoin="round"/></svg>
+      <h3>Energía eléctrica</h3>
+    </div>
+    <p class="lede">El vertical más maduro y más disputado — también donde RenfyGrid ya tiene el interés comercial de 2024 como punto de partida.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Proveedor</th><th>Tipo de oferta</th><th>Protocolo típico</th><th>Fortaleza</th><th>Brecha frente al plan de RenfyGrid</th></tr></thead>
+        <tbody>
+          <tr><td class="name">Itron</td><td>Hardware + HES + MDMS + analítica, end-to-end</td><td class="mono">OpenWay, DLMS/COSEM, ANSI C12</td><td>Portafolio completo, escala global, contratos como Enedis/Linky (38M medidores)</td><td>Sobra para una ESP chica — implementación de años, no de meses</td></tr>
+          <tr><td class="name">Landis+Gyr</td><td>Hardware + HES + MDMS, end-to-end</td><td class="mono">DLMS/COSEM</td><td>+15M endpoints en la nube en Norteamérica, fuerte en EV load management</td><td>Mismo problema: sobredimensionado para SMB</td></tr>
+          <tr><td class="name">Oracle Utilities MDM</td><td>Software puro (MDM/VEE), sin hardware</td><td class="mono">Agnóstico vía integración</td><td>MDM/VEE muy maduro, ML para pérdidas técnicas/fraude, ahora cloud-native en OCI</td><td>Licenciamiento Oracle Enterprise — fuera de presupuesto de una ESP pequeña</td></tr>
+          <tr><td class="name">Honeywell / Elster</td><td>Meters + AMI, fuerte también en gas</td><td class="mono">ANSI C12, DLMS</td><td>Marca establecida, alianza 5G+edge con Verizon (2025)</td><td>Igual de pesado que los anteriores para el segmento objetivo</td></tr>
+          <tr><td class="name">Kraken Technologies</td><td>Plataforma cloud-native: billing + medición + CRM + grid</td><td class="mono">Agnóstico, foco retail eléctrico</td><td>50M+ cuentas, 300M+ lecturas/día, arquitectura moderna real</td><td>Licenciamiento pensado para grandes retailers (E.ON, EDF), no para ESP de 5.000 medidores</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section id="agua">
+  <div class="wrap">
+    <div class="vert-head">
+      <svg class="vert-icon" viewBox="0 0 24 24" fill="none" stroke="var(--s1)" stroke-width="2"><path d="M12 3c4 5 6 8.2 6 11a6 6 0 1 1-12 0c0-2.8 2-6 6-11Z" stroke-linejoin="round"/></svg>
+      <h3>Agua / acueducto</h3>
+    </div>
+    <p class="lede">Vertical fuera del alcance del MVP de RenfyGrid, pero es donde ya operan los comparables directos más parecidos al modelo SaaS que se planteó.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Proveedor</th><th>Tipo de oferta</th><th>Fortaleza</th><th>Relevancia para RenfyGrid</th></tr></thead>
+        <tbody>
+          <tr><td class="name">Sensus (Xylem)</td><td>Meters + FlexNet + analítica</td><td>Líder histórico en agua, portafolio amplio tras integrarse a Xylem</td><td>Referencia de qué tan lejos llega un "especialista" antes de necesitar un MDM propio</td></tr>
+          <tr><td class="name">Badger Meter (BEACON)</td><td>Meters + SaaS de suscripción (netAMP)</td><td>Modelo por suscripción, no solo venta de hardware — el más cercano a SaaS en este vertical</td><td>Valida que el modelo de suscripción funciona comercialmente en utilities chicas</td></tr>
+          <tr><td class="name">Neptune Technology (Roper)</td><td>Hardware + software específico de agua</td><td>Expertise profundo pero de un solo utility</td><td>Contraste directo con la apuesta "multi-utility desde el núcleo" del diseño de RenfyGrid</td></tr>
+          <tr><td class="name">Diehl Metering</td><td>Multi-utility (electricidad/agua/gas/calor), fuerte en Europa</td><td>Único con verdadera cobertura de los 3 verticales a la vez, como RenfyGrid aspira a tener</td><td>El competidor más parecido en alcance — aunque orientado a fabricar medidores, no a ser SaaS puro</td></tr>
+          <tr><td class="name">Bynry (SMART360)</td><td>SaaS multi-tenant: billing+medición+CIS+campo, agua/electricidad/gas</td><td>Diseñado para 3.000–100.000 conexiones, precio por medidor, sin licencias por usuario, go-live en 12-24 semanas</td><td><b>El competidor directo más cercano al ICP de RenfyGrid — ya validado en mercado</b></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section id="gas">
+  <div class="wrap">
+    <div class="vert-head">
+      <svg class="vert-icon" viewBox="0 0 24 24" fill="none" stroke="var(--s3)" stroke-width="2"><ellipse cx="12" cy="14" rx="6" ry="7"/><path d="M12 3c1.5 2 1 3.5-.3 4.8-1 1-.7 2.2.3 2.2"/></svg>
+      <h3>Gas natural</h3>
+    </div>
+    <p class="lede">El vertical con menos jugadores especializados — dominado casi por completo por las mismas marcas que ya lideran electricidad.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Proveedor</th><th>Participación (Norteamérica, AMI gas)</th><th>Nota</th></tr></thead>
+        <tbody>
+          <tr><td class="name">Itron</td><td class="tabnum">~34%</td><td>Incluye Solar Battery Access Point (2025) para extender cobertura AMI sin red eléctrica — relevante para zonas rurales</td></tr>
+          <tr><td class="name">Landis+Gyr</td><td class="tabnum">~32%</td><td>Mismo stack que electricidad, portado a gas</td></tr>
+          <tr><td class="name">Aclara Technologies</td><td class="tabnum">~22%</td><td>Tercer jugador real, red STAR</td></tr>
+          <tr><td class="name">Honeywell + Sensus</td><td class="tabnum">~13% combinado</td><td>Resto del mercado repartido entre los dos</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout">
+      En gas, prácticamente no existe un jugador SaaS-SMB independiente equivalente a Bynry/Kalki.io/Energyworx — <b>es el vertical con el hueco más claro</b> para un MDM ligero y multi-protocolo si RenfyGrid decide priorizarlo antes que agua.
+    </div>
+  </div>
+</section>
+
+<section id="matriz">
+  <div class="wrap">
+    <h2>Matriz de capacidades</h2>
+    <p class="lede">RenfyGrid tal como está <i>planeado</i> (fase de diseño, nada construido) contra el perfil típico de cada grupo.</p>
+    <div class="table-wrap">
+      <table class="matrix">
+        <thead>
+          <tr>
+            <th>Capacidad</th>
+            <th class="num">Líderes incumbentes</th>
+            <th class="num">Especialistas por utility</th>
+            <th class="num">Retadores cloud-native</th>
+            <th class="num rf">RenfyGrid (plan)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>HES multi-protocolo/multi-marca propio</td><td class="num"><span class="chip yes">✓</span></td><td class="num"><span class="chip partial">~</span></td><td class="num"><span class="chip partial">~</span></td><td class="num rf"><span class="chip partial">~</span></td></tr>
+          <tr><td>Motor VEE auditable y versionado</td><td class="num"><span class="chip yes">✓</span></td><td class="num"><span class="chip partial">~</span></td><td class="num"><span class="chip yes">✓</span></td><td class="num rf"><span class="chip yes">✓</span></td></tr>
+          <tr><td>Control remoto (suspensión/reconexión) con aprobación auditada</td><td class="num"><span class="chip yes">✓</span></td><td class="num"><span class="chip partial">~</span></td><td class="num"><span class="chip no">✗</span></td><td class="num rf"><span class="chip yes">✓</span></td></tr>
+          <tr><td>Multi-tenant SaaS real (no proyecto por cliente)</td><td class="num"><span class="chip no">✗</span></td><td class="num"><span class="chip no">✗</span></td><td class="num"><span class="chip yes">✓</span></td><td class="num rf"><span class="chip yes">✓</span></td></tr>
+          <tr><td>Multi-utility desde el mismo núcleo (E+A+G)</td><td class="num"><span class="chip partial">~</span></td><td class="num"><span class="chip no">✗</span></td><td class="num"><span class="chip partial">~</span></td><td class="num rf"><span class="chip yes">✓</span></td></tr>
+          <tr><td>Precio accesible para 3.000–50.000 medidores</td><td class="num"><span class="chip no">✗</span></td><td class="num"><span class="chip partial">~</span></td><td class="num"><span class="chip yes">✓</span></td><td class="num rf"><span class="chip yes">✓</span> <span style="opacity:.6">(objetivo)</span></td></tr>
+          <tr><td>Go-live en semanas, no años</td><td class="num"><span class="chip no">✗</span></td><td class="num"><span class="chip partial">~</span></td><td class="num"><span class="chip yes">✓</span></td><td class="num rf"><span class="chip partial">~</span> <span style="opacity:.6">(por validar)</span></td></tr>
+          <tr><td>Clientes reales en producción hoy</td><td class="num"><span class="chip yes">✓</span></td><td class="num"><span class="chip yes">✓</span></td><td class="num"><span class="chip yes">✓</span></td><td class="num rf"><span class="chip no">✗</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section id="brechas">
+  <div class="wrap">
+    <h2>Fortalezas y brechas</h2>
+    <div class="two-col">
+      <div class="panel strength">
+        <h4 style="color:var(--good)">Dónde el plan ya compite de igual a igual</h4>
+        <ul>
+          <li>Diseño multi-utility desde el núcleo (E+A+G) — ni Bynry (sin protocolo propio) ni los especialistas de una sola utility lo tienen resuelto así.</li>
+          <li>Control remoto con flujo de aprobación auditado — más riguroso que lo que ofrecen los retadores cloud-native, que en su mayoría no tocan el canal de control físico.</li>
+          <li>Cero datos hardcodeados como principio de diseño, no como parche — reduce el costo de dar de alta un tenant nuevo frente a soluciones con configuración semi-fija.</li>
+          <li>Conocimiento de dominio real (VEE, arquitectura HES) documentado, con origen en interés comercial genuino de 2024, no una idea sin validar en el mercado.</li>
+        </ul>
+      </div>
+      <div class="panel gap">
+        <h4 style="color:var(--crit)">Dónde el plan todavía no tiene nada que mostrar</h4>
+        <ul>
+          <li>Cero clientes, cero código — Bynry, Kalki.io y Energyworx ya tienen tracción real en el mismo segmento.</li>
+          <li>"Go-live en semanas" es una meta, no un hecho — Bynry ya demuestra 12-24 semanas con datos reales de implementación.</li>
+          <li>Un solo adaptador de protocolo planeado (DLMS/COSEM) — Itron y Landis+Gyr soportan decenas de marcas/protocolos ya en producción.</li>
+          <li>Sin canal de venta ni squad comercial definido — es la misma causa que frenó las 3 oportunidades de 2024, según el propio planteamiento.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="recomendaciones">
+  <div class="wrap-narrow">
+    <h2>Recomendaciones</h2>
+    <div class="rec-list">
+      <div class="rec"><span class="n"></span><div><div class="t">No competir contra Itron/Landis+Gyr/Oracle — competir contra Bynry, Kalki.io y Energyworx</div><div class="d">Son el benchmark de producto real: mismo ICP (3.000–100.000 conexiones), mismo modelo SaaS multi-tenant. Estudiar su tiempo de implementación (12-24 semanas de Bynry) como meta explícita del Sprint 0 en adelante.</div></div></div>
+      <div class="rec"><span class="n"></span><div><div class="t">Usar el multi-utility real como diferenciador, no como ambición</div><div class="d">Ningún comparable directo cubre bien los tres verticales con el mismo núcleo (Diehl lo intenta pero fabrica medidores, no vende SaaS). Es la única casilla de la matriz donde RenfyGrid puede llegar a marcar solo, si el diseño se mantiene disciplinado.</div></div></div>
+      <div class="rec"><span class="n"></span><div><div class="t">Considerar gas como cuña de entrada, no solo energía</div><div class="d">Es el vertical con menos competencia SaaS-SMB independiente. Si el piloto de energía no logra tracción rápida, gas es la alternativa con menos ruido competitivo directo.</div></div></div>
+      <div class="rec"><span class="n"></span><div><div class="t">Tratar "cero clientes" como el riesgo número uno, no la arquitectura</div><div class="d">La brecha técnica es cerrable en meses (ver plan de sprints); la brecha comercial es la que ya frenó 3 oportunidades en 2024. Vale la pena diagnosticar esa causa antes del piloto, no después.</div></div></div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap-narrow">
+    Lectura propia de Rensoft Labs a partir de investigación de mercado pública — no constituye asesoría de un analista certificado ni un ranking oficial de ningún proveedor.
+    <div class="src">
+      <a href="https://guidehouseinsights.com/reports/guidehouse-insights-leaderboard-smart-meter-analytics" target="_blank" rel="noopener">Guidehouse Insights — Leaderboard: Smart Meter Analytics</a>
+      <a href="https://www.bynry.com/" target="_blank" rel="noopener">Bynry — SMART360</a>
+      <a href="https://kalkitech.com/platforms/kalkiiocloud/meter-data-acquisition/" target="_blank" rel="noopener">Kalki.io — MDAS</a>
+      <a href="https://octopusenergy.group/kraken-technologies" target="_blank" rel="noopener">Octopus Energy Group — Kraken Technologies</a>
+      <a href="https://na.itron.com/what-we-offer/gas-amr-and-ami" target="_blank" rel="noopener">Itron — Gas AMR &amp; AMI</a>
+    </div>
+  </div>
+</footer>
+
+<div id="tooltip"></div>
+
+<script>
+(function(){
+  const groups = {
+    A: { color: 'var(--s1)', hex: '#2a78d6', label: 'Líderes incumbentes' },
+    B: { color: 'var(--s2)', hex: '#eb6834', label: 'Especialistas por utility' },
+    C: { color: 'var(--s3)', hex: '#1baf7a', label: 'Retadores cloud-native' },
+  };
+  const points = [
+    {id:'itron', name:'Itron', grp:'A', x:91, y:94, note:'End-to-end hardware+software, escala global'},
+    {id:'lg', name:'Landis+Gyr', grp:'A', x:86, y:88, note:'End-to-end, +15M endpoints cloud en NA'},
+    {id:'oracle', name:'Oracle Utilities MDM', grp:'A', x:76, y:80, note:'Software puro, ahora cloud-native en OCI'},
+    {id:'sensus', name:'Sensus (Xylem)', grp:'B', x:64, y:74, note:'Líder en agua, FlexNet + analítica'},
+    {id:'aclara', name:'Aclara', grp:'B', x:58, y:64, note:'Electricidad + agua, red STAR'},
+    {id:'honeywell', name:'Honeywell / Elster', grp:'B', x:52, y:54, note:'Fuerte en gas, alianza 5G con Verizon'},
+    {id:'diehl', name:'Diehl Metering', grp:'B', x:46, y:46, note:'Único multi-utility real (E+A+G+calor), fuerte en Europa'},
+    {id:'badger', name:'Badger Meter', grp:'B', x:36, y:38, note:'Agua, modelo de suscripción (netAMP)'},
+    {id:'neptune', name:'Neptune Technology', grp:'B', x:30, y:30, note:'Agua, hardware + software especializado'},
+    {id:'kraken', name:'Kraken Technologies', grp:'C', x:74, y:66, note:'50M+ cuentas, billing+medición+CRM cloud-native'},
+    {id:'energyworx', name:'Energyworx', grp:'C', x:44, y:20, note:'MDM/analítica multi-tenant serverless'},
+    {id:'bynry', name:'Bynry (SMART360)', grp:'C', x:56, y:16, note:'SaaS multi-tenant E+A+G, 3k-100k conexiones — comparable directo'},
+    {id:'kalki', name:'Kalki.io (MDAS)', grp:'C', x:30, y:10, note:'HES DLMS como SaaS, on-prem o cloud'},
+  ];
+  const renfy = [
+    {id:'rf1', name:'RenfyGrid — hoy', x:12, y:3, note:'Pre-MVP: solo plan, cero clientes'},
+    {id:'rf2', name:'RenfyGrid — objetivo post-piloto', x:50, y:11, note:'Tras Sprint 0-10: 1 protocolo, 1 tenant real, junto al clúster SaaS-SMB'},
+  ];
+
+  const M = {l:78, r:36, t:26, b:56}, W = 960, H = 620;
+  const PW = W - M.l - M.r, PH = H - M.t - M.b;
+  const sx = v => M.l + (v/100)*PW;
+  const sy = v => (H - M.b) - (v/100)*PH;
+
+  const svg = document.getElementById('quad');
+  const NS = 'http://www.w3.org/2000/svg';
+  const el = (tag, attrs) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); return e; };
+
+  // gridlines
+  [0,25,50,75,100].forEach(v=>{
+    svg.appendChild(el('line', {x1:sx(v), x2:sx(v), y1:M.t, y2:H-M.b, class: v===50?'mid-line':'grid-line'}));
+    svg.appendChild(el('line', {x1:M.l, x2:W-M.r, y1:sy(v), y2:sy(v), class: v===50?'mid-line':'grid-line'}));
+  });
+  // axes labels
+  const xlab = el('text', {class:'axis-label', x:M.l+PW/2, y:H-14, 'text-anchor':'middle'});
+  xlab.textContent = 'Alcance funcional y multi-utility →';
+  svg.appendChild(xlab);
+  const ylab = el('text', {class:'axis-label', x:0, y:0, transform:`translate(24,${M.t+PH/2}) rotate(-90)`, 'text-anchor':'middle'});
+  ylab.textContent = 'Presencia de mercado instalada →';
+  svg.appendChild(ylab);
+  // quadrant captions
+  const caps = [
+    {x:M.l+14, y:M.t+16, t:'grande, pero angosto', anchor:'start'},
+    {x:W-M.r-14, y:M.t+16, t:'líderes establecidos', anchor:'end'},
+    {x:M.l+14, y:H-M.b-10, t:'nicho / emergente', anchor:'start'},
+    {x:W-M.r-14, y:H-M.b-10, t:'amplio, presencia chica', anchor:'end'},
+  ];
+  caps.forEach(c=>{
+    const t = el('text', {class:'quad-caption', x:c.x, y:c.y, 'text-anchor':c.anchor});
+    t.textContent = c.t; svg.appendChild(t);
+  });
+
+  const tooltip = document.getElementById('tooltip');
+  const card = svg.closest('.chart-card');
+  function showTip(evt, name, grpLabel){
+    tooltip.querySelector ? null : null;
+    tooltip.innerHTML = `<div class="tt-name">${name}</div><div class="tt-grp">${grpLabel}</div>`;
+    tooltip.style.opacity = 1;
+    positionTip(evt);
+  }
+  function positionTip(evt){
+    const cardRect = card.getBoundingClientRect();
+    let x = evt.clientX - cardRect.left + 14;
+    let y = evt.clientY - cardRect.top + 14;
+    tooltip.style.left = x + 'px';
+    tooltip.style.top = y + 'px';
+  }
+  function hideTip(){ tooltip.style.opacity = 0; }
+
+  points.forEach(p=>{
+    const cx = sx(p.x), cy = sy(p.y);
+    const g = el('g', {});
+    const dot = el('circle', {cx, cy, r:6, fill: groups[p.grp].hex, class:'pt-dot'});
+    g.appendChild(dot);
+    const label = el('text', {class:'pt-label', x: cx + (p.x>85?-9:9), y: cy+4, 'text-anchor': p.x>85?'end':'start'});
+    label.textContent = p.name;
+    g.appendChild(label);
+    g.addEventListener('mouseenter', e=>showTip(e, p.name, groups[p.grp].label + ' — ' + p.note));
+    g.addEventListener('mousemove', positionTip);
+    g.addEventListener('mouseleave', hideTip);
+    svg.appendChild(g);
+  });
+
+  // RenfyGrid trajectory arrow
+  const r1 = renfy[0], r2 = renfy[1];
+  const path = el('path', {class:'rf-path', d:`M${sx(r1.x)},${sy(r1.y)} L${sx(r2.x)},${sy(r2.y)}`, 'marker-end':'url(#arrow)'});
+  const defs = el('defs', {});
+  const marker = el('marker', {id:'arrow', markerWidth:8, markerHeight:8, refX:6, refY:3, orient:'auto'});
+  const arrowPath = el('path', {d:'M0,0 L6,3 L0,6 Z', fill:'var(--accent)'});
+  marker.appendChild(arrowPath); defs.appendChild(marker); svg.appendChild(defs);
+  svg.appendChild(path);
+
+  renfy.forEach((p, i)=>{
+    const cx = sx(p.x), cy = sy(p.y);
+    const g = el('g', {class:'rf-star'});
+    const star = el('path', {
+      d: starPath(cx, cy, 9, 4),
+      fill: 'var(--accent)', opacity: i===0 ? 1 : .55,
+      stroke: 'var(--surface)', 'stroke-width':1.4
+    });
+    g.appendChild(star);
+    const label = el('text', {class:'pt-label', x: cx+11, y: cy+4, style:'font-weight:700; fill:var(--accent-ink)'});
+    label.textContent = p.name;
+    g.appendChild(label);
+    g.addEventListener('mouseenter', e=>showTip(e, p.name, p.note));
+    g.addEventListener('mousemove', positionTip);
+    g.addEventListener('mouseleave', hideTip);
+    svg.appendChild(g);
+  });
+
+  function starPath(cx, cy, rOuter, rInner){
+    let d = '';
+    for (let i=0;i<10;i++){
+      const r = i%2===0 ? rOuter : rInner;
+      const a = (Math.PI/5)*i - Math.PI/2;
+      const x = cx + r*Math.cos(a), y = cy + r*Math.sin(a);
+      d += (i===0?'M':'L') + x.toFixed(1) + ',' + y.toFixed(1) + ' ';
+    }
+    return d + 'Z';
+  }
+})();
+</script>

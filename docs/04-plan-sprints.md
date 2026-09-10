@@ -1,0 +1,150 @@
+# Plan de Desarrollo Ágil por Sprints — RenfyGrid (MDM/AMI)
+
+**Fecha:** 2026-09-09 · **Estado:** Fase 4 de 4 (Planteamiento ✅ → Arquitectura general ✅ → Diseño ✅ → **Plan de sprints**)
+
+Cierra el ciclo de planeación. A partir de acá, cualquier trabajo es implementación real —
+nada de código se toca hasta que este plan se valide.
+
+---
+
+## 1. Alcance del MVP / piloto
+
+Para no repetir el patrón de 2024 (propuesta grande, ninguna oportunidad avanzó), el MVP se
+acota a lo mínimo que demuestra el ciclo completo Meter-to-Cash con un solo tenant real:
+
+**Entra al MVP:**
+- Un (1) protocolo de medidor: **DLMS/COSEM** vía Gurux (el más común en el mercado
+  eléctrico colombiano).
+- Un (1) tenant piloto.
+- Pipeline VEE completo (validación → estimación → edición), reglas ya parametrizadas en BD.
+- Gestión de Consumos básica (agregación + reglas de crítica simples).
+- Módulo SCR con **aprobación humana obligatoria en el 100% de las órdenes** (default más
+  seguro; se evalúa automatizar reconexión de bajo riesgo después de validar el piloto).
+- Portal/API mínima multi-tenant (medidores, consumos, eventos, solicitud de control).
+- Bus de eventos: **Redis Streams** (menor costo operativo que RabbitMQ/Kafka para el
+  volumen de un piloto; se reevalúa si el volumen real lo exige).
+- Autenticación: JWT propio (sin Keycloak todavía — se suma si un tenant exige SSO).
+
+**No entra al MVP** (documentado ya en el planteamiento, Fase 1 §4): CIS/facturación
+completo, GIS/SCADA/ADMS/OMS, app móvil de campo, BI avanzado, adaptadores de agua/gas.
+
+**Balance de Red y Modelado de Red** (agregados al alcance 2026-09-10, ver
+`01-planteamiento.md` §3-4) **tampoco entran a este MVP** — no porque estén descartados, sino
+porque responden a una motion comercial distinta (venta modular a utilities grandes, no al
+piloto SMB). Van como **Track B**, en paralelo y sin bloquear el Track A (§3-4 de este
+documento) — ver §8.
+
+## 2. Supuestos de equipo y cadencia (ajustable)
+
+- **Equipo asumido**: 2 desarrolladores backend + 1 QA a medio tiempo + el usuario como
+  Product Owner / arquitecto. Si el equipo real es distinto, los sprints se comprimen o
+  alargan proporcionalmente — la secuencia de épicas no cambia.
+- **Sprint**: 2 semanas, con planning, daily async, review y retro al cierre de cada uno.
+- **Duración estimada del MVP completo**: 10 sprints (~5 meses) hasta piloto en producción
+  con el primer tenant real.
+
+## 3. Épicas
+
+| # | Épica | Objetivo |
+|---|---|---|
+| E0 | Fundaciones de plataforma | Multi-tenant, auth, esquema BD base, patrón "config cacheada" (cero hardcode), **clúster k3s** |
+| E1 | Adaptador HES (DLMS/COSEM) | Lectura remota real de medidores, normalización con mapeo OBIS |
+| E2 | Motor VEE | Validación, estimación, edición — reglas versionadas en BD |
+| E3 | Gestión de Consumos | Agregación, reglas de crítica, preparación de facturación |
+| E4 | Módulo SCR | Flujo de aprobación y ejecución de órdenes de control |
+| E5 | Portal/API multi-tenant | Único punto de entrada para el tenant piloto |
+| E6 | Hardening + Observabilidad | Seguridad del canal de control, métricas, alertas |
+| E7 | Piloto en producción | Despliegue real, acompañamiento, ajuste con datos reales |
+
+## 4. Roadmap de sprints
+
+| Sprint | Épica(s) | Objetivo del sprint | Entregable verificable |
+|---|---|---|---|
+| **0** | E0 | Repo, CI/CD, **clúster k3s bootstrapeado** (ver `02-arquitectura-general.md` principio 4), esquema BD inicial (`tenant`, `meter`, `meter_protocol`, `vee_rule` versionadas) corriendo fuera del clúster, auth JWT, librería compartida del patrón "config loader → snapshot cacheado" | Un servicio dummy desplegado como pod en k3s lee su config desde snapshot, no desde código |
+| **1** | E1 | Adaptador HES conecta a un medidor/simulador DLMS/COSEM real vía Gurux | Lectura real ingresa a `raw_reading` (Timescale) |
+| **2** | E1 | Mapeo OBIS configurable por marca/modelo (desde BD, cacheado), manejo de reintentos/caída de concentrador | Cambiar el mapeo en BD sin desplegar código cambia el parseo |
+| **3** | E2 | Motor VEE: validación (rangos, formato, coherencia) sobre lecturas reales del piloto | Lecturas fuera de rango quedan marcadas, con regla trazable |
+| **4** | E2 | Motor VEE: estimación (método configurable) + edición manual auditada | Historias de usuario de diseño (Fase 3 §5) verificadas una a una |
+| **5** | E3 | Gestión de Consumos: agregación de lecturas validadas + reglas de crítica simples | API de consumo facturable responde para el tenant piloto |
+| **6** | E4 | Módulo SCR: modelo de estados de orden + flujo de aprobación humana | Una orden de prueba pasa por `requested→pending_approval→approved` con auditoría |
+| **7** | E4 | SCR: ejecución real del comando vía adaptador HES + confirmación | Suspensión/reconexión real (o en simulador si el piloto aún no tiene medidor con switch) |
+| **8** | E5 | Portal/API: medidores, consumos, eventos, solicitud de control — con RLS end-to-end | Un usuario del tenant piloto solo ve sus propios datos, verificado con un segundo tenant de prueba |
+| **9** | E6 | Hardening: auditoría inmutable end-to-end, métricas de ingesta, alertas de caída | Panel de observabilidad mínimo funcionando |
+| **10** | E7 | Piloto real: despliegue con el tenant, ajuste de reglas VEE con datos de producción | Primer ciclo de facturación completo corrido con datos reales |
+
+## 5. Definition of Ready / Definition of Done
+
+**Ready** (una historia entra a un sprint si):
+- Tiene criterios de aceptación claros y **ningún valor hardcodeado propuesto** (si una
+  historia implica un umbral/mapeo fijo, se rechaza en refinamiento hasta que se modele como
+  configuración en BD).
+- Depende solo de historias ya cerradas en sprints previos.
+
+**Done** (una historia se cierra si):
+- Pasa pruebas automatizadas + revisión de código.
+- Si toca el motor VEE o el módulo SCR: tiene prueba de auditoría (que quede registro
+  trazable de la acción).
+- Si introduce una nueva configuración: existe su tabla en BD y su snapshot cacheado — no
+  queda un valor "temporal" en código.
+
+## 6. Riesgos y dependencias por sprint
+
+- **Sprint 0 (k3s)**: es scope agregado a lo que originalmente era "solo esquema BD + config
+  cacheada" (decisión de K8s día 1, ver `02-arquitectura-general.md` principio 4, tomada
+  2026-09-10). Ningún integrante del equipo tiene experiencia previa de K8s en el portafolio
+  — dejar tiempo real de aprendizaje/bootstrap en el sprint, no asumir que es trivial.
+- **Sprint 1-2 (Adaptador HES)**: el riesgo mayor es no tener acceso a un medidor físico o
+  simulador DLMS/COSEM confiable a tiempo — mitigar consiguiendo el simulador de Gurux desde
+  el Sprint 0 en paralelo.
+- **Sprint 6-7 (SCR)**: depende de que el medidor del piloto realmente soporte comando de
+  corte/reconexión remoto — confirmar esto **antes** de comprometer el sprint, no durante.
+- **Sprint 8 (Portal/RLS)**: probar aislamiento multi-tenant con un segundo tenant ficticio
+  desde este sprint, no dejarlo para el final.
+
+## 7. Criterios de éxito del piloto
+
+- Ciclo Meter-to-Cash corrido de punta a punta con datos reales de al menos un medidor.
+- Cero datos hardcodeados verificables en auditoría de código (todo trazable a una tabla de
+  configuración).
+- Al menos una orden de control ejecutada y confirmada end-to-end con auditoría completa.
+- Feedback del tenant piloto documentado para decidir automatizar (o no) el nivel de
+  aprobación del SCR en la siguiente iteración.
+
+## 8. Track B — Balance de Red, Modelado de Red, Gemelo Digital y Mantenimiento (agregado 2026-09-10)
+
+Corre **en paralelo** al Track A (§3-4), no antes ni después — son motions comerciales
+distintas (SMB con paquete completo vs. utility grande comprando solo estos módulos) y
+comparten poca superficie de código con el Track A (todos son servicios nuevos, independientes
+de HES/VEE por diseño — `03-diseno.md` §7-8). Se activa cuando haya una oportunidad comercial
+concreta que lo justifique, no por fecha fija. Orden interno del track: E8/E9 (Balance/Modelado)
+antes de E10 (Gemelo Digital) porque son útiles solos con un modelo `.inp` cargado a mano; E10
+los enriquece (deriva el modelo del inventario real) pero no los bloquea. E11 (Mantenimiento)
+depende de E10 — necesita `network_asset` para saber sobre qué activo generar la orden.
+
+| # | Épica | Objetivo |
+|---|---|---|
+| E8 | Motor de Balance de Red | `network_zone` jerárquica, ingesta externa, cálculo IWA Top-Down/Bottom-Up |
+| E9 | Motor de Modelado de Red | Versionado de `network_model` (`.inp`), integración WNTR, simulaciones |
+| E10 | Gemelo Digital | Inventario de activos (`network_asset`) y conectividad, sincronizable con SIG del cliente |
+| E11 | Gestión de Mantenimiento | Generación de órdenes desde anomalías + integración con BayForce |
+
+| Sprint | Épica | Objetivo | Entregable verificable |
+|---|---|---|---|
+| **B1** | E8 | Esquema `network_zone`/`network_balance` + endpoint de ingesta externa | Un balance calculado a partir de datos insertados vía API, sin medidor RenfyGrid de por medio |
+| **B2** | E8 | Cálculo Top-Down y Bottom-Up configurable por zona | Balance reproducible con datos de ejemplo de una zona real (agua) |
+| **B3** | E9 | Carga/versionado de modelo `.inp`, integración WNTR | Un modelo EPANET real se simula y devuelve resultados |
+| **B4** | E9 | Vínculo Modelo↔Balance (calibración con datos de consumo real) | Escenario de simulación usa `network_balance` como insumo |
+| **B5** | E10 | Esquema `network_asset`/`asset_connectivity` + ingesta externa (SIG) | Un activo cargado vía API queda visible con su conectividad |
+| **B6** | E10 | `network_model` se puede **derivar** de `network_asset`+conectividad (export EPANET) | Un modelo generado desde el Gemelo Digital simula igual que uno cargado a mano |
+| **B7** | E11 | Reglas de generación de orden desde anomalía + integración BayForce (`POST /integraciones/bayforce/ordenes`, webhook de vuelta) | Una anomalía de prueba genera una orden, se envía a BayForce (sandbox) y se cierra al recibir el webhook |
+
+**Definition of Ready/Done igual que el Track A** (§5) — ningún umbral/fórmula de pérdida fijo
+en código, todo trazable a `network_balance.method` o configuración de zona.
+
+## 9. Próximos pasos
+
+Este plan cierra la fase de planeación pedida. El siguiente paso natural es **Sprint 0**:
+crear el repositorio, el esqueleto multi-tenant y la librería de configuración cacheada — es
+decir, empezar a construir. Se retoma cuando el usuario confirme luz verde para pasar de
+planeación a desarrollo. El Track B (§8) arranca cuando haya una oportunidad comercial
+concreta que lo justifique.

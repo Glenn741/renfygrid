@@ -1,0 +1,39 @@
+# Primer manifiesto real desplegado en k3s (Sprint 0, F46 en docs/05-ejecucion.md).
+# Prueba el patron "configuracion cacheada" (docs/03-diseno.md SS2) de punta a punta
+# en un pod real: un initContainer (Config Loader) hace refresh() una vez y deja el
+# snapshot en un volumen compartido; el contenedor principal solo hace load()+get(),
+# nunca toca una fuente de datos el mismo -- exactamente el contrato que va a seguir
+# cualquier servicio real (motor VEE, adaptadores HES) mas adelante.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dummy-config-reader
+  namespace: renfygrid
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dummy-config-reader
+  template:
+    metadata:
+      labels:
+        app: dummy-config-reader
+    spec:
+      volumes:
+        - name: config-snapshot
+          emptyDir: {}
+      initContainers:
+        - name: config-loader
+          image: renfygrid/dummy-config-reader:sprint0
+          imagePullPolicy: Never
+          command: ["python", "dummy_config_loader.py"]
+          volumeMounts:
+            - name: config-snapshot
+              mountPath: /config
+      containers:
+        - name: config-reader
+          image: renfygrid/dummy-config-reader:sprint0
+          imagePullPolicy: Never
+          volumeMounts:
+            - name: config-snapshot
+              mountPath: /config

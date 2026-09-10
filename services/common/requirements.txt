@@ -1,0 +1,8 @@
+# services/common -- libreria compartida entre microservicios de RenfyGrid
+#
+# config_cache.py no depende de nada fuera de la libreria estandar a proposito
+# (ver docstring del modulo) -- estas dependencias son para db.py (helper de
+# contexto de tenant sobre Postgres/RLS), que todavia no se ejecuto contra una
+# instancia real en este sprint (ver docs/05-ejecucion.md).
+
+psycopg[binary]>=3.2,<4

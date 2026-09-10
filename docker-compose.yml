@@ -1,0 +1,40 @@
+# RenfyGrid -- SOLO infraestructura con estado (Sprint 0)
+#
+# Decision 2026-09-10 (ver docs/02-arquitectura-general.md principio 4): los servicios de
+# aplicacion (adaptadores HES, VEE, Consumos, SCR, Balance, Modelado, Gemelo Digital,
+# Mantenimiento, Portal/API) se despliegan como pods en k3s -- ver infra/k8s/README.md.
+# Este docker-compose.yml queda SOLO para Postgres/TimescaleDB y Redis, que corren FUERA
+# del cluster (patron ya probado en el resto del portafolio, evita el problema de
+# volumenes persistentes/failover de BD dentro de K8s).
+#
+# NO EJECUTADO TODAVIA en esta maquina (no hay Docker instalado aqui, ver
+# docs/05-ejecucion.md). Para levantarlo donde si haya Docker:
+#
+#   docker compose up -d
+#   docker compose exec db psql -U renfygrid -d renfygrid -f /migrations/0001_init.sql
+#
+services:
+  db:
+    image: timescale/timescaledb:2.17.2-pg16
+    environment:
+      POSTGRES_USER: renfygrid
+      POSTGRES_PASSWORD: renfygrid_dev_only
+      POSTGRES_DB: renfygrid
+    ports:
+      - "5432:5432"
+    volumes:
+      - renfygrid_db_data:/var/lib/postgresql/data
+      - ./infra/db/migrations:/migrations:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U renfygrid -d renfygrid"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7.4-alpine
+    ports:
+      - "6379:6379"
+
+volumes:
+  renfygrid_db_data:

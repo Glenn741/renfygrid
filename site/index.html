@@ -1,0 +1,995 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>RenfyGrid — Plan del producto</title>
+<meta name="description" content="Plan de producto RenfyGrid: MDM/AMI completo con Head End System, VEE, gestión de consumos y control remoto.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&display=swap">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --indigo: #4F46E5;
+  --indigo-dark: #3730A3;
+  --indigo-light: #818CF8;
+  --bg: #FFFFFF;
+  --bg-alt: #F8FAFC;
+  --bg-dark: #0A0F1E;
+  --text: #0F172A;
+  --text-muted: #64748B;
+  --border: #E2E8F0;
+  --card-bg: #FFFFFF;
+  --radius: 16px;
+  --radius-sm: 10px;
+  --nav-h: 64px;
+  --ok: #059669;
+  --warn: #D97706;
+}
+html { scroll-behavior: smooth; }
+body {
+  font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: var(--bg-alt);
+  color: var(--text);
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--indigo); text-decoration: none; }
+.container { max-width: 980px; margin: 0 auto; padding: 0 24px; }
+
+/* Nav */
+nav.top {
+  position: sticky; top: 0; z-index: 20;
+  height: var(--nav-h);
+  background: rgba(255,255,255,0.92);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center;
+}
+nav.top .container { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.brand { font-weight: 800; font-size: 18px; color: var(--text); display: flex; align-items: center; gap: 8px; }
+.brand .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--indigo); display: inline-block; }
+.navlinks { display: flex; gap: 22px; font-size: 14px; font-weight: 600; flex-wrap: wrap; }
+.navlinks a { color: var(--text-muted); }
+.navlinks a:hover { color: var(--indigo); }
+
+/* Hero */
+header.hero {
+  background: linear-gradient(180deg, var(--bg-dark) 0%, #131B33 100%);
+  color: #fff;
+  padding: 64px 0 48px;
+}
+header.hero .label {
+  display: inline-block; font-size: 12px; font-weight: 700; letter-spacing: 1.5px;
+  text-transform: uppercase; color: var(--indigo-light); margin-bottom: 14px;
+}
+header.hero h1 { font-size: clamp(28px, 4vw, 42px); font-weight: 800; margin-bottom: 14px; max-width: 680px; }
+header.hero p { color: #CBD5E1; font-size: 17px; max-width: 640px; margin-bottom: 26px; }
+.phase-track { display: flex; gap: 10px; flex-wrap: wrap; }
+.phase-pill {
+  display: flex; align-items: center; gap: 8px;
+  background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 999px; padding: 8px 16px; font-size: 13px; font-weight: 600; color: #E2E8F0;
+}
+.phase-pill .n {
+  width: 20px; height: 20px; border-radius: 50%; background: var(--ok); color: #fff;
+  display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800;
+}
+
+/* Sections */
+section { padding: 56px 0; }
+section:nth-of-type(even) { background: #fff; }
+section h2 {
+  font-size: 26px; font-weight: 800; margin-bottom: 8px; display: flex; align-items: center; gap: 10px;
+}
+section h2 .badge {
+  font-size: 11px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase;
+  background: #ECFDF5; color: var(--ok); padding: 4px 10px; border-radius: 999px;
+}
+section .lead { color: var(--text-muted); font-size: 15px; margin-bottom: 28px; max-width: 760px; }
+h3 { font-size: 18px; font-weight: 700; margin: 26px 0 12px; }
+p { margin-bottom: 12px; }
+ul, ol { margin: 0 0 16px 22px; }
+li { margin-bottom: 6px; }
+
+.card {
+  background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 22px 24px; margin-bottom: 18px;
+}
+.callout {
+  border-left: 4px solid var(--indigo); background: #EEF2FF; border-radius: var(--radius-sm);
+  padding: 16px 20px; margin: 18px 0; font-size: 14.5px;
+}
+.callout.warn { border-color: var(--warn); background: #FFFBEB; }
+.callout strong { color: var(--indigo-dark); }
+.callout.warn strong { color: #92400E; }
+
+table { width: 100%; border-collapse: collapse; margin: 14px 0 22px; font-size: 14px; }
+th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+th { background: var(--bg-alt); font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: var(--text-muted); }
+.table-wrap { overflow-x: auto; margin-bottom: 22px; }
+
+code, pre { font-family: 'SFMono-Regular', Consolas, monospace; }
+pre.code {
+  background: #0F172A; color: #E2E8F0; padding: 16px 18px; border-radius: var(--radius-sm);
+  overflow-x: auto; font-size: 13px; margin-bottom: 20px; line-height: 1.55;
+}
+pre.mermaid { background: #fff; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 16px; margin-bottom: 22px; overflow-x: auto; }
+
+.tag { display: inline-block; font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 999px; margin-right: 6px; }
+.tag.done { background: #ECFDF5; color: var(--ok); }
+.tag.open { background: #FFFBEB; color: var(--warn); }
+
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 700px) { .grid2 { grid-template-columns: 1fr; } .navlinks { display: none; } }
+
+footer { padding: 40px 0; text-align: center; color: var(--text-muted); font-size: 13px; }
+footer a { font-weight: 600; }
+
+/* ══════════════ Bloque embebido: benchmark de industria (.bm-scope) ══════════════ */
+details.bm-details { margin-top: 24px; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
+details.bm-details > summary {
+  cursor: pointer; list-style: none; padding: 16px 20px; font-weight: 700; font-size: 14.5px;
+  background: var(--bg-alt); color: var(--indigo-dark); display: flex; align-items: center; gap: 8px;
+}
+details.bm-details > summary::-webkit-details-marker { display: none; }
+details.bm-details > summary::before { content: "▸"; transition: transform .15s; }
+details.bm-details[open] > summary::before { transform: rotate(90deg); }
+details.bm-details > summary:hover { background: var(--accent-wash, #EEF2FF); }
+
+.bm-scope{
+  --bm-paper:#f9f9f7; --bm-surface:#fcfcfb; --bm-surface-2:#f1f0eb;
+  --bm-ink:#14181f; --bm-ink-2:#52514e; --bm-ink-muted:#898781;
+  --bm-line:#e1e0d9; --bm-line-strong:#c3c2b7;
+  --bm-accent:#4F46E5; --bm-accent-ink:#3730A3; --bm-accent-wash:#EEF0FE;
+  --bm-s1:#2a78d6; --bm-s1-wash:#e8f0fb;
+  --bm-s2:#eb6834; --bm-s2-wash:#fcede4;
+  --bm-s3:#1baf7a; --bm-s3-wash:#e6f6ef;
+  --bm-good:#0ca30c; --bm-warn:#c98500; --bm-crit:#d03b3b;
+  color-scheme: light; display:block;
+  background:var(--bm-surface); color:var(--bm-ink);
+  font-family:'Inter',system-ui,-apple-system,'Segoe UI',sans-serif;
+  font-size:15px; line-height:1.62; -webkit-font-smoothing:antialiased;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]) .bm-scope{
+    --bm-paper:#0d0d0d; --bm-surface:#1a1a19; --bm-surface-2:#212120;
+    --bm-ink:#ffffff; --bm-ink-2:#c3c2b7; --bm-ink-muted:#898781;
+    --bm-line:#2c2c2a; --bm-line-strong:#383835;
+    --bm-accent:#8b83f0; --bm-accent-ink:#c3bdf7; --bm-accent-wash:#211f3a;
+    --bm-s1:#3987e5; --bm-s1-wash:#152332;
+    --bm-s2:#d95926; --bm-s2-wash:#2c1a10;
+    --bm-s3:#199e70; --bm-s3-wash:#0f2a20;
+    --bm-good:#0ca30c; --bm-warn:#c98500; --bm-crit:#e66767;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] .bm-scope{
+  --bm-paper:#0d0d0d; --bm-surface:#1a1a19; --bm-surface-2:#212120;
+  --bm-ink:#ffffff; --bm-ink-2:#c3c2b7; --bm-ink-muted:#898781;
+  --bm-line:#2c2c2a; --bm-line-strong:#383835;
+  --bm-accent:#8b83f0; --bm-accent-ink:#c3bdf7; --bm-accent-wash:#211f3a;
+  --bm-s1:#3987e5; --bm-s1-wash:#152332;
+  --bm-s2:#d95926; --bm-s2-wash:#2c1a10;
+  --bm-s3:#199e70; --bm-s3-wash:#0f2a20;
+  --bm-good:#0ca30c; --bm-warn:#c98500; --bm-crit:#e66767;
+  color-scheme: dark;
+}
+
+.bm-scope h1,.bm-scope h2,.bm-scope h3,.bm-scope .disp{font-family:'IBM Plex Sans',system-ui,sans-serif; text-wrap:balance; letter-spacing:-0.01em}
+.bm-scope .mono,.bm-scope .tabnum,.bm-scope td.num,.bm-scope th.num{font-family:'IBM Plex Mono',ui-monospace,Consolas,monospace}
+.bm-scope .tabnum{font-variant-numeric:tabular-nums}
+.bm-scope a{color:var(--bm-accent)}
+.bm-scope .wrap{max-width:1120px;margin:0 auto;padding:0 28px}
+.bm-scope .wrap-narrow{max-width:760px;margin:0 auto;padding:0 28px}
+
+.bm-scope header.masthead{border-bottom:1px solid var(--bm-line); padding:30px 0 26px; background:var(--bm-surface)}
+.bm-scope .eyebrow{font-size:11.5px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--bm-accent-ink); margin-bottom:10px}
+.bm-scope header.masthead h1{font-size:clamp(22px,3vw,30px); font-weight:700; margin-bottom:10px; max-width:820px}
+.bm-scope header.masthead .sub{color:var(--bm-ink-2); font-size:15px; max-width:680px; margin-bottom:16px}
+.bm-scope .meta-row{display:flex; gap:22px; flex-wrap:wrap; font-size:12.5px; color:var(--bm-ink-muted)}
+.bm-scope .meta-row b{color:var(--bm-ink-2); font-weight:600}
+
+.bm-scope section{padding:34px 0}
+.bm-scope section + section{border-top:1px solid var(--bm-line)}
+.bm-scope section h2{font-size:19px; font-weight:700; margin-bottom:6px}
+.bm-scope section .lede{color:var(--bm-ink-2); font-size:13.8px; max-width:680px; margin-bottom:20px}
+.bm-scope h3{font-size:14.5px; font-weight:600; margin:20px 0 10px}
+
+.bm-scope .callout{
+  border:1px solid var(--bm-line); border-left:3px solid var(--bm-accent);
+  background:var(--bm-accent-wash); border-radius:6px; padding:14px 18px;
+  font-size:13.2px; color:var(--bm-ink-2); margin:16px 0;
+}
+.bm-scope .callout b{color:var(--bm-ink)}
+
+.bm-scope .exec-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:1px; background:var(--bm-line); border:1px solid var(--bm-line); border-radius:8px; overflow:hidden; margin-top:6px}
+.bm-scope .exec-cell{background:var(--bm-surface); padding:16px 18px}
+.bm-scope .exec-cell .k{font-size:10.5px; font-weight:600; letter-spacing:.05em; text-transform:uppercase; color:var(--bm-ink-muted); margin-bottom:7px}
+.bm-scope .exec-cell .v{font-size:13.3px; color:var(--bm-ink-2)}
+@media (max-width:760px){ .bm-scope .exec-grid{grid-template-columns:1fr} }
+
+.bm-scope .chart-card{border:1px solid var(--bm-line); border-radius:10px; background:var(--bm-surface); padding:18px 20px 12px; overflow-x:auto}
+.bm-scope .chart-head{display:flex; justify-content:space-between; align-items:baseline; gap:16px; flex-wrap:wrap; margin-bottom:8px}
+.bm-scope .chart-head h3{margin:0; font-size:14px}
+.bm-scope .legend{display:flex; gap:14px; flex-wrap:wrap; font-size:12px; color:var(--bm-ink-2)}
+.bm-scope .legend .li{display:flex; align-items:center; gap:6px}
+.bm-scope .legend .sw{width:9px;height:9px;border-radius:50%;display:inline-block}
+.bm-scope svg#quad text{font-family:'IBM Plex Sans',system-ui,sans-serif}
+.bm-scope .axis-label{font-size:11.5px; fill:var(--bm-ink-muted); font-weight:500}
+.bm-scope .quad-caption{font-size:10px; fill:var(--bm-ink-muted); font-style:italic}
+.bm-scope .grid-line{stroke:var(--bm-line); stroke-width:1}
+.bm-scope .mid-line{stroke:var(--bm-line-strong); stroke-width:1; stroke-dasharray:3 3}
+.bm-scope .pt-label{font-size:10.5px; fill:var(--bm-ink-2); font-weight:500}
+.bm-scope .pt-dot{stroke:var(--bm-surface); stroke-width:1.5; cursor:pointer}
+.bm-scope .rf-star{cursor:pointer}
+.bm-scope .rf-path{stroke:var(--bm-accent); stroke-width:1.6; stroke-dasharray:4 3; fill:none; opacity:.75}
+.bm-scope #tooltip{
+  position:absolute; pointer-events:none; z-index:5; opacity:0; transition:opacity .1s;
+  background:var(--bm-ink); color:var(--bm-paper); font-size:12px; padding:7px 10px; border-radius:6px;
+  max-width:210px; line-height:1.4; box-shadow:0 6px 18px rgba(0,0,0,.18);
+}
+:root:not([data-theme="light"]) .bm-scope #tooltip{ background:var(--bm-surface-2); color:var(--bm-ink); border:1px solid var(--bm-line-strong) }
+:root[data-theme="dark"] .bm-scope #tooltip{ background:var(--bm-surface-2); color:var(--bm-ink); border:1px solid var(--bm-line-strong) }
+.bm-scope #tooltip .tt-name{font-weight:600; margin-bottom:2px}
+.bm-scope #tooltip .tt-grp{opacity:.72; font-size:11px}
+
+.bm-scope .vert-head{display:flex; align-items:center; gap:10px; margin-bottom:4px}
+.bm-scope .vert-icon{width:24px;height:24px;flex:none}
+.bm-scope .vert-head h3{margin:0; font-size:16px}
+
+.bm-scope .table-wrap{overflow-x:auto; margin:12px 0 6px; border:1px solid var(--bm-line); border-radius:8px}
+.bm-scope table{width:100%; border-collapse:collapse; font-size:13px; min-width:600px}
+.bm-scope thead th{
+  background:var(--bm-surface-2); text-align:left; font-size:10px; font-weight:600;
+  letter-spacing:.05em; text-transform:uppercase; color:var(--bm-ink-muted);
+  padding:9px 13px; border-bottom:1px solid var(--bm-line);
+}
+.bm-scope tbody td{padding:9px 13px; border-bottom:1px solid var(--bm-line); color:var(--bm-ink-2); vertical-align:top}
+.bm-scope tbody tr:last-child td{border-bottom:none}
+.bm-scope tbody td.name{color:var(--bm-ink); font-weight:600}
+.bm-scope tbody tr:hover td{background:var(--bm-surface-2)}
+
+.bm-scope .matrix .num{text-align:center}
+.bm-scope .chip{
+  display:inline-flex; align-items:center; justify-content:center;
+  width:21px; height:21px; border-radius:50%; font-size:11.5px; font-weight:700;
+}
+.bm-scope .chip.yes{background:color-mix(in srgb, var(--bm-good) 16%, transparent); color:var(--bm-good)}
+.bm-scope .chip.partial{background:color-mix(in srgb, var(--bm-warn) 18%, transparent); color:var(--bm-warn)}
+.bm-scope .chip.no{background:color-mix(in srgb, var(--bm-crit) 14%, transparent); color:var(--bm-crit)}
+.bm-scope .matrix td.rf{background:var(--bm-accent-wash)}
+.bm-scope .matrix th.rf{background:var(--bm-accent-wash); color:var(--bm-accent-ink)}
+
+.bm-scope .two-col{display:grid; grid-template-columns:1fr 1fr; gap:18px; margin-top:8px}
+@media (max-width:700px){ .bm-scope .two-col{grid-template-columns:1fr} }
+.bm-scope .panel{border:1px solid var(--bm-line); border-radius:8px; padding:16px 18px; background:var(--bm-surface)}
+.bm-scope .panel h4{font-size:12.5px; font-weight:700; margin-bottom:10px; display:flex; align-items:center; gap:7px}
+.bm-scope .panel ul{list-style:none; display:flex; flex-direction:column; gap:9px; margin:0}
+.bm-scope .panel li{font-size:13px; color:var(--bm-ink-2); padding-left:16px; position:relative; margin:0}
+.bm-scope .panel li::before{content:"";position:absolute; left:0; top:8px; width:6px; height:6px; border-radius:50%}
+.bm-scope .panel.strength li::before{background:var(--bm-good)}
+.bm-scope .panel.gap li::before{background:var(--bm-crit)}
+
+.bm-scope .rec-list{counter-reset:rec; display:flex; flex-direction:column; gap:15px; margin-top:10px}
+.bm-scope .rec{display:flex; gap:15px; align-items:flex-start}
+.bm-scope .rec .n{
+  counter-increment:rec; flex:none; width:28px;height:28px; border-radius:50%;
+  background:var(--bm-accent); color:#fff; display:flex; align-items:center; justify-content:center;
+  font-family:'IBM Plex Mono',monospace; font-weight:600; font-size:12.5px;
+}
+.bm-scope .rec .n::before{content:counter(rec)}
+.bm-scope .rec .t{font-weight:600; margin-bottom:2px; font-size:13.8px}
+.bm-scope .rec .d{color:var(--bm-ink-2); font-size:13px}
+
+.bm-scope footer{padding:26px 0 40px; color:var(--bm-ink-muted); font-size:12px; text-align:left}
+.bm-scope footer .src{margin-top:10px; display:flex; flex-direction:column; gap:4px}
+.bm-scope footer a{color:var(--bm-ink-muted); font-weight:400}
+</style>
+</head>
+<body>
+
+<nav class="top">
+  <div class="container">
+    <div class="brand"><span class="dot"></span> RenfyGrid</div>
+    <div class="navlinks">
+      <a href="#planteamiento">1. Planteamiento</a>
+      <a href="#benchmark">Benchmark</a>
+      <a href="#arquitectura">2. Arquitectura</a>
+      <a href="#diseno">3. Diseño</a>
+      <a href="#sprints">4. Sprints</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="container">
+    <span class="label">Plan de producto · rensoftlabs.com</span>
+    <h1>MDM/AMI completo: Head End System, VEE, gestión de consumos y control remoto</h1>
+    <p>Documento vivo del plan de RenfyGrid — un Meter Data Management System propio para
+    empresas de servicios públicos (energía, agua, gas), con captura multi-protocolo/multi-marca
+    de medidores, aseguramiento de la medición y comandos de suspensión/reconexión.</p>
+    <div class="phase-track">
+      <div class="phase-pill"><span class="n">✓</span> Planteamiento</div>
+      <div class="phase-pill"><span class="n">✓</span> Arquitectura general</div>
+      <div class="phase-pill"><span class="n">✓</span> Diseño</div>
+      <div class="phase-pill"><span class="n">✓</span> Plan de sprints</div>
+    </div>
+  </div>
+</header>
+
+<!-- ============ FASE 1 ============ -->
+<section id="planteamiento">
+  <div class="container">
+    <h2>1. Planteamiento <span class="badge">Completo</span></h2>
+    <p class="lead">Idea propia del equipo, en desarrollo desde hace varios años. En 2024 se
+    materializó en una propuesta comercial para el sector eléctrico colombiano que no avanzó a
+    contratación. Ahora se retoma como producto propio de rensoftlabs, en fase de ideación
+    formal.</p>
+
+    <h3>Problema a resolver</h3>
+    <ol>
+      <li><strong>Fragmentación de fuentes</strong>: medidores y concentradores de múltiples marcas
+        y protocolos (DLMS/COSEM, ANSI C12.19/C12.22, propietarios) que no hablan entre sí ni con
+        el sistema comercial sin una capa de integración dedicada.</li>
+      <li><strong>Calidad de la medición</strong>: sin un proceso VEE sistemático, cientos o miles
+        de lecturas por medidor-mes producen facturación incorrecta y reclamos.</li>
+      <li><strong>Desconexión entre medición y control operativo</strong>: suspender/reconectar el
+        servicio depende de visitas de campo sin un canal de comandos confiable.</li>
+    </ol>
+
+    <h3>Objetivo del producto</h3>
+    <p>Construir un MDM completo con HES propio capaz de capturar mediciones multi-protocolo/
+    multi-marca, procesarlas con un pipeline VEE auditable, entregar consumos validados al
+    sistema comercial, y enviar comandos de control (suspensión/corte/reconexión).</p>
+
+    <h3>Alcance</h3>
+    <div class="table-wrap">
+    <table>
+      <tr><th>Capa</th><th>Responsabilidad</th></tr>
+      <tr><td>HES (Head End System)</td><td>Registro y gestión de medidores/concentradores, conversión multi-protocolo, lectura remota, eventos/alarmas, comandos SCR</td></tr>
+      <tr><td>Almacenamiento</td><td>Histórico de lecturas crudas, metadatos, retención y respaldo</td></tr>
+      <tr><td>VEE</td><td>Validación → Estimación → Edición, con auditoría</td></tr>
+      <tr><td>Gestión de Consumos</td><td>Agregación en consumo facturable, reglas de crítica, órdenes de relectura/inspección</td></tr>
+      <tr><td>Control</td><td>Solicitud, aprobación y ejecución de suspensión/corte/reconexión</td></tr>
+      <tr><td>Balance de Red <span class="tag done" style="margin-left:6px">nuevo</span></td><td>Agregación de caudales/consumos por zona (DMA/circuito), cálculo de pérdidas (metodología IWA Top-Down/Bottom-Up)</td></tr>
+      <tr><td>Modelado de Red <span class="tag done" style="margin-left:6px">nuevo</span></td><td>Gestión de modelos de red (hidráulicos vía WNTR/EPANET para agua), calibración, simulación de escenarios</td></tr>
+      <tr><td>Gemelo Digital <span class="tag done" style="margin-left:6px">nuevo</span></td><td>Inventario operativo de activos (tuberías, válvulas, tanques, bombas, medidores) y su conectividad — el insumo real para Balance y Modelado, sincronizable con el SIG del cliente</td></tr>
+      <tr><td>Gestión de Mantenimiento <span class="tag done" style="margin-left:6px">nuevo</span></td><td>Genera órdenes de mantenimiento desde condición de activo/simulación/balance; la ejecución en campo se delega a <strong>BayForce</strong> (ya en el portafolio)</td></tr>
+    </table>
+    </div>
+    <p><em>Fuera de alcance por ahora:</em> CIS/facturación completo, GIS/SCADA/ADMS/OMS como sistemas completos, app móvil de campo propia (BayForce ya la cubre) y BI avanzado.</p>
+    <div class="callout">
+      <strong>Principio de modularidad ("à la carte"):</strong> cualquier subconjunto de estas 9 capas es una oferta válida. Balance de Red, Modelado de Red y Gemelo Digital pueden operar con datos externos (de un HES/CIS/SIG de terceros), sin depender del HES propio de RenfyGrid — esto habilita vender solo esos módulos a utilities grandes que ya tienen su propia medición, sin diluir el foco SMB del paquete completo. Gestión de Mantenimiento tampoco reconstruye ruteo ni app de campo: eso ya lo resuelve BayForce.
+    </div>
+
+    <h3>Mercado objetivo</h3>
+    <p>ESP pequeñas/medianas (energía, acueducto, gas) en LatAm que ya invirtieron o van a invertir
+    en medición inteligente pero no tienen presupuesto ni interés en un MDM de gran escala. Primer
+    piloto natural: sector eléctrico colombiano, por el interés ya validado en 2024. El benchmark de
+    industria (§5 abajo) confirma que el competidor real no son los gigantes (Itron, Landis+Gyr,
+    Oracle) sino plataformas SaaS-SMB como Bynry, Kalki.io y Energyworx — y que la cobertura
+    multi-utility (energía+agua+gas) desde el mismo núcleo es el diferenciador que ninguna de ellas
+    tiene resuelto hoy.</p>
+
+    <h3>Riesgos identificados</h3>
+    <ul>
+      <li>Interoperabilidad real entre fabricantes de medidores (cada uno implementa el protocolo con variaciones).</li>
+      <li>Volumen de datos: salto de 1 lectura/mes a miles por medidor-mes.</li>
+      <li>Ciberseguridad del canal de control — la funcionalidad de mayor impacto si falla.</li>
+      <li>Regulación local sobre medición y corte de servicio (CREG en Colombia, etc.).</li>
+    </ul>
+
+    <div class="callout">
+      <strong>Decisiones tomadas para avanzar:</strong> modelo de despliegue SaaS multi-tenant como
+      primario (con opción a dedicado para clientes grandes); energía eléctrica como utility
+      inicial (gas como plan B si no hay tracción rápida); nombre comercial definido —
+      <strong>RenfyGrid</strong>.
+    </div>
+  </div>
+</section>
+
+<!-- ============ BENCHMARK ============ -->
+<section id="benchmark">
+  <div class="container">
+    <h2>Benchmark de industria <span class="badge">Complementario</span></h2>
+    <p class="lead">Lectura propia de Rensoft Labs frente al mercado real de AMI/MDM en energía, agua y gas — no un Magic Quadrant de Gartner (ver nota metodológica en el reporte completo).</p>
+
+    <div class="callout warn">
+      <strong>Gartner ya no publica un Magic Quadrant de Meter Data Management</strong> (el último es de 2015). El analista vigente para este mercado es Guidehouse Insights. El mapa de posicionamiento de abajo es una hipótesis propia, construida con investigación de mercado pública.
+    </div>
+
+    <h3>El competidor real no son los gigantes</h3>
+    <p>Itron, Landis+Gyr y Oracle Utilities MDM dominan el extremo enterprise — sobredimensionados y lentos para el ICP objetivo. El benchmark de producto real es contra SaaS multi-tenant que ya operan en el mismo segmento:</p>
+    <div class="table-wrap">
+    <table>
+      <tr><th>Competidor directo</th><th>Qué hace</th><th>Por qué importa</th></tr>
+      <tr><td><strong>Bynry (SMART360)</strong></td><td>SaaS multi-tenant billing+medición+CIS+campo, 3.000–100.000 conexiones, go-live en 12-24 semanas</td><td>El comparable más cercano al ICP — ya validado en mercado</td></tr>
+      <tr><td><strong>Kalki.io (MDAS)</strong></td><td>HES DLMS/COSEM como SaaS</td><td>Comparable directo de la capa HES</td></tr>
+      <tr><td><strong>Energyworx</strong></td><td>MDM/analítica multi-tenant serverless</td><td>Comparable directo de la capa VEE/almacenamiento</td></tr>
+    </table>
+    </div>
+
+    <h3>Diferenciador validado y brechas honestas</h3>
+    <ul>
+      <li><strong>Multi-utility desde el mismo núcleo</strong> (E+A+G) — ninguno de los comparables directos lo resuelve así hoy; Diehl Metering es el más parecido en alcance, pero fabrica medidores, no vende SaaS.</li>
+      <li><strong>Gas es el vertical con menos competencia SaaS-SMB</strong> independiente — plan B de priorización de piloto.</li>
+      <li><strong>Brecha honesta:</strong> cero clientes, cero código, frente a comparables que ya tienen tracción real — la falta de canal comercial queda como riesgo #1, en paridad con los técnicos.</li>
+    </ul>
+
+    <details class="bm-details">
+      <summary>Ver el análisis completo — mapa de posicionamiento, tablas por vertical (Energía/Agua/Gas) y matriz de capacidades</summary>
+      <div class="bm-scope">
+
+<header class="masthead">
+  <div class="wrap">
+    <div class="eyebrow">RenfyGrid · Análisis competitivo</div>
+    <h1>Dónde queda RenfyGrid frente al mercado real de AMI/MDM</h1>
+    <p class="sub">Benchmark del planteamiento de producto contra las soluciones que hoy dominan la medición inteligente en energía, agua y gas — y contra el puñado de retadores que compiten en el mismo segmento que RenfyGrid dice atender.</p>
+    <div class="meta-row">
+      <span><b>Fecha</b> 2026-09-10</span>
+      <span><b>Alcance</b> Energía · Agua · Gas</span>
+      <span><b>Estado de RenfyGrid</b> pre-MVP (fase de planeación)</span>
+    </div>
+  </div>
+</header>
+
+<section id="bm-resumen">
+  <div class="wrap">
+    <h2>Resumen ejecutivo</h2>
+    <p class="lede">RenfyGrid no compite hoy con Itron o Landis+Gyr — compite, en el papel, con un puñado de plataformas SaaS multi-tenant para utilities pequeñas que sí ya tienen clientes reales.</p>
+    <div class="exec-grid">
+      <div class="exec-cell">
+        <div class="k">El mercado grande</div>
+        <div class="v">Dos jugadores (Itron, Landis+Gyr) controlan el extremo end-to-end hardware+software; Oracle Utilities MDM domina el software puro. Ninguno vende barato ni rápido a una ESP chica.</div>
+      </div>
+      <div class="exec-cell">
+        <div class="k">El segmento real de RenfyGrid</div>
+        <div class="v">Bynry (SMART360), Kalki.io (MDAS) y Energyworx ya operan SaaS multi-tenant para utilities de 3.000–100.000 conexiones — el mismo ICP que se definió en el planteamiento de RenfyGrid, con años de ventaja.</div>
+      </div>
+      <div class="exec-cell">
+        <div class="k">La brecha honesta</div>
+        <div class="v">Cero clientes, cero código. La ventaja no es tecnológica todavía — es el conocimiento de dominio (VEE, HES multi-protocolo) ya documentado en el plan, sin construir.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="bm-metodologia">
+  <div class="wrap-narrow">
+    <h2>Nota metodológica — sobre "el cuadrante Gartner"</h2>
+    <div class="callout">
+      <b>Gartner no publica hoy un Magic Quadrant de Meter Data Management.</b> El último específico de la industria de medición ("Magic Quadrant for Meter Data Management Products") es de 2015 y fue descontinuado — la búsqueda por "MDM" en 2026 devuelve el Magic Quadrant de <i>Master Data Management</i>, una categoría de TI totalmente distinta (gestión de datos maestros empresariales, no medición de servicios públicos). El analista que sí sigue cubriendo este mercado es <b>Guidehouse Insights</b> (Leaderboard de Smart Meter Analytics, con Oracle/Landis+Gyr/Itron como líderes en su última edición pública), aunque tampoco tiene una edición 2025-2026 específica de MDM disponible públicamente.
+    </div>
+    <p style="color:var(--bm-ink-2); font-size:13.2px">Por eso el gráfico de abajo <b>no es un Magic Quadrant de Gartner</b> ni una calificación de ningún analista — es una lectura propia de Rensoft Labs, con ejes propios, construida a partir de investigación de mercado pública (ver fuentes al pie). Trátese como una hipótesis de posicionamiento, no como una métrica certificada.</p>
+  </div>
+</section>
+
+<section id="bm-mapa">
+  <div class="wrap">
+    <h2>Mapa de posicionamiento</h2>
+    <p class="lede">Eje horizontal: alcance funcional real (HES propio, VEE, gestión de consumos, control remoto, cobertura multi-utility). Eje vertical: presencia de mercado instalada hoy — no potencial, no promesa.</p>
+
+    <div class="chart-card">
+      <div class="chart-head">
+        <h3>Alcance funcional vs. presencia de mercado</h3>
+        <div class="legend">
+          <span class="li"><span class="sw" style="background:var(--bm-s1)"></span>Líderes incumbentes</span>
+          <span class="li"><span class="sw" style="background:var(--bm-s2)"></span>Especialistas por utility</span>
+          <span class="li"><span class="sw" style="background:var(--bm-s3)"></span>Retadores cloud-native</span>
+          <span class="li"><span class="sw" style="background:var(--bm-accent)"></span>RenfyGrid</span>
+        </div>
+      </div>
+      <svg id="quad" viewBox="0 0 960 620" role="img" aria-label="Mapa de posicionamiento de RenfyGrid frente a proveedores de AMI y MDM">
+        <!-- filled in by script -->
+      </svg>
+    </div>
+  </div>
+</section>
+
+<section id="bm-energia">
+  <div class="wrap">
+    <div class="vert-head">
+      <svg class="vert-icon" viewBox="0 0 24 24" fill="none" stroke="var(--bm-s2)" stroke-width="2"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z" stroke-linejoin="round"/></svg>
+      <h3>Energía eléctrica</h3>
+    </div>
+    <p class="lede">El vertical más maduro y más disputado — también donde RenfyGrid ya tiene el interés comercial de 2024 como punto de partida.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Proveedor</th><th>Tipo de oferta</th><th>Protocolo típico</th><th>Fortaleza</th><th>Brecha frente al plan de RenfyGrid</th></tr></thead>
+        <tbody>
+          <tr><td class="name">Itron</td><td>Hardware + HES + MDMS + analítica, end-to-end</td><td class="mono">OpenWay, DLMS/COSEM, ANSI C12</td><td>Portafolio completo, escala global, contratos como Enedis/Linky (38M medidores)</td><td>Sobra para una ESP chica — implementación de años, no de meses</td></tr>
+          <tr><td class="name">Landis+Gyr</td><td>Hardware + HES + MDMS, end-to-end</td><td class="mono">DLMS/COSEM</td><td>+15M endpoints en la nube en Norteamérica, fuerte en EV load management</td><td>Mismo problema: sobredimensionado para SMB</td></tr>
+          <tr><td class="name">Oracle Utilities MDM</td><td>Software puro (MDM/VEE), sin hardware</td><td class="mono">Agnóstico vía integración</td><td>MDM/VEE muy maduro, ML para pérdidas técnicas/fraude, ahora cloud-native en OCI</td><td>Licenciamiento Oracle Enterprise — fuera de presupuesto de una ESP pequeña</td></tr>
+          <tr><td class="name">Honeywell / Elster</td><td>Meters + AMI, fuerte también en gas</td><td class="mono">ANSI C12, DLMS</td><td>Marca establecida, alianza 5G+edge con Verizon (2025)</td><td>Igual de pesado que los anteriores para el segmento objetivo</td></tr>
+          <tr><td class="name">Kraken Technologies</td><td>Plataforma cloud-native: billing + medición + CRM + grid</td><td class="mono">Agnóstico, foco retail eléctrico</td><td>50M+ cuentas, 300M+ lecturas/día, arquitectura moderna real</td><td>Licenciamiento pensado para grandes retailers (E.ON, EDF), no para ESP de 5.000 medidores</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section id="bm-agua">
+  <div class="wrap">
+    <div class="vert-head">
+      <svg class="vert-icon" viewBox="0 0 24 24" fill="none" stroke="var(--bm-s1)" stroke-width="2"><path d="M12 3c4 5 6 8.2 6 11a6 6 0 1 1-12 0c0-2.8 2-6 6-11Z" stroke-linejoin="round"/></svg>
+      <h3>Agua / acueducto</h3>
+    </div>
+    <p class="lede">Vertical fuera del alcance del MVP de RenfyGrid, pero es donde ya operan los comparables directos más parecidos al modelo SaaS que se planteó.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Proveedor</th><th>Tipo de oferta</th><th>Fortaleza</th><th>Relevancia para RenfyGrid</th></tr></thead>
+        <tbody>
+          <tr><td class="name">Sensus (Xylem)</td><td>Meters + FlexNet + analítica</td><td>Líder histórico en agua, portafolio amplio tras integrarse a Xylem</td><td>Referencia de qué tan lejos llega un "especialista" antes de necesitar un MDM propio</td></tr>
+          <tr><td class="name">Badger Meter (BEACON)</td><td>Meters + SaaS de suscripción (netAMP)</td><td>Modelo por suscripción, no solo venta de hardware — el más cercano a SaaS en este vertical</td><td>Valida que el modelo de suscripción funciona comercialmente en utilities chicas</td></tr>
+          <tr><td class="name">Neptune Technology (Roper)</td><td>Hardware + software específico de agua</td><td>Expertise profundo pero de un solo utility</td><td>Contraste directo con la apuesta "multi-utility desde el núcleo" del diseño de RenfyGrid</td></tr>
+          <tr><td class="name">Diehl Metering</td><td>Multi-utility (electricidad/agua/gas/calor), fuerte en Europa</td><td>Único con verdadera cobertura de los 3 verticales a la vez, como RenfyGrid aspira a tener</td><td>El competidor más parecido en alcance — aunque orientado a fabricar medidores, no a ser SaaS puro</td></tr>
+          <tr><td class="name">Bynry (SMART360)</td><td>SaaS multi-tenant: billing+medición+CIS+campo, agua/electricidad/gas</td><td>Diseñado para 3.000–100.000 conexiones, precio por medidor, sin licencias por usuario, go-live en 12-24 semanas</td><td><b>El competidor directo más cercano al ICP de RenfyGrid — ya validado en mercado</b></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section id="bm-gas">
+  <div class="wrap">
+    <div class="vert-head">
+      <svg class="vert-icon" viewBox="0 0 24 24" fill="none" stroke="var(--bm-s3)" stroke-width="2"><ellipse cx="12" cy="14" rx="6" ry="7"/><path d="M12 3c1.5 2 1 3.5-.3 4.8-1 1-.7 2.2.3 2.2"/></svg>
+      <h3>Gas natural</h3>
+    </div>
+    <p class="lede">El vertical con menos jugadores especializados — dominado casi por completo por las mismas marcas que ya lideran electricidad.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Proveedor</th><th>Participación (Norteamérica, AMI gas)</th><th>Nota</th></tr></thead>
+        <tbody>
+          <tr><td class="name">Itron</td><td class="tabnum">~34%</td><td>Incluye Solar Battery Access Point (2025) para extender cobertura AMI sin red eléctrica — relevante para zonas rurales</td></tr>
+          <tr><td class="name">Landis+Gyr</td><td class="tabnum">~32%</td><td>Mismo stack que electricidad, portado a gas</td></tr>
+          <tr><td class="name">Aclara Technologies</td><td class="tabnum">~22%</td><td>Tercer jugador real, red STAR</td></tr>
+          <tr><td class="name">Honeywell + Sensus</td><td class="tabnum">~13% combinado</td><td>Resto del mercado repartido entre los dos</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout">
+      En gas, prácticamente no existe un jugador SaaS-SMB independiente equivalente a Bynry/Kalki.io/Energyworx — <b>es el vertical con el hueco más claro</b> para un MDM ligero y multi-protocolo si RenfyGrid decide priorizarlo antes que agua.
+    </div>
+  </div>
+</section>
+
+<section id="bm-matriz">
+  <div class="wrap">
+    <h2>Matriz de capacidades</h2>
+    <p class="lede">RenfyGrid tal como está <i>planeado</i> (fase de diseño, nada construido) contra el perfil típico de cada grupo.</p>
+    <div class="table-wrap">
+      <table class="matrix">
+        <thead>
+          <tr>
+            <th>Capacidad</th>
+            <th class="num">Líderes incumbentes</th>
+            <th class="num">Especialistas por utility</th>
+            <th class="num">Retadores cloud-native</th>
+            <th class="num rf">RenfyGrid (plan)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>HES multi-protocolo/multi-marca propio</td><td class="num"><span class="chip yes">✓</span></td><td class="num"><span class="chip partial">~</span></td><td class="num"><span class="chip partial">~</span></td><td class="num rf"><span class="chip partial">~</span></td></tr>
+          <tr><td>Motor VEE auditable y versionado</td><td class="num"><span class="chip yes">✓</span></td><td class="num"><span class="chip partial">~</span></td><td class="num"><span class="chip yes">✓</span></td><td class="num rf"><span class="chip yes">✓</span></td></tr>
+          <tr><td>Control remoto (suspensión/reconexión) con aprobación auditada</td><td class="num"><span class="chip yes">✓</span></td><td class="num"><span class="chip partial">~</span></td><td class="num"><span class="chip no">✗</span></td><td class="num rf"><span class="chip yes">✓</span></td></tr>
+          <tr><td>Multi-tenant SaaS real (no proyecto por cliente)</td><td class="num"><span class="chip no">✗</span></td><td class="num"><span class="chip no">✗</span></td><td class="num"><span class="chip yes">✓</span></td><td class="num rf"><span class="chip yes">✓</span></td></tr>
+          <tr><td>Multi-utility desde el mismo núcleo (E+A+G)</td><td class="num"><span class="chip partial">~</span></td><td class="num"><span class="chip no">✗</span></td><td class="num"><span class="chip partial">~</span></td><td class="num rf"><span class="chip yes">✓</span></td></tr>
+          <tr><td>Precio accesible para 3.000–50.000 medidores</td><td class="num"><span class="chip no">✗</span></td><td class="num"><span class="chip partial">~</span></td><td class="num"><span class="chip yes">✓</span></td><td class="num rf"><span class="chip yes">✓</span> <span style="opacity:.6">(objetivo)</span></td></tr>
+          <tr><td>Go-live en semanas, no años</td><td class="num"><span class="chip no">✗</span></td><td class="num"><span class="chip partial">~</span></td><td class="num"><span class="chip yes">✓</span></td><td class="num rf"><span class="chip partial">~</span> <span style="opacity:.6">(por validar)</span></td></tr>
+          <tr><td>Clientes reales en producción hoy</td><td class="num"><span class="chip yes">✓</span></td><td class="num"><span class="chip yes">✓</span></td><td class="num"><span class="chip yes">✓</span></td><td class="num rf"><span class="chip no">✗</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section id="bm-brechas">
+  <div class="wrap">
+    <h2>Fortalezas y brechas</h2>
+    <div class="two-col">
+      <div class="panel strength">
+        <h4 style="color:var(--bm-good)">Dónde el plan ya compite de igual a igual</h4>
+        <ul>
+          <li>Diseño multi-utility desde el núcleo (E+A+G) — ni Bynry (sin protocolo propio) ni los especialistas de una sola utility lo tienen resuelto así.</li>
+          <li>Control remoto con flujo de aprobación auditado — más riguroso que lo que ofrecen los retadores cloud-native, que en su mayoría no tocan el canal de control físico.</li>
+          <li>Cero datos hardcodeados como principio de diseño, no como parche — reduce el costo de dar de alta un tenant nuevo frente a soluciones con configuración semi-fija.</li>
+          <li>Conocimiento de dominio real (VEE, arquitectura HES) documentado, con origen en interés comercial genuino de 2024, no una idea sin validar en el mercado.</li>
+        </ul>
+      </div>
+      <div class="panel gap">
+        <h4 style="color:var(--bm-crit)">Dónde el plan todavía no tiene nada que mostrar</h4>
+        <ul>
+          <li>Cero clientes, cero código — Bynry, Kalki.io y Energyworx ya tienen tracción real en el mismo segmento.</li>
+          <li>"Go-live en semanas" es una meta, no un hecho — Bynry ya demuestra 12-24 semanas con datos reales de implementación.</li>
+          <li>Un solo adaptador de protocolo planeado (DLMS/COSEM) — Itron y Landis+Gyr soportan decenas de marcas/protocolos ya en producción.</li>
+          <li>Sin canal de venta ni squad comercial definido — es la misma causa que frenó las 3 oportunidades de 2024, según el propio planteamiento.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="bm-recomendaciones">
+  <div class="wrap-narrow">
+    <h2>Recomendaciones</h2>
+    <div class="rec-list">
+      <div class="rec"><span class="n"></span><div><div class="t">No competir contra Itron/Landis+Gyr/Oracle — competir contra Bynry, Kalki.io y Energyworx</div><div class="d">Son el benchmark de producto real: mismo ICP (3.000–100.000 conexiones), mismo modelo SaaS multi-tenant. Estudiar su tiempo de implementación (12-24 semanas de Bynry) como meta explícita del Sprint 0 en adelante.</div></div></div>
+      <div class="rec"><span class="n"></span><div><div class="t">Usar el multi-utility real como diferenciador, no como ambición</div><div class="d">Ningún comparable directo cubre bien los tres verticales con el mismo núcleo (Diehl lo intenta pero fabrica medidores, no vende SaaS). Es la única casilla de la matriz donde RenfyGrid puede llegar a marcar solo, si el diseño se mantiene disciplinado.</div></div></div>
+      <div class="rec"><span class="n"></span><div><div class="t">Considerar gas como cuña de entrada, no solo energía</div><div class="d">Es el vertical con menos competencia SaaS-SMB independiente. Si el piloto de energía no logra tracción rápida, gas es la alternativa con menos ruido competitivo directo.</div></div></div>
+      <div class="rec"><span class="n"></span><div><div class="t">Tratar "cero clientes" como el riesgo número uno, no la arquitectura</div><div class="d">La brecha técnica es cerrable en meses (ver plan de sprints); la brecha comercial es la que ya frenó 3 oportunidades en 2024. Vale la pena diagnosticar esa causa antes del piloto, no después.</div></div></div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap-narrow">
+    Lectura propia de Rensoft Labs a partir de investigación de mercado pública — no constituye asesoría de un analista certificado ni un ranking oficial de ningún proveedor. Versión independiente y compartible: <a href="https://claude.ai/code/artifact/4df65fcd-b599-4fa5-8afb-40d62038d152" target="_blank" rel="noopener">abrir en una pestaña nueva ↗</a>
+    <div class="src">
+      <a href="https://guidehouseinsights.com/reports/guidehouse-insights-leaderboard-smart-meter-analytics" target="_blank" rel="noopener">Guidehouse Insights — Leaderboard: Smart Meter Analytics</a>
+      <a href="https://www.bynry.com/" target="_blank" rel="noopener">Bynry — SMART360</a>
+      <a href="https://kalkitech.com/platforms/kalkiiocloud/meter-data-acquisition/" target="_blank" rel="noopener">Kalki.io — MDAS</a>
+      <a href="https://octopusenergy.group/kraken-technologies" target="_blank" rel="noopener">Octopus Energy Group — Kraken Technologies</a>
+      <a href="https://na.itron.com/what-we-offer/gas-amr-and-ami" target="_blank" rel="noopener">Itron — Gas AMR &amp; AMI</a>
+    </div>
+  </div>
+</footer>
+
+<div id="tooltip"></div>
+
+      </div>
+    </details>
+  </div>
+</section>
+
+<script>
+(function(){
+  const groups = {
+    A: { hex: '#2a78d6', label: 'Líderes incumbentes' },
+    B: { hex: '#eb6834', label: 'Especialistas por utility' },
+    C: { hex: '#1baf7a', label: 'Retadores cloud-native' },
+  };
+  const points = [
+    {id:'itron', name:'Itron', grp:'A', x:91, y:94, note:'End-to-end hardware+software, escala global'},
+    {id:'lg', name:'Landis+Gyr', grp:'A', x:86, y:88, note:'End-to-end, +15M endpoints cloud en NA'},
+    {id:'oracle', name:'Oracle Utilities MDM', grp:'A', x:76, y:80, note:'Software puro, ahora cloud-native en OCI'},
+    {id:'sensus', name:'Sensus (Xylem)', grp:'B', x:64, y:74, note:'Líder en agua, FlexNet + analítica'},
+    {id:'aclara', name:'Aclara', grp:'B', x:58, y:64, note:'Electricidad + agua, red STAR'},
+    {id:'honeywell', name:'Honeywell / Elster', grp:'B', x:52, y:54, note:'Fuerte en gas, alianza 5G con Verizon'},
+    {id:'diehl', name:'Diehl Metering', grp:'B', x:46, y:46, note:'Único multi-utility real (E+A+G+calor), fuerte en Europa'},
+    {id:'badger', name:'Badger Meter', grp:'B', x:36, y:38, note:'Agua, modelo de suscripción (netAMP)'},
+    {id:'neptune', name:'Neptune Technology', grp:'B', x:30, y:30, note:'Agua, hardware + software especializado'},
+    {id:'kraken', name:'Kraken Technologies', grp:'C', x:74, y:66, note:'50M+ cuentas, billing+medición+CRM cloud-native'},
+    {id:'energyworx', name:'Energyworx', grp:'C', x:44, y:20, note:'MDM/analítica multi-tenant serverless'},
+    {id:'bynry', name:'Bynry (SMART360)', grp:'C', x:56, y:16, note:'SaaS multi-tenant E+A+G, 3k-100k conexiones — comparable directo'},
+    {id:'kalki', name:'Kalki.io (MDAS)', grp:'C', x:30, y:10, note:'HES DLMS como SaaS, on-prem o cloud'},
+  ];
+  const renfy = [
+    {id:'rf1', name:'RenfyGrid — hoy', x:12, y:3, note:'Pre-MVP: solo plan, cero clientes'},
+    {id:'rf2', name:'RenfyGrid — objetivo post-piloto', x:50, y:11, note:'Tras Sprint 0-10: 1 protocolo, 1 tenant real, junto al clúster SaaS-SMB'},
+  ];
+
+  const M = {l:78, r:36, t:26, b:56}, W = 960, H = 620;
+  const PW = W - M.l - M.r, PH = H - M.t - M.b;
+  const sx = v => M.l + (v/100)*PW;
+  const sy = v => (H - M.b) - (v/100)*PH;
+
+  const svg = document.getElementById('quad');
+  if (!svg) return;
+  const NS = 'http://www.w3.org/2000/svg';
+  const el = (tag, attrs) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); return e; };
+
+  [0,25,50,75,100].forEach(v=>{
+    svg.appendChild(el('line', {x1:sx(v), x2:sx(v), y1:M.t, y2:H-M.b, class: v===50?'mid-line':'grid-line'}));
+    svg.appendChild(el('line', {x1:M.l, x2:W-M.r, y1:sy(v), y2:sy(v), class: v===50?'mid-line':'grid-line'}));
+  });
+  const xlab = el('text', {class:'axis-label', x:M.l+PW/2, y:H-14, 'text-anchor':'middle'});
+  xlab.textContent = 'Alcance funcional y multi-utility →';
+  svg.appendChild(xlab);
+  const ylab = el('text', {class:'axis-label', x:0, y:0, transform:`translate(24,${M.t+PH/2}) rotate(-90)`, 'text-anchor':'middle'});
+  ylab.textContent = 'Presencia de mercado instalada →';
+  svg.appendChild(ylab);
+  const caps = [
+    {x:M.l+14, y:M.t+16, t:'grande, pero angosto', anchor:'start'},
+    {x:W-M.r-14, y:M.t+16, t:'líderes establecidos', anchor:'end'},
+    {x:M.l+14, y:H-M.b-10, t:'nicho / emergente', anchor:'start'},
+    {x:W-M.r-14, y:H-M.b-10, t:'amplio, presencia chica', anchor:'end'},
+  ];
+  caps.forEach(c=>{
+    const t = el('text', {class:'quad-caption', x:c.x, y:c.y, 'text-anchor':c.anchor});
+    t.textContent = c.t; svg.appendChild(t);
+  });
+
+  const tooltip = document.getElementById('tooltip');
+  const card = svg.closest('.chart-card');
+  function showTip(evt, name, grpLabel){
+    tooltip.innerHTML = `<div class="tt-name">${name}</div><div class="tt-grp">${grpLabel}</div>`;
+    tooltip.style.opacity = 1;
+    positionTip(evt);
+  }
+  function positionTip(evt){
+    const cardRect = card.getBoundingClientRect();
+    let x = evt.clientX - cardRect.left + 14;
+    let y = evt.clientY - cardRect.top + 14;
+    tooltip.style.left = x + 'px';
+    tooltip.style.top = y + 'px';
+  }
+  function hideTip(){ tooltip.style.opacity = 0; }
+
+  points.forEach(p=>{
+    const cx = sx(p.x), cy = sy(p.y);
+    const g = el('g', {});
+    const dot = el('circle', {cx, cy, r:6, fill: groups[p.grp].hex, class:'pt-dot'});
+    g.appendChild(dot);
+    const label = el('text', {class:'pt-label', x: cx + (p.x>85?-9:9), y: cy+4, 'text-anchor': p.x>85?'end':'start'});
+    label.textContent = p.name;
+    g.appendChild(label);
+    g.addEventListener('mouseenter', e=>showTip(e, p.name, groups[p.grp].label + ' — ' + p.note));
+    g.addEventListener('mousemove', positionTip);
+    g.addEventListener('mouseleave', hideTip);
+    svg.appendChild(g);
+  });
+
+  const r1 = renfy[0], r2 = renfy[1];
+  const path = el('path', {class:'rf-path', d:`M${sx(r1.x)},${sy(r1.y)} L${sx(r2.x)},${sy(r2.y)}`, 'marker-end':'url(#bm-arrow)'});
+  const defs = el('defs', {});
+  const marker = el('marker', {id:'bm-arrow', markerWidth:8, markerHeight:8, refX:6, refY:3, orient:'auto'});
+  const arrowPath = el('path', {d:'M0,0 L6,3 L0,6 Z', fill:'var(--bm-accent)'});
+  marker.appendChild(arrowPath); defs.appendChild(marker); svg.appendChild(defs);
+  svg.appendChild(path);
+
+  renfy.forEach((p, i)=>{
+    const cx = sx(p.x), cy = sy(p.y);
+    const g = el('g', {class:'rf-star'});
+    const star = el('path', {
+      d: starPath(cx, cy, 9, 4),
+      fill: 'var(--bm-accent)', opacity: i===0 ? 1 : .55,
+      stroke: 'var(--bm-surface)', 'stroke-width':1.4
+    });
+    g.appendChild(star);
+    const label = el('text', {class:'pt-label', x: cx+11, y: cy+4, style:'font-weight:700; fill:var(--bm-accent-ink)'});
+    label.textContent = p.name;
+    g.appendChild(label);
+    g.addEventListener('mouseenter', e=>showTip(e, p.name, p.note));
+    g.addEventListener('mousemove', positionTip);
+    g.addEventListener('mouseleave', hideTip);
+    svg.appendChild(g);
+  });
+
+  function starPath(cx, cy, rOuter, rInner){
+    let d = '';
+    for (let i=0;i<10;i++){
+      const r = i%2===0 ? rOuter : rInner;
+      const a = (Math.PI/5)*i - Math.PI/2;
+      const x = cx + r*Math.cos(a), y = cy + r*Math.sin(a);
+      d += (i===0?'M':'L') + x.toFixed(1) + ',' + y.toFixed(1) + ' ';
+    }
+    return d + 'Z';
+  }
+})();
+</script>
+
+<!-- ============ FASE 2 ============ -->
+<section id="arquitectura">
+  <div class="container">
+    <h2>2. Arquitectura general <span class="badge">Completo</span></h2>
+    <p class="lead">Principios rectores, stack tecnológico y vista de componentes de extremo a extremo (Meter to Cash).</p>
+
+    <h3>Principios rectores</h3>
+    <ul>
+      <li>Núcleo agnóstico de protocolo/utility — cada protocolo/marca vive en un adaptador desacoplable.</li>
+      <li>Multi-tenencia desde el modelo de datos (no solo desde la capa web).</li>
+      <li>El canal de control (SCR) es la parte más sensible — más fricción deliberada que el resto.</li>
+      <li><strong>Kubernetes desde el día 1, vía k3s</strong> (decisión revisada 2026-09-10, tras evaluar pros/contras) — no un clúster gestionado grande (sobre-ingeniería para 1 tenant piloto), pero sí las primitivas reales de K8s desde el inicio, para no migrar manifiestos más adelante. La base de datos (Postgres/TimescaleDB, Redis) queda fuera del clúster.</li>
+      <li>No reinventar lo que ya existe: DLMS/COSEM se implementa apoyándose en una librería abierta y madura (Gurux), no desde cero.</li>
+      <li>No reconstruir productos del portafolio: la ejecución en campo de mantenimiento la resuelve <strong>BayForce</strong>, ya existente.</li>
+    </ul>
+
+    <h3>Vista de componentes</h3>
+    <pre class="mermaid">
+flowchart LR
+    subgraph MED["Medición"]
+        M1[Medidores / Concentradores]
+    end
+    subgraph HES["HES · Head End System"]
+        AD[Adaptadores de protocolo\nDLMS/COSEM · ANSI C12 · propietario]
+        SCR[Módulo SCR\nSuspensión/Corte/Reconexión]
+        SCH[Programador de lecturas\ny comandos]
+    end
+    subgraph MDM["MDM · Meter Data Management"]
+        RAW[(Almacén crudo\nlecturas + eventos)]
+        VEE[Motor VEE\nValidación→Estimación→Edición]
+        CONS[Gestión de Consumos\nagregación, reglas de crítica]
+    end
+    BUS{{Bus de eventos / API interna}}
+    CIS[CIS/Facturación\npropio o del cliente]
+    PORTAL[Portal web + API pública\nmulti-tenant]
+    M1 <--> AD
+    AD --> SCH --> RAW
+    SCR --> AD
+    RAW --> VEE --> CONS
+    CONS --> BUS
+    BUS --> CIS
+    BUS --> PORTAL
+    PORTAL --> SCR
+    </pre>
+
+    <h3>Stack tecnológico por capa</h3>
+    <div class="table-wrap">
+    <table>
+      <tr><th>Capa</th><th>Propuesta</th><th>Por qué</th></tr>
+      <tr><td>Adaptadores HES</td><td>Python + Gurux.DLMS (open source, IEC 62056)</td><td>Evita reimplementar el protocolo; librería madura y activa</td></tr>
+      <tr><td>Ingesta / campo</td><td>MQTT (Mosquitto/EMQX) + Redis Streams/RabbitMQ</td><td>Encaja con el volumen esperado sin el peso operativo de Kafka</td></tr>
+      <tr><td>Almacén crudo</td><td>PostgreSQL + TimescaleDB</td><td>Un solo motor para series de tiempo y datos relacionales</td></tr>
+      <tr><td>Motor VEE</td><td>Servicio Python, reglas configurables por tenant</td><td>Parametrizable sin desplegar código nuevo por cliente</td></tr>
+      <tr><td>Gestión de Consumos</td><td>Servicio Python</td><td>Aísla lógica de crítica/facturación de la calidad del dato</td></tr>
+      <tr><td>Módulo SCR</td><td>Servicio aislado, solo habla con adaptadores HES</td><td>Minimiza superficie de ataque del componente más riesgoso</td></tr>
+      <tr><td>Autenticación</td><td>JWT propio (Keycloak si se necesita SSO complejo)</td><td>Consistencia con el resto del portafolio</td></tr>
+      <tr><td>Despliegue (servicios)</td><td>k3s (Kubernetes liviano) + nginx como ingress</td><td>Primitivas reales de K8s desde el día 1, sin costo de control plane administrado</td></tr>
+      <tr><td>Despliegue (estado)</td><td>Postgres/TimescaleDB + Redis vía Docker + systemd, fuera del clúster</td><td>Evita el problema de volúmenes persistentes de BD dentro de K8s</td></tr>
+    </table>
+    </div>
+
+    <h3>Multi-tenencia y seguridad</h3>
+    <p>Esquema compartido con <strong>Row-Level Security</strong> de PostgreSQL como aislamiento
+    entre clientes — cada tenant es una fila más, no un despliegue aparte. El módulo SCR nunca se
+    expone directo al portal: toda orden de control requiere rol autorizado explícito, queda
+    firmada y con auditoría inmutable antes de llegar al adaptador HES.</p>
+  </div>
+</section>
+
+<!-- ============ FASE 3 ============ -->
+<section id="diseno">
+  <div class="container">
+    <h2>3. Diseño <span class="badge">Completo</span></h2>
+    <p class="lead">Modelo de datos, contratos de API y flujos de secuencia, bajo un principio no negociable.</p>
+
+    <div class="callout warn">
+      <strong>Principio obligatorio: cero datos hardcodeados.</strong> Todo valor que pueda variar
+      por tenant, marca de medidor, protocolo o regulación vive en base de datos versionada. Para
+      los procesos de alto desempeño (motor VEE, adaptadores HES) esa configuración se cachea en
+      snapshot (archivo plano/memoria), refrescado por evento desde la BD — nunca un round-trip a
+      la base de datos por cada lectura, y nunca un valor fijo en el código fuente.
+    </div>
+
+    <h3>Patrón de configuración cacheada</h3>
+    <pre class="mermaid">
+sequenceDiagram
+    participant BD as PostgreSQL (fuente de verdad)
+    participant Loader as Config Loader (job)
+    participant Cache as Snapshot local (JSON)
+    participant Motor as Motor VEE / Adaptador HES
+    BD->>Loader: SELECT reglas/mapeos vigentes
+    Loader->>Cache: escribe snapshot versionado
+    Motor->>Cache: carga al iniciar y en cada refresco
+    Note over Motor: Procesa lecturas sin tocar la BD por registro
+    BD-->>Loader: cambio de regla (evento)
+    Loader-->>Cache: nuevo snapshot
+    Cache-->>Motor: recarga en caliente
+    </pre>
+
+    <h3>Modelo de datos — entidades núcleo</h3>
+    <pre class="code">tenant, meter, gateway, meter_protocol,
+vee_rule (versionada), consumption_anomaly_rule,
+control_approval_level, role_permission,
+raw_reading (hypertable Timescale), validated_reading,
+meter_event, control_order, consumption</pre>
+
+    <h3>Flujo de lectura (Meter to Cash)</h3>
+    <pre class="mermaid">
+sequenceDiagram
+    participant Medidor
+    participant HES as Adaptador HES
+    participant Raw as Almacén crudo
+    participant VEE as Motor VEE
+    participant Cons as Gestión de Consumos
+    participant CIS
+    Medidor->>HES: trama de protocolo
+    HES->>HES: normaliza con mapeo OBIS (caché)
+    HES->>Raw: inserta raw_reading
+    Raw-->>VEE: notifica nueva lectura
+    VEE->>VEE: aplica vee_rule set vigente (caché)
+    VEE->>Raw: inserta validated_reading
+    VEE-->>Cons: evento reading.validated
+    Cons-->>CIS: consumo facturable listo
+    </pre>
+
+    <h3>Flujo de control (SCR) con aprobación</h3>
+    <pre class="mermaid">
+sequenceDiagram
+    participant Portal
+    participant Cons as Gestión de Consumos/CIS
+    participant SCR as Módulo SCR
+    participant HES as Adaptador HES
+    participant Medidor
+    Portal->>Cons: solicita control_order
+    Cons->>Cons: valida nivel de aprobación (BD)
+    Note over Cons: rol autorizado aprueba si aplica
+    Cons->>SCR: orden aprobada (firmada)
+    SCR->>HES: ejecutar comando
+    HES->>Medidor: comando nativo del protocolo
+    Medidor-->>HES: confirmación
+    HES-->>SCR: resultado
+    SCR-->>Cons: control_order.confirmed (auditoría)
+    </pre>
+
+    <h3>Historias de usuario base (motor VEE)</h3>
+    <ul>
+      <li>Como operador VEE, quiero que el sistema marque lecturas fuera del rango configurado para revisarlas antes de facturar.</li>
+      <li>Como operador VEE, quiero que el sistema estime lecturas faltantes según el método configurado, para no interrumpir la facturación.</li>
+      <li>Como operador VEE, quiero editar manualmente una lectura errónea, dejando registro de quién y por qué.</li>
+      <li>Como administrador, quiero cambiar un umbral de validación sin desplegar código, para ajustar la sensibilidad por tenant o temporada.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ============ FASE 4 ============ -->
+<section id="sprints">
+  <div class="container">
+    <h2>4. Plan de sprints <span class="badge">Completo</span></h2>
+    <p class="lead">MVP acotado a un solo protocolo y un solo tenant piloto, para no repetir el patrón de 2024 (propuesta grande, ninguna oportunidad avanzó).</p>
+
+    <h3>Alcance del MVP</h3>
+    <ul>
+      <li>Protocolo: DLMS/COSEM vía Gurux · Un (1) tenant piloto</li>
+      <li>Pipeline VEE completo · Gestión de Consumos básica</li>
+      <li>Módulo SCR con aprobación humana obligatoria en el 100% de las órdenes (default más seguro)</li>
+      <li>Bus: Redis Streams · Autenticación: JWT propio</li>
+    </ul>
+    <p><em>Supuesto de equipo (ajustable):</em> 2 desarrolladores backend + 1 QA a medio tiempo + el usuario como Product Owner/arquitecto. Sprints de 2 semanas.</p>
+
+    <h3>Roadmap — 10 sprints (~5 meses)</h3>
+    <div class="table-wrap">
+    <table>
+      <tr><th>Sprint</th><th>Objetivo</th><th>Entregable verificable</th></tr>
+      <tr><td>0</td><td>Fundaciones: multi-tenant, auth, esquema BD, patrón config cacheada</td><td>Un servicio lee su config desde snapshot, no desde código</td></tr>
+      <tr><td>1</td><td>Adaptador HES conecta a medidor/simulador DLMS/COSEM real</td><td>Lectura real ingresa a raw_reading</td></tr>
+      <tr><td>2</td><td>Mapeo OBIS configurable + manejo de reintentos</td><td>Cambiar mapeo en BD cambia el parseo sin desplegar</td></tr>
+      <tr><td>3</td><td>Motor VEE: validación sobre lecturas reales</td><td>Lecturas fuera de rango marcadas y trazables</td></tr>
+      <tr><td>4</td><td>Motor VEE: estimación + edición auditada</td><td>Historias de usuario del diseño verificadas</td></tr>
+      <tr><td>5</td><td>Gestión de Consumos: agregación + reglas de crítica</td><td>API de consumo facturable responde para el piloto</td></tr>
+      <tr><td>6</td><td>Módulo SCR: estados de orden + flujo de aprobación</td><td>Orden de prueba con auditoría completa</td></tr>
+      <tr><td>7</td><td>SCR: ejecución real vía adaptador HES + confirmación</td><td>Suspensión/reconexión real o en simulador</td></tr>
+      <tr><td>8</td><td>Portal/API multi-tenant con RLS end-to-end</td><td>Un tenant solo ve sus propios datos, verificado con un segundo tenant</td></tr>
+      <tr><td>9</td><td>Hardening + observabilidad</td><td>Panel mínimo de métricas y alertas funcionando</td></tr>
+      <tr><td>10</td><td>Piloto real en producción</td><td>Primer ciclo de facturación completo con datos reales</td></tr>
+    </table>
+    </div>
+
+    <h3>Criterios de éxito del piloto</h3>
+    <ul>
+      <li>Ciclo Meter-to-Cash corrido de punta a punta con datos reales.</li>
+      <li>Cero datos hardcodeados verificables en auditoría de código.</li>
+      <li>Al menos una orden de control ejecutada y confirmada end-to-end.</li>
+      <li>Feedback del tenant piloto documentado para decidir si automatizar el SCR en la siguiente iteración.</li>
+    </ul>
+
+    <h3>Track B — Balance de Red, Modelado de Red, Gemelo Digital y Mantenimiento</h3>
+    <p>Corre en paralelo al roadmap de arriba, no antes ni después — es una motion comercial
+    distinta (venta modular a utilities grandes, no el piloto SMB). 7 sprints (B1-B7): esquema
+    de zonas + ingesta externa, cálculo de balance IWA, integración con WNTR para modelado
+    hidráulico y calibración con datos reales, inventario de activos y conectividad (Gemelo
+    Digital) sincronizable con el SIG del cliente, y generación de órdenes de mantenimiento
+    integradas con <strong>BayForce</strong> para la ejecución en campo. Se activa cuando haya
+    una oportunidad comercial concreta, no por fecha fija.</p>
+
+    <div class="callout">
+      <strong>Siguiente paso:</strong> Sprint 0 — repositorio, esqueleto multi-tenant y librería de
+      configuración cacheada. Sprint 0 ya está en progreso — ver la matriz funcional y la
+      bitácora en el repo de código (<code>docs/05-ejecucion.md</code>).
+    </div>
+  </div>
+</section>
+
+<footer>
+  Plan interno de producto — <a href="https://rensoftlabs.com">rensoftlabs.com</a>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+<script>
+  mermaid.initialize({ startOnLoad: true, theme: 'neutral', securityLevel: 'loose' });
+</script>
+</body>
+</html>

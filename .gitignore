@@ -1,0 +1,8 @@
+# Base de datos local de desarrollo (binarios PostgreSQL portable + datos) -- ver
+# infra/db/README-local-dev.md. Nunca commitear: son ~600MB de binarios + datos con
+# password de desarrollo en texto plano.
+.devdb/
+
+__pycache__/
+*.pyc
+.pytest_cache/
