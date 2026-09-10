@@ -1,6 +1,6 @@
 # Ejecución — Matriz funcional y bitácora de sprints
 
-**Última actualización:** 2026-09-10 · Documento vivo — se actualiza en cada avance real de
+**Última actualización:** 2026-09-10 (Sprint 3) · Documento vivo — se actualiza en cada avance real de
 código, no por fecha. Complementa el Plan de sprints (`04-plan-sprints.md`).
 
 ---
@@ -39,12 +39,12 @@ código, no por fecha. Complementa el Plan de sprints (`04-plan-sprints.md`).
 
 | # | Función | Sprint | Estado |
 |---|---|---|---|
-| F14 | Validación de rangos (min/max configurable) | 3 | ⚪ |
-| F15 | Validación de formato/coherencia/integridad | 3 | ⚪ |
+| F14 | Validación de rangos (min/max configurable) | 3 | 🟢 |
+| F15 | Validación de formato/coherencia/integridad | 3 | 🟡 (formato sí, coherencia entre canales diferida — ver bitácora) |
 | F16 | Detección de intervalos faltantes | 4 | ⚪ |
 | F17 | Estimación (método configurable por tenant) | 4 | ⚪ |
 | F18 | Edición manual auditada | 4 | ⚪ |
-| F19 | Versionado de reglas VEE (trazabilidad) | 0, 3-4 | 🟡 |
+| F19 | Versionado de reglas VEE (trazabilidad) | 0, 3-4 | 🟢 |
 | F20 | Patrón de configuración cacheada (cero hardcode) | 0 | 🟢 |
 
 ### Gestión de Consumos
@@ -207,3 +207,31 @@ no construida todavía porque el DoD del sprint no la exige explícitamente y el
 sin ella.
 
 *(Esta tabla se sigue completando a medida que avanza el Sprint 2 real.)*
+
+### Sprint 3 — Motor VEE: Validación
+
+**Objetivo:** lecturas fuera de rango quedan marcadas, con regla trazable (`04-plan-sprints.md`
+§4). **Estado:** 🟢 objetivo del sprint cumplido con evidencia real — iniciado y cerrado
+2026-09-10.
+
+Nuevo servicio independiente `services/vee-engine/` (no dentro de `hes-adapter-dlms`: el motor
+VEE es un servicio Python aparte por diseño, ver `02-arquitectura-general.md` tabla de stack).
+
+| Fecha | Avance | Función(es) | Evidencia |
+|---|---|---|---|
+| 2026-09-10 | **Gap de esquema encontrado**: `validated_reading` no tenía columna `channel` (un medidor puede tener varios canales — sin esto no se sabe a qué lectura cruda corresponde cada fila validada) ni forma de marcar una lectura como inválida (`source` solo distinguía real/estimated/edited). Migración `0004_validated_reading_channel.sql`: agrega `channel`, `is_valid`, `validation_notes` y una unicidad `(meter_id, channel, timestamp)` para no reprocesar la misma lectura dos veces. Aplicada contra Postgres real | F14, F15 | `infra/db/migrations/0004_validated_reading_channel.sql` |
+| 2026-09-10 | **Motor construido**: `vee_engine.py` (`validate_reading` — lógica pura, sin BD ni red: valida formato (NaN/no-numérico) y rango min/max, elige la regla de mayor prioridad cuando hay varias para el mismo canal) + `vee_rules_cache.py`/`refresh_vee_rules_cache.py` (mismo patrón de configuración cacheada que `obis_mapping.py`: `vee_rule` en BD es la fuente de verdad, snapshot en disco es lo que se lee en caliente) + `run_vee_pass.py` (procesa solo lecturas de `raw_reading` sin fila correspondiente en `validated_reading` todavía) | F14, F15, F19 | `services/vee-engine/*.py` |
+| 2026-09-10 | **7/7 pruebas unitarias puras** sobre `validate_reading` (dentro de rango con regla trazable, por encima/por debajo del rango, canal sin regla configurada pasa sin regla trazable, NaN y valor no numérico inválidos por formato, la regla de mayor prioridad gana cuando hay dos que aplican al mismo canal) — sin mocks, es lógica sin I/O | F14, F15 | `python -m unittest discover -s tests -v` (en `services/vee-engine/`) → **Ran 7 tests in 0.004s / OK** |
+| 2026-09-10 | **`verify_vee_end_to_end.py` — corrida real, exitosa**: crea un tenant+medidor+regla de rango reales, inserta 3 lecturas crudas (una dentro de rango, dos fuera), corre el pase de validación una vez y confirma **exactamente 1 válida + 2 inválidas**, las tres con `vee_rule_id` trazable | F14, F15, F19 | `python verify_vee_end_to_end.py "postgresql://renfygrid_app:...@localhost:5455/renfygrid"` → **"E2E VEE OK -- 1 valida + 2 invalidas, todas con regla trazable"** |
+| 2026-09-10 | Corrido también contra el tenant de demostración (dejado para que el usuario mirara datos reales en DBeaver, ver más abajo): se agregó una regla de rango y una lectura fuera de rango a propósito — `validated_reading` del tenant demo quedó con 3 válidas + 1 inválida, visible en DBeaver sin necesidad de correr nada más | — | Tenant "RenfyGrid Demo" en la BD local |
+
+**F15 en 🟡 a propósito**: se implementó la parte de **formato** (rechaza NaN/valores no
+numéricos) pero no la de **coherencia entre canales** (ej. activa vs. reactiva) que menciona
+`03-diseno.md` §5 — el piloto de referencia hoy solo tiene un canal mapeado por medidor (Sprint
+1-2), así que no hay todavía un caso real de dos canales para validar entre sí. Queda pendiente
+hasta que exista ese caso concreto, no por olvido.
+
+**F16-F18 (detección de intervalos faltantes, estimación, edición manual) quedan en Sprint 4**,
+tal como estaba planeado — no se tocaron.
+
+*(Esta tabla se sigue completando a medida que avanza el Sprint 3 real.)*
