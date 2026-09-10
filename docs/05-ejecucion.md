@@ -17,8 +17,8 @@ código, no por fecha. Complementa el Plan de sprints (`04-plan-sprints.md`).
 | # | Función | Sprint | Estado |
 |---|---|---|---|
 | F01 | Registro de medidores/concentradores | 0-1 | ⚪ |
-| F02 | Adaptador de protocolo DLMS/COSEM (Gurux) | 1 | ⚪ |
-| F03 | Lectura remota programada (polling) | 1 | ⚪ |
+| F02 | Adaptador de protocolo DLMS/COSEM (Gurux) | 1 | 🟡 |
+| F03 | Lectura remota programada (polling) | 1 | 🟡 |
 | F04 | Lectura remota bajo demanda | 8 | ⚪ |
 | F05 | Recepción de eventos/alarmas del medidor | 1-2 | ⚪ |
 | F06 | Mapeo OBIS configurable por marca/modelo (cacheado) | 2 | ⚪ |
@@ -30,7 +30,7 @@ código, no por fecha. Complementa el Plan de sprints (`04-plan-sprints.md`).
 
 | # | Función | Sprint | Estado |
 |---|---|---|---|
-| F10 | Ingesta de lecturas crudas (hypertable Timescale) | 1 | ⚪ |
+| F10 | Ingesta de lecturas crudas (hypertable Timescale) | 1 | 🟡 |
 | F11 | Metadatos de medidor/ubicación/catastro | 0-1 | ⚪ |
 | F12 | Retención histórica configurable por tenant | 10 | ⚪ |
 | F13 | Respaldo y recuperación | 9 | ⚪ |
@@ -131,6 +131,8 @@ trabajo con avance verificable.
 
 | 2026-09-10 | **Renombrado completo a inglés**: a pedido explícito del usuario, todo identificador de software (tablas, columnas, índices, roles, valores de enum, endpoints, eventos, nombres de función/variable en Python) pasó de español a inglés en snake_case — ver el mapeo completo en `infra/db/migrations/0001_init.sql`. La prosa/comentarios/docs se mantienen en español. Esquema reaplicado desde cero contra Postgres real y RLS reverificado (`RLS OK`); dummy de k3s reconstruido y redesplegado con el fixture en inglés, logs confirmados; 13/13 pruebas unitarias siguen pasando con nombres de test/variables en inglés | F20, F31, F32, F46 (re-verificados) | `verify_rls.py` exit 0, `python -m unittest`: 13/13 OK, `kubectl logs` con `type`/`params` en inglés |
 
+| 2026-09-10 | **Sprint 0 cerrado**: repo propio inicializado (separado del repo vestigial sin commits en `C:\PCGM\RENSOFTLABS\core\`), 3 commits, pusheado a **GitHub público** `Glenn741/renfygrid`. CI básico agregado (`.github/workflows/tests.yml`, corre las pruebas de `services/common`) — **pendiente subirlo al remoto**: el token de GitHub guardado no tiene scope `workflow`, GitHub rechazó el push de ese archivo específico. Sigue en el repo local, sin trackear por git | — | `git log` (3 commits en `main`), `https://github.com/Glenn741/renfygrid` |
+
 **F31 cerrado** (ver bitácora arriba): verificado contra PostgreSQL 16 real, no en Docker
 (instalado portable sin Docker/admin, ver `infra/db/README-local-dev.md`) — el aislamiento
 entre tenants se confirma con `infra/db/verify_rls.py`, exit code 0. Pendiente real y
@@ -139,4 +141,27 @@ se omitió en esta verificación local por no estar disponible en el binario por
 Windows — se confirma cuando haya Docker/k3s con la imagen oficial `timescale/timescaledb`,
 que es la misma que ya usa `docker-compose.yml`).
 
-*(Esta tabla se sigue completando a medida que avanza el Sprint 0 real.)*
+### Sprint 1 — Adaptador HES DLMS/COSEM
+
+**Objetivo:** adaptador real que se asocia a un medidor/concentrador DLMS/COSEM, lee un
+registro (OBIS) y lo normaliza a una fila de `raw_reading` (`04-plan-sprints.md`).
+**Estado:** 🟡 En progreso, iniciado 2026-09-10.
+
+| Fecha | Avance | Función(es) | Evidencia |
+|---|---|---|---|
+| 2026-09-10 | **Verificación de librería**: `gurux-dlms`, `gurux-net` y `gurux-common` sí existen como paquetes Python reales en PyPI (investigación previa solo había encontrado bindings C#/Java/Delphi) — `gurux-dlms` 1.0.203, incluye `GXDLMSClient`/`GXDLMSServer`. Instalados sin problema (`pip install`) | F02 | `services/hes-adapter-dlms/requirements.txt` |
+| 2026-09-10 | **Gap identificado y decisión de alcance explícita**: Gurux no publica un simulador/servidor DLMS de referencia en Python (solo ejemplos de cliente); su simulador oficial (`Gurux.DLMS.Simulator.Net`) requiere .NET SDK, no instalado en este entorno; tampoco hay hardware real disponible. Decisión: construir el adaptador cliente real (adaptado fielmente de `GXDLMSReader.py`, el ejemplo de referencia oficial de Gurux) y probar con pruebas unitarias sobre un cliente/medio simulados (`unittest.mock`) la lógica de orquestación (reintentos, secuencia de asociación) — no el protocolo DLMS en sí, que ya lo garantiza Gurux. **Queda pendiente, documentado como gap abierto**: verificación end-to-end contra un medidor o simulador real | F02 | Docstring de `dlms_session.py` (sección "ESTADO REAL") |
+| 2026-09-10 | **Adaptador construido**: `dlms_session.py` (`DlmsSession` — asociación SNRM/UA+AARQ/AARE, lectura de atributo con reintentos y reensamblado de tramas, desconexión), `meter_reader.py` (`read_register`/`NormalizedReading` — normaliza una lectura COSEM a fila `raw_reading`), `reading_store.py` (`insert_raw_reading`, usa `tenant_scope`), `main.py` (CLI real, sin valores fijos — host/puerto/tenant/medidor/OBIS todo por argumento) | F02, F03, F10 | `services/hes-adapter-dlms/*.py` |
+| 2026-09-10 | Bug corregido: nombre de clase equivocado (`GXReceiveParameters`, que no existe) — corregido a `ReceiveParameters` tras inspeccionar el paquete `gurux_common` instalado | F02 | `dlms_session.py` import corregido |
+| 2026-09-10 | **10/10 pruebas unitarias pasando** — 7 sobre `dlms_session` (orquestación: sin datos, camino feliz sin ronda de recepción, una ronda completa, agotamiento de reintentos lanza `TimeoutError_`, se salta asociación de aplicación con `Authentication.NONE`, se salta SNRM cuando el cliente no lo requiere, lectura de atributo actualiza el valor) + 3 sobre `meter_reader` (normalización a fila, índice de atributo 2 por defecto, índice de atributo configurable) | F02, F03, F10 | `python -m unittest discover -s tests -v` → **Ran 10 tests in 0.867s / OK** |
+
+**F02/F03/F10 en 🟡, no 🟢**: el código del adaptador es real (mismo protocolo SNRM/AARQ/framing
+que el cliente de referencia oficial de Gurux, no una reimplementación propia) y está probado
+a nivel de orquestación con dobles de prueba, pero la Definición de Hecho de estas funciones
+(`04-plan-sprints.md`) exige conectar contra un medidor/simulador real — eso sigue sin
+verificarse en este entorno (sin hardware, sin .NET para el simulador oficial de Gurux). Cerrar
+este gap requiere una decisión del usuario: conseguir acceso a un medidor/simulador real, o
+invertir tiempo en construir un simulador DLMS/COSEM propio en Python (no trivial — no hay
+ninguno de referencia).
+
+*(Esta tabla se sigue completando a medida que avanza el Sprint 1 real.)*
