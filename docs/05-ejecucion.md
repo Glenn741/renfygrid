@@ -21,9 +21,9 @@ código, no por fecha. Complementa el Plan de sprints (`04-plan-sprints.md`).
 | F03 | Lectura remota programada (polling) | 1 | 🟢 |
 | F04 | Lectura remota bajo demanda | 8 | ⚪ |
 | F05 | Recepción de eventos/alarmas del medidor | 1-2 | ⚪ (diferido a Sprint 2, ver bitácora) |
-| F06 | Mapeo OBIS configurable por marca/modelo (cacheado) | 2 | ⚪ |
+| F06 | Mapeo OBIS configurable por marca/modelo (cacheado) | 2 | 🟢 |
 | F07 | Envío de comandos SCR al medidor | 7 | ⚪ |
-| F08 | Reintentos / cola ante caída de concentrador | 2 | ⚪ |
+| F08 | Reintentos / cola ante caída de concentrador | 2 | 🟡 (reintentos sí, cola persistente no — ver bitácora) |
 | F09 | Auditoría de comunicación con dispositivos | 9 | ⚪ |
 
 ### Almacenamiento
@@ -184,3 +184,26 @@ suficientemente distinta como para no colarla dentro de Sprint 1 sin que el usua
 explícitamente. Queda como primer candidato de Sprint 2, junto con F06/F08.
 
 *(Esta tabla se sigue completando a medida que avanza el Sprint 1 real.)*
+
+### Sprint 2 — Mapeo OBIS configurable + reintentos
+
+**Objetivo:** cambiar el mapeo OBIS de una marca/modelo en BD (sin tocar código ni redesplegar)
+cambia el parseo del poller; reintentos acotados ante caída de un concentrador
+(`04-plan-sprints.md` §4). **Estado:** 🟢 objetivo de mapeo cumplido con evidencia real;
+reintentos cumplidos parcialmente (ver más abajo) — iniciado y cerrado 2026-09-10.
+
+| Fecha | Avance | Función(es) | Evidencia |
+|---|---|---|---|
+| 2026-09-10 | **F06 construido**: `obis_mapping.py` (mismo patrón de configuración cacheada que `renmeter_common.config_cache`: `meter_protocol` en BD es la fuente de verdad, un snapshot en disco es lo único que el poller lee en caliente) + `refresh_obis_mapping_cache.py` (el "Config Loader" que se corre aparte, nunca en el hot path). `poller.py` reescrito: ya no recibe un OBIS/canal fijo por argumento — por cada medidor busca su mapeo vigente por marca/modelo y lee todos los canales mapeados en una sola asociación | F06 | `services/hes-adapter-dlms/obis_mapping.py`, `refresh_obis_mapping_cache.py`, `poller.py` |
+| 2026-09-10 | **F06 verificado de punta a punta, incluyendo el caso que realmente importa**: `verify_poller_end_to_end.py` ahora registra también una fila `meter_protocol` real, corre 2 ciclos con un mapeo, y luego **cambia el mapeo en BD** (renombra el canal), refresca el snapshot (sin tocar `poller.py`) y corre un tercer ciclo — confirma que la fila nueva en `raw_reading` ya usa el nombre de canal actualizado | F06 | `python verify_poller_end_to_end.py "..."` → **"Filas con el canal nuevo (active_energy_v2) tras cambiar el mapeo en BD: 1 (esperado: 1)"**, **"E2E poller OK"** |
+| 2026-09-10 | **F08 construido, alcance parcial explícito**: `poller.py::read_one_meter_with_retries` — hasta `--read-retries` intentos con espera fija `--retry-backoff-seconds` entre cada uno, antes de dar por fallido un medidor en ese ciclo (sin tumbar el resto). Probado directamente contra un puerto cerrado (conexión rechazada): agota los 3 intentos configurados y lanza la excepción esperada, sin colgar el proceso | F08 (parcial) | Prueba manual: `read_one_meter_with_retries(...)` con `port=9` (cerrado) → falla tras 3 intentos, excepción `ConnectionRefusedError` propagada correctamente, capturada por `run_once` sin detener el ciclo |
+
+**F08 queda en 🟡, no 🟢, a propósito**: lo construido son reintentos *dentro del mismo ciclo* —
+si un medidor sigue fallando después de agotarlos, se registra el error y no se reintenta hasta
+el próximo ciclo de polling (según `--interval-seconds`). No hay una **cola persistente** que
+recuerde medidores fallidos y los reintente con una política propia independiente del ciclo
+general — eso sería una pieza aparte (ej. una tabla `failed_reading` o un stream de reintento),
+no construida todavía porque el DoD del sprint no la exige explícitamente y el alcance ya cerraba
+sin ella.
+
+*(Esta tabla se sigue completando a medida que avanza el Sprint 2 real.)*
