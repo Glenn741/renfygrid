@@ -17,7 +17,7 @@ código, no por fecha. Complementa el Plan de sprints (`04-plan-sprints.md`).
 | # | Función | Sprint | Estado |
 |---|---|---|---|
 | F01 | Registro de medidores/concentradores | 0-1 | ⚪ |
-| F02 | Adaptador de protocolo DLMS/COSEM (Gurux) | 1 | 🟡 |
+| F02 | Adaptador de protocolo DLMS/COSEM (Gurux) | 1 | 🟢 |
 | F03 | Lectura remota programada (polling) | 1 | 🟡 |
 | F04 | Lectura remota bajo demanda | 8 | ⚪ |
 | F05 | Recepción de eventos/alarmas del medidor | 1-2 | ⚪ |
@@ -155,13 +155,17 @@ registro (OBIS) y lo normaliza a una fila de `raw_reading` (`04-plan-sprints.md`
 | 2026-09-10 | Bug corregido: nombre de clase equivocado (`GXReceiveParameters`, que no existe) — corregido a `ReceiveParameters` tras inspeccionar el paquete `gurux_common` instalado | F02 | `dlms_session.py` import corregido |
 | 2026-09-10 | **10/10 pruebas unitarias pasando** — 7 sobre `dlms_session` (orquestación: sin datos, camino feliz sin ronda de recepción, una ronda completa, agotamiento de reintentos lanza `TimeoutError_`, se salta asociación de aplicación con `Authentication.NONE`, se salta SNRM cuando el cliente no lo requiere, lectura de atributo actualiza el valor) + 3 sobre `meter_reader` (normalización a fila, índice de atributo 2 por defecto, índice de atributo configurable) | F02, F03, F10 | `python -m unittest discover -s tests -v` → **Ran 10 tests in 0.867s / OK** |
 
-**F02/F03/F10 en 🟡, no 🟢**: el código del adaptador es real (mismo protocolo SNRM/AARQ/framing
-que el cliente de referencia oficial de Gurux, no una reimplementación propia) y está probado
-a nivel de orquestación con dobles de prueba, pero la Definición de Hecho de estas funciones
-(`04-plan-sprints.md`) exige conectar contra un medidor/simulador real — eso sigue sin
-verificarse en este entorno (sin hardware, sin .NET para el simulador oficial de Gurux). Cerrar
-este gap requiere una decisión del usuario: conseguir acceso a un medidor/simulador real, o
-invertir tiempo en construir un simulador DLMS/COSEM propio en Python (no trivial — no hay
-ninguno de referencia).
+| 2026-09-10 | **Gap cerrado: verificación end-to-end real, sin hardware.** El usuario confirmó no tener acceso a un medidor real. En vez de dejarlo pendiente, se construyó `simulator/dlms_simulator_server.py`: un servidor DLMS/COSEM de prueba que **reusa el protocolo servidor real de Gurux** (`gurux_dlms.GXDLMSServer`, no una reimplementación propia), con un `Register` (OBIS/valor configurables) para responder. Se encontraron y documentaron **3 bugs reales en `gurux-dlms==1.0.203`** (verificados leyendo/reproduciendo el código instalado, no supuestos): (1) `GXServerReply` no define `setReply()` ni `getConnectionInfo()`, que `GXDLMSServer.handleRequest`/`handleCommand` sí llaman — sin parche, cualquier solicitud revienta con `AttributeError` silenciada por el propio `except Exception` de la librería; (2) `GXDLMSServer.initialize()` crea el objeto de asociación automático con `objectList.append(self.items)` en vez de `.extend(...)`, y `.append()` exige un objeto individual — `TypeError` evitado creando la asociación nosotros mismos antes de `initialize()`; (3) `notifyRead()` se invoca en el camino de un GET de un solo atributo pero no tiene default en la clase base — se define como no-op en la subclase. Los tres están documentados en el docstring de `dlms_simulator_server.py` | F02 | `simulator/dlms_simulator_server.py` |
+| 2026-09-10 | **Bug real encontrado EN NUESTRO PROPIO CÓDIGO por esta prueba** (no lo detectaban las 10 pruebas unitarias con mocks, porque un mock no reproduce el mecanismo de sincronización real de `gurux_net.GXNet`): `dlms_session.py::_send_and_receive` no envolvía el envío/recepción con `with self.media.getSynchronous():` — sin ese lock, `GXNet` nunca movía al buffer de lectura los bytes que su hilo de escucha ya había recibido, y todo terminaba en `TimeoutError_` aunque el simulador respondiera correctamente. Corregido comparando línea por línea contra `GXDLMSReader.readDLMSPacket2` (el ejemplo de referencia oficial, que sí lo hace) — se había omitido al adaptarlo. Se agregó `getSynchronous()` al `Protocol Media`, y se corrigió el mock de las pruebas unitarias (`MagicMock.__exit__` devuelve un objeto *truthy* por defecto, lo que habría suprimido silenciosamente cualquier excepción real dentro del `with` — se forzó `__exit__.return_value = False`) | F02 | `dlms_session.py`, `tests/test_dlms_session.py` |
+| 2026-09-10 | **`verify_end_to_end.py` — corrida real, dos veces, ambas exitosas**: levanta el simulador en un hilo, crea un tenant+medidor real en Postgres, corre el mismo código de `main.py` (GXNet real por TCP + `GXDLMSClient` + `DlmsSession.associate()` + `read_register` + `insert_raw_reading`) contra `127.0.0.1:22222`, confirma el valor leído (`4781999`) y relee la fila insertada en `raw_reading` (con RLS activo) desde Postgres | F02, F03 (parcial), F10 (parcial) | `python verify_end_to_end.py "postgresql://renfygrid_app:...@localhost:5455/renfygrid"` → **"E2E OK -- simulador + cliente real + raw_reading confirmados"**, corrido 2 veces |
+
+**F02 pasa a 🟢**: el adaptador se asoció (AARQ/AARE) y leyó un objeto COSEM real por TCP contra
+una implementación real (no mock) del protocolo servidor DLMS/COSEM de Gurux, con el valor
+correcto llegando hasta `raw_reading`. **F03 y F10 quedan en 🟡, no 🟢, a propósito**: F03 exige
+lectura *programada* (con scheduler) — lo construido es un disparo manual (CLI), correcto pero
+sin el componente de programación periódica todavía; F10 menciona explícitamente la hypertable de
+**TimescaleDB**, que sigue sin poder probarse en esta máquina (Postgres portable de Windows, sin
+esa extensión — ver README de `.devdb/`) — el INSERT/RLS sobre la tabla plana sí está probado,
+la extensión Timescale en sí, no.
 
 *(Esta tabla se sigue completando a medida que avanza el Sprint 1 real.)*

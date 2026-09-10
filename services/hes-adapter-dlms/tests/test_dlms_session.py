@@ -29,6 +29,11 @@ def make_session(**client_overrides) -> tuple[DlmsSession, mock.MagicMock, mock.
     for key, value in client_overrides.items():
         setattr(client, key, value)
     media = mock.MagicMock()
+    # MagicMock.__exit__ devuelve un MagicMock (truthy) por defecto, lo que
+    # suprimiria cualquier excepcion lanzada dentro de "with media.getSynchronous():"
+    # -- se fuerza False para que las excepciones (ej. TimeoutError_) sigan
+    # propagando, como pasa con el gurux_net.GXNet real.
+    media.getSynchronous.return_value.__exit__.return_value = False
     session = DlmsSession(client=client, media=media, max_retries=3)
     return session, client, media
 

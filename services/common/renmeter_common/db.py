@@ -2,10 +2,9 @@
 y docs/03-diseno.md). Cada request autenticado fija el tenant de la sesion antes de
 correr cualquier query; las politicas RLS de infra/db/migrations filtran solas.
 
-NO EJECUTADO TODAVIA contra una instancia real (ver docs/05-ejecucion.md, Sprint 0) --
-no hay Postgres disponible en el entorno donde se escribio este modulo. Escrito
-para ser correcto por diseno; falta la primera corrida real antes de darlo por
-verificado.
+Verificado contra Postgres real desde Sprint 0 (`infra/db/verify_rls.py`, aislamiento
+entre tenants confirmado) y reusado desde Sprint 1 en el adaptador HES
+(`services/hes-adapter-dlms/reading_store.py`, `verify_end_to_end.py`).
 """
 
 from __future__ import annotations

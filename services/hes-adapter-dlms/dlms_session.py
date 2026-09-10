@@ -7,14 +7,20 @@ mismo principio que el resto de RenfyGrid (docs/02-arquitectura-general.md SS1,
 principio 5) -- Gurux ya resolvio el framing/reintentos/reensamblado de tramas,
 reimplementarlo a mano seria repetir trabajo ya hecho y probado.
 
-ESTADO REAL (ver docs/05-ejecucion.md, Sprint 1): este modulo compila y sus
-piezas de orquestacion estan probadas con un cliente/medio simulados (ver
-tests/), pero **no se probo todavia contra un medidor o simulador DLMS/COSEM
-real** -- no hay hardware ni un simulador Gurux disponible en este entorno
-(Gurux.DLMS.Simulator.Net requiere .NET SDK, no instalado). El protocolo en si
-(SNRM/AARQ/framing) es exactamente el que usa el cliente de referencia oficial
-de Gurux, no una reimplementacion propia -- lo que falta verificar es la
-integracion end-to-end con un peer DLMS real, no la logica de este modulo.
+ESTADO REAL (ver docs/05-ejecucion.md, Sprint 1): probado de punta a punta
+contra un simulador DLMS/COSEM real por TCP (`simulator/dlms_simulator_server.py`
++ `verify_end_to_end.py`), ademas de las pruebas unitarias con cliente/medio
+simulados (`tests/`). No probado todavia contra un medidor fisico real (no hay
+hardware disponible en este entorno) -- pero si contra una implementacion real
+del protocolo servidor DLMS/COSEM, no solo mocks.
+
+Bug real encontrado por esa prueba end-to-end (no lo detectaban los mocks,
+porque un mock no reproduce el mecanismo de sincronizacion real de
+`gurux_net.GXNet`): `_send_and_receive` no envolvia el envio/recepcion con
+`media.getSynchronous()` -- sin ese lock, `GXNet` nunca movia los bytes
+recibidos del hilo de escucha al buffer que `receive()` lee, y todo terminaba
+en TimeoutError aunque el simulador si respondiera. Corregido comparando
+contra `GXDLMSReader.readDLMSPacket2` (el ejemplo oficial), que si lo hace.
 """
 
 from __future__ import annotations
@@ -29,12 +35,17 @@ from gurux_dlms.enums import Authentication, InterfaceType
 
 class Media(Protocol):
     """Lo minimo que dlms_session necesita de un medio de transporte (TCP real via
-    gurux_net.GXNet, o un doble de prueba en tests/)."""
+    gurux_net.GXNet, o un doble de prueba en tests/).
+
+    `getSynchronous()` debe devolver un context manager (en GXNet real, un lock:
+    ver docstring del modulo) -- sin adquirirlo alrededor de send/receive, GXNet
+    nunca entrega los bytes que su hilo de escucha ya recibio."""
 
     def open(self) -> None: ...
     def close(self) -> None: ...
     def send(self, data: Any, receiver: Any = None) -> None: ...
     def receive(self, args: ReceiveParameters) -> bool: ...
+    def getSynchronous(self) -> Any: ...
 
 
 class TimeoutError_(RuntimeError):
@@ -68,24 +79,25 @@ class DlmsSession:
         params.waitTime = self.wait_time
         params.count = 8 if eop is None else 5
         rd = GXByteBuffer()
-        self.media.send(data)
-        pos = 0
-        while not self.client.getData(rd, reply, notify):
-            if notify.data.size != 0:
-                if not notify.isMoreData():
-                    notify.clear()
-                continue
-            if eop is not None:
-                params.count = self.client.getFrameSize(rd)
-            while not self.media.receive(params):
-                pos += 1
-                if pos == self.max_retries:
-                    raise TimeoutError_(
-                        "El medidor/simulador no respondio dentro de los reintentos permitidos."
-                    )
-                self.media.send(data)
-            rd.set(params.reply)
-            params.reply = None
+        with self.media.getSynchronous():
+            self.media.send(data)
+            pos = 0
+            while not self.client.getData(rd, reply, notify):
+                if notify.data.size != 0:
+                    if not notify.isMoreData():
+                        notify.clear()
+                    continue
+                if eop is not None:
+                    params.count = self.client.getFrameSize(rd)
+                while not self.media.receive(params):
+                    pos += 1
+                    if pos == self.max_retries:
+                        raise TimeoutError_(
+                            "El medidor/simulador no respondio dentro de los reintentos permitidos."
+                        )
+                    self.media.send(data)
+                rd.set(params.reply)
+                params.reply = None
 
     def _read_data_block(self, data, reply: GXReplyData) -> None:
         if not data:
