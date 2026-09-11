@@ -139,6 +139,54 @@ export function getGateways(): Promise<Gateway[]> {
   return request("/gateways");
 }
 
+// --- HES / Ingesta -- eventos/alarmas + cola de reintentos (Sprint C11-4):
+// F05 (alarmas reales via push DLMS) y F09 (auditoria de comunicacion) ya
+// escribian en meter_event; F08 (cola de reintentos, Sprint C11) ya
+// escribia en poller_retry_queue -- nada de esto se veia en el Portal.
+
+export interface HesEventSummary {
+  alarms_24h: number;
+  critical_alarms_24h: number;
+  comm_failures_24h: number;
+  comm_success_rate_24h: number | null;
+  meters_in_retry_queue: number;
+}
+
+export function getHesEventSummary(): Promise<HesEventSummary> {
+  return request("/meters/event-summary");
+}
+
+export interface MeterEvent {
+  meter_id: string;
+  account_number: string;
+  brand: string | null;
+  model: string | null;
+  gateway_name: string | null;
+  type: string;
+  severity: string;
+  detail: Record<string, unknown>;
+  timestamp: string;
+}
+
+export function getMeterEvents(eventType?: string): Promise<MeterEvent[]> {
+  return request(`/meters/events${eventType ? `?event_type=${eventType}` : ""}`);
+}
+
+export interface RetryQueueRow {
+  meter_id: string;
+  account_number: string;
+  brand: string | null;
+  model: string | null;
+  failure_count: number;
+  next_retry_at: string;
+  last_error: string | null;
+  updated_at: string;
+}
+
+export function getRetryQueue(): Promise<RetryQueueRow[]> {
+  return request("/meters/retry-queue");
+}
+
 export interface InvalidReading {
   meter_id: string;
   account_number: string;

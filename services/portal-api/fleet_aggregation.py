@@ -3,7 +3,19 @@
 `meter.brand`/`meter.model` desde Sprint 1 y `gateway`/`meter_gateway`
 desde Sprint 0-1 -- esto no agrega ninguna tabla, solo las agrega en dos
 vistas que nunca existieron.
-"""
+
+Eventos/alarmas + cola de reintentos (Sprint C11-4): el usuario pidio el
+mismo ejercicio de benchmark real que ya se hizo para VEE. Lo que aparece
+consistente en HES de referencia (Genus/Kimbal/tblocks, ScienceDirect
+"Data Concentrator", Eaton Brightlayer -- ver docs/05-ejecucion.md Sprint
+C11-4 para las fuentes) es "operational dashboards, communication
+statistics, meter reachability reports, and alarm management" -- eso ya
+esta CONSTRUIDO en el backend desde F05 (alarmas reales via push DLMS,
+`event_listener.py`) y F09 (auditoria de cada intento de comunicacion,
+`communication_audit.py`), pero nunca se expuso en el Portal: no habia
+forma de ver un evento/alarma real, ni el estado de la cola de reintentos
+de F08 (Sprint C11). Nada de esto es un dato inventado -- son las mismas
+filas reales que F05/F08/F09 ya escriben."""
 
 from __future__ import annotations
 
@@ -102,3 +114,102 @@ def gateway_summary(conn: psycopg.Connection, tenant_id: str) -> list[dict]:
             }
         )
     return result
+
+
+def event_summary(conn: psycopg.Connection, tenant_id: str) -> dict:
+    """KPIs de eventos/alarmas + salud de comunicacion en las ultimas 24h
+    -- lo que un HES de referencia llama "alarm management" +
+    "communication statistics" (ver docstring del modulo)."""
+    with conn.transaction():
+        with tenant_scope(conn, tenant_id):
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT count(*) FILTER (WHERE type = 'meter_alarm'), "
+                    "       count(*) FILTER (WHERE type = 'meter_alarm' AND severity = 'critical'), "
+                    "       count(*) FILTER (WHERE type = 'communication_failure'), "
+                    "       count(*) FILTER (WHERE type = 'communication_success') "
+                    "FROM meter_event WHERE tenant_id = %s AND \"timestamp\" > now() - interval '24 hours'",
+                    (tenant_id,),
+                )
+                alarms_24h, critical_alarms_24h, comm_failures_24h, comm_success_24h = cur.fetchone()
+
+                cur.execute("SELECT count(*) FROM poller_retry_queue WHERE tenant_id = %s", (tenant_id,))
+                (meters_in_retry_queue,) = cur.fetchone()
+
+    comm_total_24h = comm_failures_24h + comm_success_24h
+    return {
+        "alarms_24h": alarms_24h,
+        "critical_alarms_24h": critical_alarms_24h,
+        "comm_failures_24h": comm_failures_24h,
+        "comm_success_rate_24h": round(100.0 * comm_success_24h / comm_total_24h, 1) if comm_total_24h else None,
+        "meters_in_retry_queue": meters_in_retry_queue,
+    }
+
+
+def list_meter_events(conn: psycopg.Connection, tenant_id: str, event_type: str | None = None, limit: int = 100) -> list[dict]:
+    """Feed real de `meter_event` (F05 alarmas + F09 auditoria de
+    comunicacion) con marca/modelo/concentrador para dar contexto -- antes
+    invisible en el Portal salvo el conteo agregado de exito 24h."""
+    clause = "AND e.type = %s" if event_type else ""
+    params: tuple = (tenant_id, event_type, limit) if event_type else (tenant_id, limit)
+    with conn.transaction():
+        with tenant_scope(conn, tenant_id):
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"SELECT e.meter_id, m.account_number, m.brand, m.model, g.name, "
+                    f"       e.type, e.severity, e.detail, e.\"timestamp\" "
+                    f"FROM meter_event e "
+                    f"JOIN meter m ON m.id = e.meter_id "
+                    f"LEFT JOIN meter_gateway mg ON mg.meter_id = m.id "
+                    f"LEFT JOIN gateway g ON g.id = mg.gateway_id "
+                    f"WHERE e.tenant_id = %s {clause} "
+                    f"ORDER BY e.\"timestamp\" DESC LIMIT %s",
+                    params,
+                )
+                rows = cur.fetchall()
+
+    return [
+        {
+            "meter_id": str(meter_id),
+            "account_number": account_number,
+            "brand": brand,
+            "model": model,
+            "gateway_name": gateway_name,
+            "type": event_type_,
+            "severity": severity,
+            "detail": detail,
+            "timestamp": timestamp.isoformat(),
+        }
+        for meter_id, account_number, brand, model, gateway_name, event_type_, severity, detail, timestamp in rows
+    ]
+
+
+def list_retry_queue(conn: psycopg.Connection, tenant_id: str) -> list[dict]:
+    """Estado real de `poller_retry_queue` (F08, Sprint C11) -- que
+    medidores estan en backoff ahora mismo, hace cuanto, y por que --
+    antes construido solo en el backend, nunca visible."""
+    with conn.transaction():
+        with tenant_scope(conn, tenant_id):
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT q.meter_id, m.account_number, m.brand, m.model, "
+                    "       q.failure_count, q.next_retry_at, q.last_error, q.updated_at "
+                    "FROM poller_retry_queue q JOIN meter m ON m.id = q.meter_id "
+                    "WHERE q.tenant_id = %s ORDER BY q.next_retry_at",
+                    (tenant_id,),
+                )
+                rows = cur.fetchall()
+
+    return [
+        {
+            "meter_id": str(meter_id),
+            "account_number": account_number,
+            "brand": brand,
+            "model": model,
+            "failure_count": failure_count,
+            "next_retry_at": next_retry_at.isoformat(),
+            "last_error": last_error,
+            "updated_at": updated_at.isoformat(),
+        }
+        for meter_id, account_number, brand, model, failure_count, next_retry_at, last_error, updated_at in rows
+    ]

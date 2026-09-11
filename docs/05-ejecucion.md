@@ -746,3 +746,42 @@ que es exactamente como lo hacen los 3 productos de referencia revisados.
 | 2026-09-11 | Regresión: 8/8 unit tests + `verify_stage_screens_end_to_end.py`/`verify_detail_actions_end_to_end.py` siguen en verde | — | — |
 | 2026-09-11 | **Frontend, `Vee.tsx` reestructurada en 3 secciones reales** (Validación/Estimación/Edición manual, cada una con su encabezado "V"/"E"/"E"): Validación con tasa de excepción coloreada por banda (verde/amarillo/rojo) + tendencia de 7 días (barras CSS simples, sin librería) + la cola de excepciones filtrable ya existente; Estimación con % de la serie estimada + desglose por método + la lista de estimadas; Edición manual con total/24h + top editores + una tabla nueva del historial real (`valor anterior → valor nuevo`, quién, justificación) | `services/portal-web/src/pages/Vee.tsx`, `api.ts` |
 | 2026-09-11 | `tsc -b && vite build` limpio, bundle sin rutas mangled, contiene "vee/edits"/"trend_7d"/"exception_rate_pct". Desplegado: backend (Nuitka) a `essmarplapp02`; frontend a `essmarplpxy03`. Verificado en vivo: bundle coincide, `/api/vee/edits` responde 401 (gateado, no 404/500) | `curl https://renfygrid.rensoftlabs.com/...` |
+
+### Sprint C11-4 — HES/Ingesta: eventos/alarmas + cola de reintentos, con benchmark real (2026-09-11)
+
+**Motivo:** el usuario pidió el mismo ejercicio que ya se hizo con VEE (Sprint C11-3) para el
+panel de HES/Ingesta: "busca en el mercado y observa que debe tener ese modulo. Se ve
+incompleto" — con la instrucción explícita de no usar **ningún dato hardcodeado**.
+
+**Investigado antes de tocar código** (no memoria de entrenamiento):
+- Consenso de varios proveedores de HES (Genus, Kimbal, tblocks): "Network Management Systems
+  that provide **operational dashboards, communication statistics, meter reachability reports,
+  and alarm management**"
+  ([Genus — Head End System](https://genuspower.com/product/head-end-system-hes/),
+  [tblocks — What is a HES](https://tblocks.com/glossary/head-end-system/)).
+- "DC (Data Concentrator) data include statistics of communication, **event logs** and
+  meta-data" ([ScienceDirect — Data Concentrator](https://www.sciencedirect.com/topics/computer-science/data-concentrator)).
+- "HES manages... all functions related to reading, sending commands to devices, and
+  **monitoring performance in real time**" (mismas fuentes).
+- Eaton Brightlayer: "**real-time read success rates**, collector uptime, and signal quality
+  metrics... per zone and fleet-wide" ([Eaton — Operational Data Management for AMI](https://www.eaton.com/us/en-us/digital/brightlayer/brightlayer-utilities-suite/Operational-Data-Management-Software-and-AMI-suite.html)).
+- HES usan "intelligent scheduling, **automated retries**, communication health monitoring, and
+  **gap reconciliation mechanisms**" (mismas fuentes).
+
+**Hallazgo real, sin inventar nada**: F05 (alarmas reales vía push DLMS), F08 (cola de
+reintentos, Sprint C11) y F09 (auditoría de comunicación) YA estaban construidos y verificados
+end-to-end — pero **ninguno de los tres se veía en el Portal**. `fleet_summary`/`gateway_summary`
+(Sprint C7) solo mostraban un % de éxito agregado; nunca el feed real de eventos, ni la cola de
+reintentos. Exactamente el mismo patrón de gap que VEE en C11-2/C11-3: backend completo,
+exposición incompleta. **Ningún campo nuevo de UI usa un valor inventado** — las 3 secciones
+nuevas leen directo de `meter_event` (F05/F09, ya poblada por código real) y `poller_retry_queue`
+(F08, Sprint C11, ya poblada por `poller.py`).
+**Estado:** 🟢 cerrado y desplegado a producción.
+
+| Fecha | Avance | Evidencia |
+|---|---|---|
+| 2026-09-11 | **Backend, `fleet_aggregation.py` extendido** con 3 funciones nuevas: `event_summary()` (alarmas 24h, críticas 24h, fallas de comunicación 24h, tasa de éxito de comunicación 24h, medidores en cola de reintento — todo de `meter_event`/`poller_retry_queue` reales), `list_meter_events()` (feed real de `meter_event` con marca/modelo/concentrador, filtrable por tipo), `list_retry_queue()` (estado real de `poller_retry_queue`). Endpoints nuevos: `GET /meters/event-summary`, `GET /meters/events`, `GET /meters/retry-queue` | `services/portal-api/fleet_aggregation.py`, `main.py` |
+| 2026-09-11 | E2E real: 1 alarma crítica + 2 comunicaciones exitosas + 1 fallida + 1 medidor real en la cola de reintentos — confirma `alarms_24h=1`, `comm_success_rate_24h≈66.7`, `meters_in_retry_queue=1`, el feed trae las 4 filas con concentrador resuelto, el filtro por tipo funciona, y la cola de reintentos trae `failure_count`/`last_error` reales | `verify_hes_events_end_to_end.py` → `SPRINT C11-4 HES EVENTS E2E OK` |
+| 2026-09-11 | Regresión: 8/8 unit tests + `verify_fleet_aggregation_end_to_end.py`/`verify_observability_end_to_end.py` siguen en verde | — | — |
+| 2026-09-11 | **Frontend, `Meters.tsx` extendida** con 4 tarjetas de KPI al inicio (alarmas 24h, éxito de comunicación 24h, fallas 24h, medidores en cola) y 2 secciones nuevas: "Cola de reintentos" (tabla con intentos fallidos/último error/próximo intento en tiempo relativo) y "Eventos y alarmas" (feed filtrable por tipo, con badge de severidad) | `services/portal-web/src/pages/Meters.tsx`, `api.ts` |
+| 2026-09-11 | `tsc -b && vite build` limpio, bundle sin rutas mangled, contiene "meters/events"/"meters/retry-queue"/"meters/event-summary". Desplegado: backend (Nuitka) a `essmarplapp02`; frontend a `essmarplpxy03`. Verificado en vivo: bundle coincide exacto (JS y CSS), `/api/meters/events` responde 401 (gateado, no 404/500) | `curl https://renfygrid.rensoftlabs.com/...` |

@@ -56,7 +56,13 @@ from control_service import (  # noqa: E402
     list_control_orders,
 )
 from dashboard import dashboard_overview  # noqa: E402
-from fleet_aggregation import fleet_summary, gateway_summary  # noqa: E402
+from fleet_aggregation import (  # noqa: E402
+    event_summary,
+    fleet_summary,
+    gateway_summary,
+    list_meter_events,
+    list_retry_queue,
+)
 from get_consumption import get_consumption  # noqa: E402
 from list_invalid_readings import list_invalid_readings  # noqa: E402
 from manual_edit import ReadingNotFoundError, edit_reading  # noqa: E402
@@ -348,6 +354,32 @@ def gateways_endpoint(tenant_id: str = Depends(get_tenant_id)) -> list[dict]:
     ultimo ciclo de polling."""
     with db_conn() as conn:
         return gateway_summary(conn, tenant_id)
+
+
+@app.get("/meters/event-summary")
+def event_summary_endpoint(tenant_id: str = Depends(get_tenant_id)) -> dict:
+    """Sprint C11-4: KPIs de alarmas (F05) + salud de comunicacion (F09) +
+    cuantos medidores estan en la cola de reintentos ahora mismo (F08)."""
+    with db_conn() as conn:
+        return event_summary(conn, tenant_id)
+
+
+@app.get("/meters/events")
+def meter_events_endpoint(
+    tenant_id: str = Depends(get_tenant_id), event_type: str | None = None, limit: int = 100
+) -> list[dict]:
+    """Sprint C11-4: feed real de `meter_event` -- alarmas del medidor
+    (F05) y auditoria de comunicacion (F09), antes invisibles en el Portal."""
+    with db_conn() as conn:
+        return list_meter_events(conn, tenant_id, event_type, limit)
+
+
+@app.get("/meters/retry-queue")
+def retry_queue_endpoint(tenant_id: str = Depends(get_tenant_id)) -> list[dict]:
+    """Sprint C11-4: estado real de la cola de reintentos (F08, Sprint C11)
+    -- que medidores estan en backoff ahora mismo y por que."""
+    with db_conn() as conn:
+        return list_retry_queue(conn, tenant_id)
 
 
 @app.get("/observability/ingestion")
