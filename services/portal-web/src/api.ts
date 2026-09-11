@@ -148,4 +148,66 @@ export function approveControlOrder(
   return request(`/control-orders/${orderId}/approve`, { method: "POST", body: JSON.stringify(body) });
 }
 
+// --- Configuración: editor de reglas (F50, Sprint C3) ---
+
+export interface VeeRule {
+  id: string;
+  type: string;
+  params: Record<string, unknown>;
+  priority: number;
+  is_active: boolean;
+  valid_from: string | null;
+  valid_to: string | null;
+}
+
+export function getVeeRules(): Promise<VeeRule[]> {
+  return request("/vee-rules");
+}
+
+export function createVeeRule(body: { type: string; params: Record<string, unknown>; priority: number }) {
+  return request<{ id: string }>("/vee-rules", { method: "POST", body: JSON.stringify(body) });
+}
+
+export function deactivateVeeRule(id: string) {
+  return request<{ id: string }>(`/vee-rules/${id}`, { method: "PATCH" });
+}
+
+export interface ConsumptionAnomalyRule {
+  id: string;
+  condition: Record<string, unknown>;
+  action: string;
+  is_active: boolean;
+}
+
+export function getConsumptionAnomalyRules(): Promise<ConsumptionAnomalyRule[]> {
+  return request("/consumption-anomaly-rules");
+}
+
+export function createConsumptionAnomalyRule(body: { condition: Record<string, unknown>; action: string }) {
+  return request<{ id: string }>("/consumption-anomaly-rules", { method: "POST", body: JSON.stringify(body) });
+}
+
+export function deactivateConsumptionAnomalyRule(id: string) {
+  return request<{ id: string }>(`/consumption-anomaly-rules/${id}`, { method: "PATCH" });
+}
+
+export interface ApprovalLevel {
+  id: string;
+  order_type: string;
+  requires_human_approval: boolean;
+  min_required_role: string;
+}
+
+export function getApprovalLevels(): Promise<ApprovalLevel[]> {
+  return request("/control-approval-levels");
+}
+
+export function createApprovalLevel(body: {
+  order_type: string;
+  requires_human_approval: boolean;
+  min_required_role: string;
+}) {
+  return request<{ id: string }>("/control-approval-levels", { method: "POST", body: JSON.stringify(body) });
+}
+
 export { ApiError };

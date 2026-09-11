@@ -7,6 +7,7 @@ import { VeePage } from "./pages/Vee";
 import { ConsumptionPage } from "./pages/Consumption";
 import { ControlPage } from "./pages/Control";
 import { ObservabilityPage } from "./pages/Observability";
+import { ConfigurationPage } from "./pages/Configuration";
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuth();
@@ -24,6 +25,7 @@ function AppRoutes() {
       <Route path="/consumption" element={<RequireAuth><ConsumptionPage /></RequireAuth>} />
       <Route path="/control" element={<RequireAuth><ControlPage /></RequireAuth>} />
       <Route path="/observability" element={<RequireAuth><ObservabilityPage /></RequireAuth>} />
+      <Route path="/configuration" element={<RequireAuth><ConfigurationPage /></RequireAuth>} />
     </Routes>
   );
 }

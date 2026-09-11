@@ -101,7 +101,7 @@ al sprint donde se construye y a su estado real.
 | F47 | Autenticación real de usuarios (`app_user` + `POST /auth/login`) | C1 | 🟢 |
 | F48 | Tablero general (Nivel 1: KPIs + alertas por etapa) | C1 | 🟢 |
 | F49 | Tableros por etapa (Nivel 2: HES, VEE, Consumos, Control, Observabilidad) | C2 | 🟢 |
-| F50 | Editor de reglas (Configuración: `vee_rule`/`consumption_anomaly_rule`/`control_approval_level`) | C3 | ⚪ |
+| F50 | Editor de reglas (Configuración: `vee_rule`/`consumption_anomaly_rule`/`control_approval_level`) | C3 | 🟢 |
 | F51 | Pantallas de detalle y acciones (Nivel 3) | C4 | ⚪ |
 
 **Cobertura por vertical en el MVP:** las 34 funciones del Track A se construyen para
@@ -472,5 +472,20 @@ tablero "limpio". **Estado:** 🟢 verificado real (backend por `TestClient`, fr
 | 2026-09-11 | **`verify_stage_screens_end_to_end.py` — corrida real**: una lectura inválida real aparece en `/vee/invalid-readings` con su `validation_notes`; un consumo `under_review` aparece filtrado, uno `ok` no; una orden `pending_approval` aparece en la cola y desaparece de ella al aprobarla (mismo endpoint de Sprint 6) | F49 | `python verify_stage_screens_end_to_end.py "postgresql://...@localhost:5455/renfygrid"` → **"SPRINT C2 BACKEND E2E OK"** |
 | 2026-09-11 | **5 pantallas de Nivel 2 + navegación**: `Meters.tsx` (HES), `Vee.tsx`, `Consumption.tsx`, `Control.tsx` (con acción de aprobar, no solo lectura), `Observability.tsx` — cada una consultando su endpoint ya filtrado del lado del servidor, con un estado vacío explícito ("Sin lecturas inválidas pendientes 👍") en vez de una tabla vacía sin contexto. Los tiles del tablero general (Nivel 1) ahora son links a su pantalla de Nivel 2 correspondiente | F49 | `services/portal-web/src/pages/{Meters,Vee,Consumption,Control,Observability}.tsx` |
 | 2026-09-11 | **68/68 pruebas unitarias siguen pasando** tras los cambios en `get_consumption`/`control_service` (nada roto) + `npm run build` limpio del frontend | F49 | `python -m unittest discover` en los 5 servicios Python → OK; `npm run build` → exit 0 |
+
+### Sprint C3 — Editor de reglas: cerrado (2026-09-11, corrido en /loop autónomo)
+
+**Objetivo:** un operador crea una nueva versión de `vee_rule` desde la UI (sin SQL) y el
+siguiente pase de validación ya la usa. **Estado:** 🟢 verificado real, incluyendo que el motor
+VEE de verdad usa la regla creada desde la UI en su siguiente corrida (no solo que la fila se
+guardó bien).
+
+| Fecha | Avance | Función(es) | Evidencia |
+|---|---|---|---|
+| 2026-09-11 | **Decisión de diseño real, no simétrica entre las 3 tablas**: `vee_rule` y `consumption_anomaly_rule` NO tienen una clave de versión única (puede haber varias reglas activas a la vez para distintos canales/umbrales — la más estricta gana, F22/F19), así que crear una regla nueva nunca cierra otra sola; desactivar es una acción explícita aparte. `control_approval_level` SÍ tiene clave de versión (`tenant_id, order_type`) — crear una nueva para el mismo tipo de orden cierra la anterior automáticamente, para no dejar dos versiones activas del mismo tipo (una condición de carrera real que `approval_level_for` no maneja) | F50 | `services/vee-engine/vee_rules_admin.py`, `services/consumption/consumption_anomaly_rules_admin.py`, `services/control/approval_levels_admin.py` |
+| 2026-09-11 | **9 endpoints nuevos** en `portal-api`: `GET`/`POST`/`PATCH /vee-rules`, `GET`/`POST`/`PATCH /consumption-anomaly-rules`, `GET`/`POST /control-approval-levels` | F50 | `services/portal-api/main.py` |
+| 2026-09-11 | **`verify_rules_admin_end_to_end.py` — corrida real con 4 verificaciones**: (1) una regla `vee_rule` creada vía `POST /vee-rules` es usada de verdad por `run_vee_pass.py` (el motor real, no un mock) en la corrida siguiente — la lectura de prueba queda inválida con el `vee_rule_id` de la regla recién creada; (2) desactivarla la saca de `GET /vee-rules` (activas); (3) una regla de anomalía de consumo se crea correctamente; (4) crear un segundo nivel de aprobación para `suspension` cierra el primero (`valid_to` no nulo) y deja solo uno activo — la invariante que `approval_level_for` necesita, confirmada contra Postgres real, no solo diseñada | F50 | `python verify_rules_admin_end_to_end.py "postgresql://...@localhost:5455/renfygrid"` → **"SPRINT C3 BACKEND E2E OK"** |
+| 2026-09-11 | **Pantalla de Configuración** (`Configuration.tsx`) con las 3 secciones — formularios reales (no un editor JSON genérico): reglas VEE (rango o intervalo esperado, según tipo), reglas de desviación de consumo, niveles de aprobación de control. Link nuevo desde el tablero general | F50 | `services/portal-web/src/pages/Configuration.tsx` |
+| 2026-09-11 | **68/68 tests + todos los `verify_*.py` de sprints anteriores (VEE, consumo, control) re-corridos sin regresiones** tras tocar 3 tablas compartidas con casi todo el proyecto. `npm run build` limpio | F50 | `python -m unittest discover` en los 5 servicios → OK; `npm run build` → exit 0 |
 
 *(Esta tabla se sigue completando a medida que avanza el Track C real.)*

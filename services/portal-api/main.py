@@ -37,10 +37,16 @@ from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.responses import PlainTextResponse  # noqa: E402
 from pydantic import BaseModel  # noqa: E402
 
+from approval_levels_admin import create_approval_level, list_approval_levels  # noqa: E402
 from approval_levels_cache import fetch_active_approval_levels  # noqa: E402
 from auth_dependency import get_tenant_id  # noqa: E402
 from billing_export import billing_ready_consumption, to_csv  # noqa: E402
 from config import Settings  # noqa: E402
+from consumption_anomaly_rules_admin import (  # noqa: E402
+    create_consumption_anomaly_rule,
+    deactivate_consumption_anomaly_rule,
+    list_consumption_anomaly_rules,
+)
 from control_order_gateway import request_control_order  # noqa: E402
 from control_service import InsufficientRoleError, InvalidTransitionError, approve_order, list_control_orders  # noqa: E402
 from dashboard import dashboard_overview  # noqa: E402
@@ -51,6 +57,9 @@ from on_demand_reader import MeterNotReadableError, read_meter_now  # noqa: E402
 from renmeter_common.auth import create_token  # noqa: E402
 from renmeter_common.db import tenant_scope  # noqa: E402
 from renmeter_common.user_service import InvalidCredentialsError, authenticate  # noqa: E402
+from vee_rules_admin import create_vee_rule, deactivate_vee_rule, list_vee_rules  # noqa: E402
+from vee_rules_admin import RuleNotFoundError as VeeRuleNotFoundError  # noqa: E402
+from consumption_anomaly_rules_admin import RuleNotFoundError as AnomalyRuleNotFoundError  # noqa: E402
 
 app = FastAPI(title="RenfyGrid Portal/API")
 app.state.settings = Settings.from_env()
@@ -248,3 +257,91 @@ def billing_export_endpoint(
     with db_conn() as conn:
         rows = billing_ready_consumption(conn, tenant_id, period_start, period_end)
         return to_csv(rows)
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# Configuración -- editor de reglas (F50, Sprint C3). Transversal, no una
+# etapa del pipeline (docs/03-diseno.md SS9.3).
+# ══════════════════════════════════════════════════════════════════════════
+
+
+class VeeRuleRequest(BaseModel):
+    type: str
+    params: dict
+    priority: int = 100
+
+
+@app.get("/vee-rules")
+def list_vee_rules_endpoint(tenant_id: str = Depends(get_tenant_id), active_only: bool = True) -> list[dict]:
+    with db_conn() as conn:
+        return list_vee_rules(conn, tenant_id, active_only)
+
+
+@app.post("/vee-rules", status_code=201)
+def create_vee_rule_endpoint(body: VeeRuleRequest, tenant_id: str = Depends(get_tenant_id)) -> dict:
+    with db_conn() as conn:
+        rule_id = create_vee_rule(conn, tenant_id, body.type, body.params, body.priority)
+        return {"id": rule_id}
+
+
+@app.patch("/vee-rules/{rule_id}")
+def deactivate_vee_rule_endpoint(rule_id: str, tenant_id: str = Depends(get_tenant_id)) -> dict:
+    with db_conn() as conn:
+        try:
+            deactivate_vee_rule(conn, tenant_id, rule_id)
+        except VeeRuleNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {"id": rule_id, "is_active": False}
+
+
+class ConsumptionAnomalyRuleRequest(BaseModel):
+    condition: dict
+    action: str
+
+
+@app.get("/consumption-anomaly-rules")
+def list_consumption_anomaly_rules_endpoint(
+    tenant_id: str = Depends(get_tenant_id), active_only: bool = True
+) -> list[dict]:
+    with db_conn() as conn:
+        return list_consumption_anomaly_rules(conn, tenant_id, active_only)
+
+
+@app.post("/consumption-anomaly-rules", status_code=201)
+def create_consumption_anomaly_rule_endpoint(
+    body: ConsumptionAnomalyRuleRequest, tenant_id: str = Depends(get_tenant_id)
+) -> dict:
+    with db_conn() as conn:
+        rule_id = create_consumption_anomaly_rule(conn, tenant_id, body.condition, body.action)
+        return {"id": rule_id}
+
+
+@app.patch("/consumption-anomaly-rules/{rule_id}")
+def deactivate_consumption_anomaly_rule_endpoint(rule_id: str, tenant_id: str = Depends(get_tenant_id)) -> dict:
+    with db_conn() as conn:
+        try:
+            deactivate_consumption_anomaly_rule(conn, tenant_id, rule_id)
+        except AnomalyRuleNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {"id": rule_id, "is_active": False}
+
+
+class ApprovalLevelRequest(BaseModel):
+    order_type: str
+    requires_human_approval: bool
+    min_required_role: str
+
+
+@app.get("/control-approval-levels")
+def list_approval_levels_endpoint(tenant_id: str = Depends(get_tenant_id), active_only: bool = True) -> list[dict]:
+    with db_conn() as conn:
+        return list_approval_levels(conn, tenant_id, active_only)
+
+
+@app.post("/control-approval-levels", status_code=201)
+def create_approval_level_endpoint(body: ApprovalLevelRequest, tenant_id: str = Depends(get_tenant_id)) -> dict:
+    with db_conn() as conn:
+        level_id = create_approval_level(
+            conn, tenant_id, body.order_type, body.requires_human_approval, body.min_required_role
+        )
+        return {"id": level_id}

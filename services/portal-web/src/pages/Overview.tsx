@@ -22,6 +22,9 @@ export function OverviewPage() {
           <Link to="/observability" className="text-sm text-slate-500 hover:text-slate-700">
             Observabilidad
           </Link>
+          <Link to="/configuration" className="text-sm text-slate-500 hover:text-slate-700">
+            Configuración
+          </Link>
           <button onClick={logout} className="text-sm text-slate-500 hover:text-slate-700">
             Cerrar sesión
           </button>
