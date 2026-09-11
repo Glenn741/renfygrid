@@ -147,10 +147,42 @@ export interface InvalidReading {
   value: number;
   vee_rule_id: string | null;
   validation_notes: string | null;
+  rule_type: string | null;
 }
 
 export function getInvalidReadings(): Promise<InvalidReading[]> {
   return request("/vee/invalid-readings");
+}
+
+// --- Panel real de VEE (Sprint C11-2): resumen + lecturas estimadas --
+// F14-F19 ya estaban construidos, pero el panel solo mostraba la cola de
+// excepciones, sin resumen ni el trabajo de estimacion (F16/F17) visible.
+
+export interface VeeSummary {
+  invalid_pending: number;
+  invalid_by_type: Record<string, number>;
+  estimated_24h: number;
+  edited_24h: number;
+  active_rules_by_type: Record<string, number>;
+  active_rules_total: number;
+}
+
+export function getVeeSummary(): Promise<VeeSummary> {
+  return request("/vee/summary");
+}
+
+export interface EstimatedReading {
+  meter_id: string;
+  account_number: string;
+  channel: string;
+  timestamp: string;
+  value: number;
+  created_at: string;
+  estimation_method: string | null;
+}
+
+export function getEstimatedReadings(): Promise<EstimatedReading[]> {
+  return request("/vee/estimated-readings");
 }
 
 export interface Consumption {

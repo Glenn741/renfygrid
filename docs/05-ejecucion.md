@@ -677,3 +677,24 @@ corra periódicamente en producción — las particiones de septiembre/octubre 2
 (las creó la propia migración 0011), pero hace falta antes de que se acabe octubre. Mismo
 criterio que "formalizar el pipeline de build de Nuitka en un script versionado" — pendiente
 real pero no bloqueante para el pilotos actual (0 lecturas en producción todavía).
+
+### Sprint C11-2 — Panel real de VEE, backend + frontend (2026-09-11)
+
+**Motivo:** el usuario reportó que "el panel de VEE se ve sin empezar" y pidió validar que el
+módulo estuviera completamente cubierto backend+frontend. Resultado real: **F14-F19 sí estaban
+completos y verificados** (matriz funcional, Sprint 3-4 y C11) — el gap era 100% de exposición:
+la pantalla `Vee.tsx` solo mostraba la cola de excepciones inválidas, sin resumen, sin las
+lecturas ESTIMADAS visibles (F16/F17, el trabajo más real del motor) y sin distinguir un rango
+fuera de límite de una coherencia entre canales rota (F15/C11). El editor de reglas en
+Configuración tampoco dejaba crear una regla `channel_consistency`, ni elegir el método de
+estimación (`missing_interval` siempre mandaba `linear_interpolation` fijo en el código del
+frontend, sin importar que el backend ya soportara los otros 2 desde Sprint C11).
+**Estado:** 🟢 cerrado y desplegado a producción.
+
+| Fecha | Avance | Evidencia |
+|---|---|---|
+| 2026-09-11 | **Backend**: `vee_summary.py` (nuevo) — `vee_summary()` (inválidas pendientes por tipo de regla, estimadas/editadas en 24h, reglas activas por tipo) y `list_estimated_readings()` (lecturas `source='estimated'` con el `estimation_method` real de la regla que las generó). `list_invalid_readings.py` extendido con `rule_type` (join a `vee_rule.type`) para distinguir rango de coherencia entre canales. Dos endpoints nuevos: `GET /vee/summary`, `GET /vee/estimated-readings` | `services/vee-engine/vee_summary.py`, `list_invalid_readings.py`, `services/portal-api/main.py` |
+| 2026-09-11 | E2E real: 2 reglas activas (range + channel_consistency) + 1 inválida por cada una + 1 estimada + 1 editada reales — confirma el resumen exacto, el método de estimación real en la lista de estimadas, y que cada inválida trae su `rule_type` correcto | `verify_vee_summary_end_to_end.py` → `SPRINT C11-2 VEE PANEL E2E OK` |
+| 2026-09-11 | Regresión: 8/8 unit tests + `verify_stage_screens_end_to_end.py`/`verify_detail_actions_end_to_end.py` (ya usaban `/vee/invalid-readings`) siguen en verde con el campo `rule_type` nuevo | — | — |
+| 2026-09-11 | **Frontend**: `Vee.tsx` rediseñada — 4 tarjetas de resumen (inválidas/estimadas 24h/editadas 24h/reglas activas), filtro por tipo de regla en la cola de excepciones (con badge de tipo por fila), sección nueva "Lecturas estimadas" con el método usado por fila. `Configuration.tsx`: `VeeRulesSection` ahora soporta crear reglas `channel_consistency` (canal de referencia + ratio min/max) y elegir el método de estimación real (antes fijo a `linear_interpolation`) | `services/portal-web/src/pages/Vee.tsx`, `Configuration.tsx`, `api.ts` |
+| 2026-09-11 | `tsc -b && vite build` limpio, bundle sin rutas mangled, contiene "vee/summary"/"vee/estimated-readings"/"channel_consistency". Desplegado: backend (Nuitka) a `essmarplapp02`, `systemctl restart renfygrid-portal-api` → activo; frontend a `essmarplpxy03`. Verificado en vivo: bundle servido coincide con el build, `/api/vee/summary` responde 401 (gateado por auth, no 404/500) | `curl https://renfygrid.rensoftlabs.com/...` |

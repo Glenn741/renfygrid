@@ -25,33 +25,54 @@ function SectionCard({ title, description, children }: { title: string; descript
   );
 }
 
+const ESTIMATION_METHODS = [
+  { value: "linear_interpolation", label: "Interpolación lineal" },
+  { value: "customer_historical_average", label: "Promedio histórico del medidor (misma hora del día)" },
+  { value: "similar_customers_average", label: "Promedio de medidores similares (mismo instante)" },
+] as const;
+
 function VeeRulesSection() {
   const queryClient = useQueryClient();
   const { data } = useQuery({ queryKey: ["vee-rules"], queryFn: getVeeRules });
-  const [type, setType] = useState<"range" | "missing_interval">("range");
+  const [type, setType] = useState<"range" | "missing_interval" | "channel_consistency">("range");
   const [channel, setChannel] = useState("active_energy");
   const [min, setMin] = useState("0");
   const [max, setMax] = useState("999999");
   const [intervalSeconds, setIntervalSeconds] = useState("900");
   const [toleranceSeconds, setToleranceSeconds] = useState("60");
+  const [estimationMethod, setEstimationMethod] = useState<string>(ESTIMATION_METHODS[0].value);
+  const [referenceChannel, setReferenceChannel] = useState("active_energy");
+  const [minRatio, setMinRatio] = useState("0");
+  const [maxRatio, setMaxRatio] = useState("1.0");
   const [error, setError] = useState<string | null>(null);
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ["vee-rules"] });
 
   const createMutation = useMutation({
-    mutationFn: () =>
-      type === "range"
-        ? createVeeRule({ type, params: { channel, min: Number(min), max: Number(max) }, priority: 100 })
-        : createVeeRule({
-            type,
-            params: {
-              channel,
-              expected_interval_seconds: Number(intervalSeconds),
-              tolerance_seconds: Number(toleranceSeconds),
-              estimation_method: "linear_interpolation",
-            },
-            priority: 100,
-          }),
+    mutationFn: () => {
+      if (type === "range") {
+        return createVeeRule({ type, params: { channel, min: Number(min), max: Number(max) }, priority: 100 });
+      }
+      if (type === "missing_interval") {
+        return createVeeRule({
+          type,
+          params: {
+            channel,
+            expected_interval_seconds: Number(intervalSeconds),
+            tolerance_seconds: Number(toleranceSeconds),
+            estimation_method: estimationMethod,
+          },
+          priority: 100,
+        });
+      }
+      // channel_consistency (Sprint C11): compara `channel` contra
+      // `reference_channel` del mismo medidor en el mismo instante.
+      return createVeeRule({
+        type,
+        params: { channel, reference_channel: referenceChannel, min_ratio: Number(minRatio), max_ratio: Number(maxRatio) },
+        priority: 100,
+      });
+    },
     onSuccess: () => { setError(null); invalidate(); },
     onError: (err) => setError(err instanceof ApiError ? err.message : "No se pudo crear la regla."),
   });
@@ -62,20 +83,25 @@ function VeeRulesSection() {
   });
 
   return (
-    <SectionCard title="Reglas VEE" description="Rangos válidos e intervalos esperados por canal — usadas por el motor de validación en el siguiente pase.">
+    <SectionCard title="Reglas VEE" description="Rangos válidos, intervalos esperados y coherencia entre canales — usadas por el motor de validación/estimación en el siguiente pase.">
       <div className="flex flex-wrap items-end gap-3 mb-4">
         <div>
           <label className="block text-xs font-medium text-slate-500 mb-1">Tipo</label>
-          <select className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm" value={type} onChange={(e) => setType(e.target.value as "range" | "missing_interval")}>
+          <select
+            className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm"
+            value={type}
+            onChange={(e) => setType(e.target.value as "range" | "missing_interval" | "channel_consistency")}
+          >
             <option value="range">Rango (min/max)</option>
-            <option value="missing_interval">Intervalo esperado</option>
+            <option value="missing_interval">Intervalo esperado (estimación)</option>
+            <option value="channel_consistency">Coherencia entre canales</option>
           </select>
         </div>
         <div>
           <label className="block text-xs font-medium text-slate-500 mb-1">Canal</label>
           <input className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm w-36" value={channel} onChange={(e) => setChannel(e.target.value)} />
         </div>
-        {type === "range" ? (
+        {type === "range" && (
           <>
             <div>
               <label className="block text-xs font-medium text-slate-500 mb-1">Mínimo</label>
@@ -86,7 +112,8 @@ function VeeRulesSection() {
               <input className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm w-28" value={max} onChange={(e) => setMax(e.target.value)} />
             </div>
           </>
-        ) : (
+        )}
+        {type === "missing_interval" && (
           <>
             <div>
               <label className="block text-xs font-medium text-slate-500 mb-1">Intervalo esperado (s)</label>
@@ -95,6 +122,30 @@ function VeeRulesSection() {
             <div>
               <label className="block text-xs font-medium text-slate-500 mb-1">Tolerancia (s)</label>
               <input className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm w-28" value={toleranceSeconds} onChange={(e) => setToleranceSeconds(e.target.value)} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-500 mb-1">Método de estimación</label>
+              <select className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm" value={estimationMethod} onChange={(e) => setEstimationMethod(e.target.value)}>
+                {ESTIMATION_METHODS.map((m) => (
+                  <option key={m.value} value={m.value}>{m.label}</option>
+                ))}
+              </select>
+            </div>
+          </>
+        )}
+        {type === "channel_consistency" && (
+          <>
+            <div>
+              <label className="block text-xs font-medium text-slate-500 mb-1">Canal de referencia</label>
+              <input className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm w-36" value={referenceChannel} onChange={(e) => setReferenceChannel(e.target.value)} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-500 mb-1">Ratio mínimo</label>
+              <input className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm w-24" value={minRatio} onChange={(e) => setMinRatio(e.target.value)} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-500 mb-1">Ratio máximo</label>
+              <input className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm w-24" value={maxRatio} onChange={(e) => setMaxRatio(e.target.value)} />
             </div>
           </>
         )}
@@ -106,6 +157,12 @@ function VeeRulesSection() {
           Agregar
         </button>
       </div>
+      {type === "channel_consistency" && (
+        <p className="text-xs text-slate-500 mb-3">
+          Compara "{channel}" contra "{referenceChannel}" del mismo medidor en el mismo instante — si el canal de
+          referencia no reportó en ese instante, la lectura pasa sin evaluar (nunca se inventa un ratio).
+        </p>
+      )}
       {error && <p className="text-sm text-red-600 mb-3">{error}</p>}
 
       {data && data.length === 0 && <EmptyState message="Sin reglas VEE activas todavía." />}
