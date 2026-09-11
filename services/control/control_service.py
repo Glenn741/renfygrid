@@ -23,10 +23,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "hes-adapter-dlms")
 
 import psycopg  # noqa: E402
 
+from account_protection import is_protected  # noqa: E402
 from control_engine import approval_level_for, can_approve, status_after_request  # noqa: E402
 from control_executor import dispatch_control_order  # noqa: E402
 from order_signing import sign_order  # noqa: E402
 from renmeter_common.db import tenant_scope  # noqa: E402
+
+# Tipos de orden que de verdad cortan el servicio -- el chequeo de cuenta
+# protegida (Sprint C11-5) aplica solo aca, nunca a 'reconnection' (jamas
+# hace falta proteger a alguien de que le reconecten el servicio).
+_SUSPENDING_ORDER_TYPES = ("suspension", "disconnection")
 
 
 class InvalidTransitionError(RuntimeError):
@@ -35,6 +41,13 @@ class InvalidTransitionError(RuntimeError):
 
 class InsufficientRoleError(RuntimeError):
     """El rol de quien intenta aprobar no alcanza el minimo configurado para este tipo de orden."""
+
+
+class ProtectedAccountError(RuntimeError):
+    """Cuenta marcada como protegida contra suspension/desconexion (Ley 142 +
+    normas CRA/CREG u otra norma vigente, Sprint C11-5) -- nunca se aprueba
+    en silencio; requiere override explicito con su propia justificacion,
+    trazable aparte en la auditoria."""
 
 
 def _write_audit(cur, tenant_id: str, order_id: str, previous_status: str | None, new_status: str, actor: str, detail: dict | None = None) -> None:
@@ -53,12 +66,37 @@ def request_order(
     requested_by: str,
     justification: str,
     approval_levels: list[dict],
+    override_protection: bool = False,
+    override_justification: str | None = None,
 ) -> str:
     """F26 + el ruteo de F27 en la misma solicitud: la orden nace
     `requested` y de inmediato transiciona a `pending_approval` o, si el
     tenant configuro que este tipo de orden se auto-aprueba, a `approved`
     (actor `system:auto_approval`, trazable en la auditoria igual que
-    cualquier otra transicion)."""
+    cualquier otra transicion).
+
+    Sprint C11-5: para `suspension`/`disconnection`, primero chequea si la
+    cuenta esta en la lista de protegidas -- si lo esta, la solicitud se
+    RECHAZA de entrada (nunca llega ni a `requested`) salvo que quien pide
+    la orden mande `override_protection=True` CON su propia
+    `override_justification` (nunca la misma `justification` del pedido
+    original -- el override necesita su propio motivo documentado, para
+    que el debido proceso quede trazable de verdad)."""
+    protection_override_detail = None
+    if order_type in _SUSPENDING_ORDER_TYPES:
+        protection = is_protected(conn, tenant_id, meter_id)
+        if protection["protected"]:
+            if not override_protection or not override_justification:
+                raise ProtectedAccountError(
+                    f"Cuenta protegida contra suspension/desconexion ({protection['reason'] or 'sin razon registrada'}, "
+                    f"marcada por {protection['marked_by']}) -- requiere override explicito con su propia justificacion."
+                )
+            protection_override_detail = {
+                "protection_reason": protection["reason"],
+                "protection_marked_by": protection["marked_by"],
+                "override_justification": override_justification,
+            }
+
     approval = approval_level_for(order_type, approval_levels)
     next_status = status_after_request(approval)
 
@@ -72,7 +110,7 @@ def request_order(
                 )
                 (order_id,) = cur.fetchone()
                 order_id = str(order_id)
-                _write_audit(cur, tenant_id, order_id, None, "requested", requested_by)
+                _write_audit(cur, tenant_id, order_id, None, "requested", requested_by, detail=protection_override_detail)
 
                 if next_status == "approved":
                     cur.execute(
@@ -247,7 +285,8 @@ def list_control_orders(conn: psycopg.Connection, tenant_id: str, status: str | 
 
     query = (
         "SELECT co.id, co.meter_id, m.account_number, co.type, co.status, "
-        "       co.requested_by, co.justification, co.requested_at, co.approved_by, co.approved_at "
+        "       co.requested_by, co.justification, co.requested_at, co.approved_by, co.approved_at, "
+        "       m.protected_from_suspension "
         "FROM control_order co JOIN meter m ON m.id = co.meter_id "
         f"WHERE {' AND '.join(clauses)} ORDER BY co.requested_at DESC"
     )
@@ -267,9 +306,44 @@ def list_control_orders(conn: psycopg.Connection, tenant_id: str, status: str | 
                         "requested_at": row[7].isoformat() if row[7] else None,
                         "approved_by": row[8],
                         "approved_at": row[9].isoformat() if row[9] else None,
+                        "meter_protected": row[10],
                     }
                     for row in cur.fetchall()
                 ]
+
+
+def control_summary(conn: psycopg.Connection, tenant_id: str) -> dict:
+    """KPIs de Control/SCR (Sprint C11-5, benchmark real): "command success
+    rates, or retry backlog" es justo el tipo de metrica que un CIS/MDM de
+    referencia expone para ordenes de conexion/desconexion remota -- aca
+    nunca existia, solo la cola de `pending_approval`."""
+    with conn.transaction():
+        with tenant_scope(conn, tenant_id):
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT type, count(*) FROM control_order WHERE tenant_id = %s GROUP BY type",
+                    (tenant_id,),
+                )
+                by_type = dict(cur.fetchall())
+
+                cur.execute(
+                    "SELECT status, count(*) FROM control_order WHERE tenant_id = %s GROUP BY status",
+                    (tenant_id,),
+                )
+                by_status = dict(cur.fetchall())
+
+    confirmed = by_status.get("confirmed", 0)
+    failed = by_status.get("failed", 0)
+    dispatched_total = confirmed + failed
+    return {
+        "total_orders": sum(by_type.values()),
+        "by_type": by_type,
+        "by_status": by_status,
+        "pending_approval": by_status.get("pending_approval", 0),
+        # None (no se ha despachado ninguna todavia), no 0% -- mismo
+        # fail-safe que el resto de las tasas de exito del proyecto.
+        "command_success_rate_pct": round(100.0 * confirmed / dispatched_total, 1) if dispatched_total else None,
+    }
 
 
 def get_control_order_detail(conn: psycopg.Connection, tenant_id: str, order_id: str) -> dict | None:
@@ -282,7 +356,7 @@ def get_control_order_detail(conn: psycopg.Connection, tenant_id: str, order_id:
                 cur.execute(
                     "SELECT co.id, co.meter_id, m.account_number, co.type, co.status, "
                     "       co.requested_by, co.justification, co.requested_at, "
-                    "       co.approved_by, co.approved_at, co.confirmed_at "
+                    "       co.approved_by, co.approved_at, co.confirmed_at, m.protected_from_suspension "
                     "FROM control_order co JOIN meter m ON m.id = co.meter_id "
                     "WHERE co.id = %s AND co.tenant_id = %s",
                     (order_id, tenant_id),
@@ -319,5 +393,6 @@ def get_control_order_detail(conn: psycopg.Connection, tenant_id: str, order_id:
         "approved_by": row[8],
         "approved_at": row[9].isoformat() if row[9] else None,
         "confirmed_at": row[10].isoformat() if row[10] else None,
+        "meter_protected": row[11],
         "audit": audit,
     }

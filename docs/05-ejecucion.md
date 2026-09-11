@@ -785,3 +785,44 @@ nuevas leen directo de `meter_event` (F05/F09, ya poblada por código real) y `p
 | 2026-09-11 | Regresión: 8/8 unit tests + `verify_fleet_aggregation_end_to_end.py`/`verify_observability_end_to_end.py` siguen en verde | — | — |
 | 2026-09-11 | **Frontend, `Meters.tsx` extendida** con 4 tarjetas de KPI al inicio (alarmas 24h, éxito de comunicación 24h, fallas 24h, medidores en cola) y 2 secciones nuevas: "Cola de reintentos" (tabla con intentos fallidos/último error/próximo intento en tiempo relativo) y "Eventos y alarmas" (feed filtrable por tipo, con badge de severidad) | `services/portal-web/src/pages/Meters.tsx`, `api.ts` |
 | 2026-09-11 | `tsc -b && vite build` limpio, bundle sin rutas mangled, contiene "meters/events"/"meters/retry-queue"/"meters/event-summary". Desplegado: backend (Nuitka) a `essmarplapp02`; frontend a `essmarplpxy03`. Verificado en vivo: bundle coincide exacto (JS y CSS), `/api/meters/events` responde 401 (gateado, no 404/500) | `curl https://renfygrid.rensoftlabs.com/...` |
+
+### Sprint C11-5/C11-6 — Control (SCR) y Consumo, con benchmark real (2026-09-11)
+
+**Motivo:** el usuario pidió el mismo ejercicio de mercado que VEE/HES ya tuvieron, esta vez
+para Control y Consumo — "Mira la industria. No te ahorres nada en el analisis y la busqueda y
+validacion".
+
+**Investigado antes de tocar código** (no memoria de entrenamiento):
+- MDMS reporting real cubre "billing validation reports, usage exception reports, VEE summary
+  reports, TOU and demand rate consumption reports, **non-revenue loss analysis**, and customer
+  usage trend reports" ([Bynry — MDMS Reporting and Analytics](https://www.bynry.com/blog/mdms-reporting-analytics-utilities)).
+- Utilidades reales miden "percentage of successful reads, **command success rates**, or
+  **retry backlog**" para las órdenes de conexión/desconexión remota
+  ([Grid/EPRI — Meter Remote Connect Disconnect](https://smartgrid.epri.com/UseCases/Meter%20Remote%20Connect%20Disconnect_ph2add.pdf)).
+- **Hallazgo más serio que un gap de UI**: ningún CIS/MDM de referencia ejecuta un corte sin
+  antes chequear si la cuenta es un "usuario de protección especial". En Colombia esto es
+  requisito **real y vigente**: Ley 142 de 1994 + normas posteriores de la CRA/CREG — la
+  Resolución CREG 108/1997 exige que la empresa considere "sujetos de especial protección"
+  antes de suspender, con derecho a debido proceso
+  ([CREG — normativa de servicios públicos](https://creg.gov.co/)).
+
+**Confirmado con el usuario antes de construir** (dado que esto cambia el flujo de aprobación,
+no solo agrega un tablero): sí construir la lista de cuentas protegidas, con alcance acotado —
+solo la bandera de exclusión + quién/cuándo/por qué en texto libre; la clasificación real del
+cliente (es un hospital, es un colegio...) queda fuera de RenfyGrid, es dato de CIS.
+**Estado:** 🟢 cerrado y desplegado a producción.
+
+| Fecha | Avance | Evidencia |
+|---|---|---|
+| 2026-09-11 | **Control — migración `0012_meter_protection.sql`**: `meter.protected_from_suspension`/`protection_reason`/`protection_marked_by`/`protection_marked_at`. `services/control/account_protection.py` (nuevo): `is_protected`/`mark_protection`/`bulk_mark_protection` (por `account_number`, para carga masiva)/`list_protected_meters`. `control_service.request_order` ahora **rechaza de entrada** (422, `ProtectedAccountError`) una `suspension`/`disconnection` contra una cuenta protegida, salvo `override_protection=true` + `override_justification` propia (nunca la misma justificación original) — el override queda trazado en `control_order_audit.detail`, no solo un flag silencioso | `infra/db/migrations/0012_meter_protection.sql`, `services/control/account_protection.py`, `control_service.py` |
+| 2026-09-11 | **Control — KPIs reales**: `control_summary()` nuevo (`command_success_rate_pct` = confirmadas/(confirmadas+fallidas), `None` sin datos — nunca 0% inventado —, desglose por tipo/estado, pendientes). `list_control_orders`/`get_control_order_detail` ahora traen `meter_protected`. Endpoints nuevos: `GET /control-orders/summary`, `GET /meters/protected`, `POST /meters/{id}/protection`, `POST /meters/protection/bulk` | `services/control/control_service.py`, `services/portal-api/main.py` |
+| 2026-09-11 | E2E real: medidor marcado protegido → orden de suspensión sin override da 422; con override real (justificación propia) da 201 y la auditoría trae el motivo de protección + la justificación del override; carga masiva con 1 cuenta real + 1 inexistente confirma `marked`/`not_found` reales; resumen sin nada despachado da tasa `None`, con 1 confirmada + 1 fallida reales da exactamente 50.0% | `verify_meter_protection_end_to_end.py` → `SPRINT C11-5 METER PROTECTION E2E OK` |
+| 2026-09-11 | **Consumo — `consumption_summary.py` (nuevo)**: `consumption_summary()` (tasa de anomalía, % listo para facturar, desglose por estado, órdenes por tipo de acción), `list_consumption_orders()` (feed real de `reread_order`/`inspection_order`, F23, invisibles desde Sprint 5), `resolve_anomaly()` — cierra una anomalía investigada (`anomaly_status='resolved'`, en el esquema desde Sprint 0, nunca se escribía) y deja rastro real en `meter_event` (`type='anomaly_resolved'`). Endpoints nuevos: `GET /consumption/summary`, `GET /consumption/orders`, `POST /consumption/resolve` | `services/consumption/consumption_summary.py`, `services/portal-api/main.py` |
+| 2026-09-11 | E2E real: 1 consumo `ok` + 1 `under_review` (con su orden real de relectura) + 1 `resolved` preexistente confirma tasa de anomalía ≈33.3%, listo-para-facturar ≈66.7%; resolver el `under_review` real lo baja a 0%; resolver el mismo periodo otra vez da 404, no un 200 falso | `verify_consumption_summary_end_to_end.py` → `SPRINT C11-6 CONSUMPTION PANEL E2E OK` |
+| 2026-09-11 | Regresión completa sin romper nada: unit tests de `control`/`portal-api`, `verify_control_execution_end_to_end.py` (F28/F29/F30, camino exitoso y de falla), `verify_service_orders_end_to_end.py`, `verify_stage_screens_end_to_end.py`, `verify_detail_actions_end_to_end.py`, `verify_consumption_end_to_end.py` (F21-F24) — todos siguen en verde | — | — |
+| 2026-09-11 | **Frontend**: `Control.tsx` con 4 KPIs (tasa de éxito de comando, pendientes, total, por tipo), filtro Pendientes/Todas (historial real, antes inexistente), badge "protegida" en la fila si el medidor lo está. `Consumption.tsx` con 4 KPIs (tasa de anomalía, % listo para facturar, procesados, órdenes por acción), botón "Resolver" real por fila, tabla nueva de órdenes de relectura/inspección. `Configuration.tsx`: sección nueva "Cuentas protegidas" — marcado manual (textarea) o carga de archivo `.csv`/`.txt` (parseo client-side), lista con "quitar protección" | `services/portal-web/src/pages/Control.tsx`, `Consumption.tsx`, `Configuration.tsx`, `api.ts` |
+| 2026-09-11 | `tsc -b && vite build` limpio, bundle sin rutas mangled, contiene "consumption/summary"/"control-orders/summary"/"meters/protected"/"meters/protection". Desplegado: migración 0012 con respaldo real primero, backend (Nuitka) a `essmarplapp02`, frontend a `essmarplpxy03`. Verificado en vivo: bundle coincide exacto, `/api/consumption/summary` responde 401 (gateado, no 404/500) | `curl https://renfygrid.rensoftlabs.com/...` |
+
+**Nota suelta**: se encontró un endpoint viejo `GET /events` en `main.py` (Sprint temprano), no
+usado por ningún frontend, superado por `/meters/events` (Sprint C11-4) — no se tocó (fuera de
+alcance), queda señalado para una limpieza futura.

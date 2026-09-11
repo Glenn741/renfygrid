@@ -286,6 +286,47 @@ export function getConsumptionUnderReview(): Promise<Consumption[]> {
   return request("/consumption?anomaly_status=under_review");
 }
 
+// --- Panel real de Gestion de Consumos (Sprint C11-6): F21-F24 ya estaban
+// construidos, pero la pantalla solo mostraba la cola de "under_review" --
+// sin resumen, sin las ordenes de relectura/inspeccion visibles (F23), y
+// sin forma de cerrar una anomalia investigada (anomaly_status='resolved'
+// existia en el esquema desde Sprint 0, nunca se escribia).
+
+export interface ConsumptionSummary {
+  total_processed: number;
+  by_status: Record<string, number>;
+  orders_by_action: Record<string, number>;
+  anomaly_rate_pct: number | null;
+  billing_ready_pct: number | null;
+}
+
+export function getConsumptionSummary(): Promise<ConsumptionSummary> {
+  return request("/consumption/summary");
+}
+
+export interface ConsumptionOrder {
+  meter_id: string;
+  account_number: string;
+  action: string;
+  timestamp: string;
+  period: string;
+  value: number;
+  anomaly_status: string;
+}
+
+export function getConsumptionOrders(): Promise<ConsumptionOrder[]> {
+  return request("/consumption/orders");
+}
+
+export function resolveConsumptionAnomaly(body: {
+  meter_id: string;
+  period_start: string;
+  period_end: string;
+  notes: string;
+}) {
+  return request<{ status: string }>("/consumption/resolve", { method: "POST", body: JSON.stringify(body) });
+}
+
 export interface ControlOrder {
   order_id: string;
   meter_id: string;
@@ -297,6 +338,7 @@ export interface ControlOrder {
   requested_at: string | null;
   approved_by: string | null;
   approved_at: string | null;
+  meter_protected: boolean;
 }
 
 export function getControlOrders(status?: string): Promise<ControlOrder[]> {
@@ -307,6 +349,52 @@ export function approveControlOrder(orderId: string): Promise<{ order_id: string
   // Sprint C5: quien aprueba sale del JWT del que hace la llamada, no de un
   // campo de texto libre -- ver services/portal-api/auth_dependency.py.
   return request(`/control-orders/${orderId}/approve`, { method: "POST", body: "{}" });
+}
+
+// --- Panel real de Control/SCR (Sprint C11-5): "command success rates, or
+// retry backlog" es justo el tipo de KPI que un CIS/MDM de referencia
+// expone -- antes solo existia la cola de pendientes, sin historial ni
+// tasa de exito, y ninguna cuenta protegida contra suspension/desconexion
+// (Ley 142 + normas CRA/CREG en Colombia).
+
+export interface ControlSummary {
+  total_orders: number;
+  by_type: Record<string, number>;
+  by_status: Record<string, number>;
+  pending_approval: number;
+  command_success_rate_pct: number | null;
+}
+
+export function getControlSummary(): Promise<ControlSummary> {
+  return request("/control-orders/summary");
+}
+
+export interface ProtectedMeter {
+  meter_id: string;
+  account_number: string;
+  brand: string | null;
+  model: string | null;
+  reason: string | null;
+  marked_by: string | null;
+  marked_at: string | null;
+}
+
+export function getProtectedMeters(): Promise<ProtectedMeter[]> {
+  return request("/meters/protected");
+}
+
+export function markMeterProtection(meterId: string, body: { protected: boolean; reason?: string | null }) {
+  return request<{ meter_id: string; protected: boolean }>(`/meters/${meterId}/protection`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function bulkMarkMeterProtection(body: { account_numbers: string[]; reason: string }) {
+  return request<{ marked: string[]; not_found: string[] }>("/meters/protection/bulk", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
 }
 
 // --- Configuración: editor de reglas (F50, Sprint C3) ---

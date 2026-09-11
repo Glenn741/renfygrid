@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ApiError,
+  bulkMarkMeterProtection,
   createApprovalLevel,
   createConsumptionAnomalyRule,
   createProtocolMapping,
@@ -10,8 +11,10 @@ import {
   deactivateVeeRule,
   getApprovalLevels,
   getConsumptionAnomalyRules,
+  getProtectedMeters,
   getProtocolMappings,
   getVeeRules,
+  markMeterProtection,
 } from "../api";
 import { StagePage, EmptyState } from "../components/StagePage";
 
@@ -398,6 +401,130 @@ function ProtocolMappingSection() {
   );
 }
 
+function ProtectedAccountsSection() {
+  const queryClient = useQueryClient();
+  const { data } = useQuery({ queryKey: ["protected-meters"], queryFn: getProtectedMeters });
+  const [manualText, setManualText] = useState("");
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<{ marked: string[]; not_found: string[] } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["protected-meters"] });
+
+  const bulkMutation = useMutation({
+    mutationFn: (accountNumbers: string[]) => bulkMarkMeterProtection({ account_numbers: accountNumbers, reason }),
+    onSuccess: (res) => { setError(null); setResult(res); invalidate(); },
+    onError: (err) => setError(err instanceof ApiError ? err.message : "No se pudo cargar la lista."),
+  });
+
+  const unmarkMutation = useMutation({
+    mutationFn: (meterId: string) => markMeterProtection(meterId, { protected: false }),
+    onSuccess: invalidate,
+  });
+
+  const parseAccountNumbers = (text: string): string[] =>
+    text.split(/[\n,;]+/).map((s) => s.trim()).filter(Boolean);
+
+  const handleManualSubmit = () => {
+    const accounts = parseAccountNumbers(manualText);
+    if (accounts.length === 0 || !reason) return;
+    bulkMutation.mutate(accounts);
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !reason) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const accounts = parseAccountNumbers(String(reader.result ?? ""));
+      if (accounts.length > 0) bulkMutation.mutate(accounts);
+    };
+    reader.readAsText(file);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  return (
+    <SectionCard
+      title="Cuentas protegidas contra suspensión/desconexión"
+      description="Contratos que la regulación vigente (en Colombia, Ley 142 y normas de la CRA/CREG) excluye de corte -- hospitales, colegios, etc. RenfyGrid solo guarda la bandera de exclusión + quién/cuándo/por qué la marcó; la clasificación real del cliente vive en el CIS."
+    >
+      <div className="flex flex-wrap items-end gap-3 mb-4">
+        <div className="flex-1 min-w-[240px]">
+          <label className="block text-xs font-medium text-slate-500 mb-1">
+            Cuentas a proteger (una por línea, o separadas por coma)
+          </label>
+          <textarea
+            className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm"
+            rows={3}
+            value={manualText}
+            onChange={(e) => setManualText(e.target.value)}
+            placeholder={"ACC-0001\nACC-0002"}
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-slate-500 mb-1">Motivo (obligatorio)</label>
+          <input
+            className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm w-56"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="Hospital / colegio / Ley 142..."
+          />
+        </div>
+        <button
+          onClick={handleManualSubmit}
+          disabled={bulkMutation.isPending || !reason || parseAccountNumbers(manualText).length === 0}
+          className="rounded-lg bg-indigo-600 text-white text-sm font-semibold px-4 py-1.5 hover:bg-indigo-700 disabled:opacity-50"
+        >
+          Marcar protegidas
+        </button>
+        <div>
+          <label className="block text-xs font-medium text-slate-500 mb-1">o cargar un archivo (.csv/.txt)</label>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".csv,.txt"
+            disabled={!reason}
+            onChange={handleFileChange}
+            className="text-sm text-slate-600 disabled:opacity-50"
+          />
+        </div>
+      </div>
+      {!reason && <p className="text-xs text-amber-700 mb-3">Escribe primero el motivo -- no se marca ninguna cuenta sin uno.</p>}
+      {error && <p className="text-sm text-red-600 mb-3">{error}</p>}
+      {result && (
+        <p className="text-sm mb-3">
+          <span className="text-emerald-700">{result.marked.length} marcada(s)</span>
+          {result.not_found.length > 0 && (
+            <span className="text-red-600"> — {result.not_found.length} cuenta(s) no encontrada(s): {result.not_found.join(", ")}</span>
+          )}
+        </p>
+      )}
+
+      {data && data.length === 0 && <EmptyState message="Sin cuentas protegidas todavía." />}
+      {data && data.length > 0 && (
+        <ul className="divide-y divide-slate-100">
+          {data.map((row) => (
+            <li key={row.meter_id} className="flex items-center justify-between py-2 text-sm">
+              <span className="text-slate-700">
+                <strong>{row.account_number}</strong> — {row.reason ?? "sin motivo registrado"}
+                <span className="text-slate-400"> (marcada por {row.marked_by ?? "?"})</span>
+              </span>
+              <button
+                onClick={() => unmarkMutation.mutate(row.meter_id)}
+                disabled={unmarkMutation.isPending}
+                className="text-xs text-slate-400 hover:text-red-600"
+              >
+                Quitar protección
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </SectionCard>
+  );
+}
+
 export function ConfigurationPage() {
   return (
     <StagePage title="Configuración">
@@ -405,6 +532,7 @@ export function ConfigurationPage() {
       <ConsumptionAnomalyRulesSection />
       <ApprovalLevelsSection />
       <ProtocolMappingSection />
+      <ProtectedAccountsSection />
     </StagePage>
   );
 }

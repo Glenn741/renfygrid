@@ -47,11 +47,15 @@ from consumption_anomaly_rules_admin import (  # noqa: E402
     deactivate_consumption_anomaly_rule,
     list_consumption_anomaly_rules,
 )
+from account_protection import bulk_mark_protection, list_protected_meters, mark_protection  # noqa: E402
+from account_protection import MeterNotFoundError as ProtectionMeterNotFoundError  # noqa: E402
 from control_order_gateway import request_control_order  # noqa: E402
 from control_service import (  # noqa: E402
     InsufficientRoleError,
     InvalidTransitionError,
+    ProtectedAccountError,
     approve_order,
+    control_summary,
     get_control_order_detail,
     list_control_orders,
 )
@@ -63,6 +67,7 @@ from fleet_aggregation import (  # noqa: E402
     list_meter_events,
     list_retry_queue,
 )
+from consumption_summary import ConsumptionNotFoundError, consumption_summary, list_consumption_orders, resolve_anomaly  # noqa: E402
 from get_consumption import get_consumption  # noqa: E402
 from list_invalid_readings import list_invalid_readings  # noqa: E402
 from manual_edit import ReadingNotFoundError, edit_reading  # noqa: E402
@@ -173,6 +178,42 @@ def consumption_endpoint(
         return rows
 
 
+@app.get("/consumption/summary")
+def consumption_summary_endpoint(tenant_id: str = Depends(get_tenant_id)) -> dict:
+    with db_conn() as conn:
+        return consumption_summary(conn, tenant_id)
+
+
+@app.get("/consumption/orders")
+def consumption_orders_endpoint(tenant_id: str = Depends(get_tenant_id), limit: int = 100) -> list[dict]:
+    """Sprint C11-6: feed real de las ordenes de relectura/inspeccion
+    (F23) -- antes solo visibles con SQL directo."""
+    with db_conn() as conn:
+        return list_consumption_orders(conn, tenant_id, limit)
+
+
+class ResolveAnomalyRequest(BaseModel):
+    meter_id: str
+    period_start: date
+    period_end: date
+    notes: str
+
+
+@app.post("/consumption/resolve")
+def resolve_anomaly_endpoint(body: ResolveAnomalyRequest, actor: dict = Depends(get_actor)) -> dict:
+    """Sprint C11-6: cierra una anomalia investigada -- `anomaly_status`
+    existia en el esquema desde Sprint 0, nunca se escribia `resolved`."""
+    with db_conn() as conn:
+        try:
+            resolve_anomaly(
+                conn, actor["tenant_id"], body.meter_id, body.period_start, body.period_end,
+                actor["email"], body.notes,
+            )
+        except ConsumptionNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {"status": "resolved"}
+
+
 @app.get("/vee/invalid-readings")
 def invalid_readings_endpoint(tenant_id: str = Depends(get_tenant_id)) -> list[dict]:
     with db_conn() as conn:
@@ -229,6 +270,50 @@ def list_control_orders_endpoint(tenant_id: str = Depends(get_tenant_id), status
         return list_control_orders(conn, tenant_id, status)
 
 
+@app.get("/control-orders/summary")
+def control_summary_endpoint(tenant_id: str = Depends(get_tenant_id)) -> dict:
+    """Sprint C11-5: registrado ANTES de `/control-orders/{order_id}` a
+    proposito -- si no, FastAPI trataria "summary" como un `order_id`."""
+    with db_conn() as conn:
+        return control_summary(conn, tenant_id)
+
+
+@app.get("/meters/protected")
+def list_protected_meters_endpoint(tenant_id: str = Depends(get_tenant_id)) -> list[dict]:
+    with db_conn() as conn:
+        return list_protected_meters(conn, tenant_id)
+
+
+class MeterProtectionRequest(BaseModel):
+    protected: bool
+    reason: str | None = None
+
+
+@app.post("/meters/{meter_id}/protection")
+def mark_meter_protection_endpoint(
+    meter_id: str, body: MeterProtectionRequest, actor: dict = Depends(get_actor)
+) -> dict:
+    with db_conn() as conn:
+        try:
+            mark_protection(conn, actor["tenant_id"], meter_id, body.protected, body.reason, actor["email"])
+        except ProtectionMeterNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {"meter_id": meter_id, "protected": body.protected}
+
+
+class BulkMeterProtectionRequest(BaseModel):
+    account_numbers: list[str]
+    reason: str
+
+
+@app.post("/meters/protection/bulk")
+def bulk_mark_meter_protection_endpoint(body: BulkMeterProtectionRequest, actor: dict = Depends(get_actor)) -> dict:
+    """Carga masiva (ej. un archivo de cuentas excluidas de corte, Sprint
+    C11-5) -- por `account_number`, no UUID interno."""
+    with db_conn() as conn:
+        return bulk_mark_protection(conn, actor["tenant_id"], body.account_numbers, body.reason, actor["email"])
+
+
 @app.get("/control-orders/{order_id}")
 def get_control_order_detail_endpoint(order_id: str, tenant_id: str = Depends(get_tenant_id)) -> dict:
     with db_conn() as conn:
@@ -268,6 +353,8 @@ class ControlOrderRequest(BaseModel):
     meter_id: str
     order_type: str
     justification: str
+    override_protection: bool = False
+    override_justification: str | None = None
 
 
 @app.post("/control-orders", status_code=201)
@@ -276,10 +363,14 @@ def create_control_order(body: ControlOrderRequest, actor: dict = Depends(get_ac
     # nunca de algo que el cliente HTTP pueda escribir a mano.
     with db_conn() as conn:
         levels = fetch_active_approval_levels(conn, actor["tenant_id"])
-        order_id = request_control_order(
-            conn, actor["tenant_id"], body.meter_id, body.order_type,
-            requested_by_label(actor), body.justification, levels,
-        )
+        try:
+            order_id = request_control_order(
+                conn, actor["tenant_id"], body.meter_id, body.order_type,
+                requested_by_label(actor), body.justification, levels,
+                body.override_protection, body.override_justification,
+            )
+        except ProtectedAccountError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         return {"order_id": order_id}
 
 

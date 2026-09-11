@@ -26,5 +26,10 @@ def request_control_order(
     requested_by: str,
     justification: str,
     approval_levels: list[dict],
+    override_protection: bool = False,
+    override_justification: str | None = None,
 ) -> str:
-    return request_order(conn, tenant_id, meter_id, order_type, requested_by, justification, approval_levels)
+    return request_order(
+        conn, tenant_id, meter_id, order_type, requested_by, justification, approval_levels,
+        override_protection, override_justification,
+    )
