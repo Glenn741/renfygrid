@@ -17,8 +17,12 @@ Crear una particion es DDL (CREATE TABLE) -- necesita el rol ADMIN
 SELECT/INSERT/UPDATE/DELETE, ver `0002_app_role.sql`). El `--dsn` de este
 job es siempre el admin, nunca el de la aplicacion.
 
-Uso:
-    python -m renmeter_common.partition_maintenance --dsn "postgresql://renfygrid:...@host/renfygrid" --months-ahead 2
+Uso: NUNCA `python -m renmeter_common.partition_maintenance` contra el
+`.so` compilado con Nuitka -- falla con "No code object available" (una
+extension compilada no soporta el mecanismo `-m` de Python igual que un
+`.py`). Usar el entry-point kept-as-source `run_partition_maintenance.py`
+(mismo patron que `poller.py`/`main.py` de los otros servicios):
+    python run_partition_maintenance.py --dsn "postgresql://renfygrid:...@host/renfygrid" --months-ahead 2
 """
 
 from __future__ import annotations

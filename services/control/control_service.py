@@ -91,6 +91,14 @@ def request_order(
                     f"Cuenta protegida contra suspension/desconexion ({protection['reason'] or 'sin razon registrada'}, "
                     f"marcada por {protection['marked_by']}) -- requiere override explicito con su propia justificacion."
                 )
+            if override_justification.strip().lower() == justification.strip().lower():
+                # No alcanza con repetir el motivo original -- el override
+                # necesita su PROPIO motivo (por que se pasa por encima de
+                # la proteccion), no la razon original de la suspension.
+                raise ProtectedAccountError(
+                    "override_justification no puede ser igual a justification -- el override necesita su propio "
+                    "motivo documentado (por que se pasa por encima de la proteccion), no repetir el motivo original."
+                )
             protection_override_detail = {
                 "protection_reason": protection["reason"],
                 "protection_marked_by": protection["marked_by"],

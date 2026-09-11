@@ -160,6 +160,8 @@ temporal. Ver la investigación y las decisiones de arquitectura en `02-arquitec
 | 🆕 E17 | *(agregada 2026-09-11)* HES / Ingesta — flota y agregación | Vista de flota por marca/modelo + capa de agregación (concentradores/gateways, ciclo de polling) — hoy el esquema ya tiene `brand`/`model`/`gateway` desde Sprint 0-1, nunca se agregaron en una vista |
 | 🆕 E18 | *(agregada 2026-09-11)* Rebranding y navegación real | Paleta/tipografía de rensoftlabs.com + navegación lateral real en las 9 pantallas — hoy el Portal es un header simple con 2 links |
 | 🆕 E19 | *(agregada 2026-09-11)* Editor de mapeo OBIS | `meter_protocol.obis_mapping` (F06) es una tabla de configuración versionada como las otras 3, pero nunca entró al editor de reglas (Sprint C3) — se sigue editando por SQL/script directo |
+| 🆕 E20 | *(agregada 2026-09-11)* Cierre de los parciales del MVP | F08 (cola persistente de reintentos), F10 (particionado de `raw_reading`, sustituto real de TimescaleDB), F15 (coherencia entre canales), F17 (métodos de estimación restantes) — los 4 huecos parciales que quedaban en Track A después del benchmark E2E |
+| 🆕 E21 | *(agregada 2026-09-11)* Paneles operativos por etapa, con benchmark real | El usuario pidió repetir el ejercicio de benchmark de mercado (E16-E19) pero **por módulo operativo** (VEE, HES, Control, Consumo) en vez de por el proceso E2E completo — cada panel pasa de "cola de excepciones sin contexto" a 3-4 KPIs reales + historial, grounded en fuentes reales de la industria (Oracle Utilities MDM, Itron, Landis+Gyr, Bynry, Grid/EPRI, CREG) |
 
 | Sprint | Épica | Objetivo | Entregable verificable |
 |---|---|---|---|
@@ -173,13 +175,19 @@ temporal. Ver la investigación y las decisiones de arquitectura en `02-arquitec
 | 🆕 **C8** | E17 | *(agregado 2026-09-11)* Pantalla **HES / Ingesta** rediseñada (mockup ya aprobado) sobre C7, tabla de medidores con columna de concentrador | La pantalla real muestra la flota agrupada y el estado real del último ciclo de cada gateway |
 | 🆕 **C9** | E18 | *(agregado 2026-09-11)* Rebranding + navegación lateral aplicados a las 9 pantallas existentes, sin tocar su lógica | Las 9 pantallas comparten el mismo shell visual; todos los `verify_*` de Track A/C existentes siguen pasando sin cambios |
 | 🆕 **C10** | E19 | *(agregado 2026-09-11)* Editor de mapeo OBIS en Configuración, mismo patrón que las otras 3 tablas versionadas | Un operador cambia el mapeo OBIS de una marca desde la UI (sin SQL) y el siguiente ciclo del poller ya lo usa — mismo criterio de verificación que F06 en Sprint 2 |
+| 🆕 **C11** | E20 | *(agregado 2026-09-11)* Cola persistente de reintentos (F08, `poller_retry_queue`), particionado nativo de `raw_reading` (F10, sustituto real de TimescaleDB), coherencia entre canales (F15, `channel_consistency`), 2 métodos de estimación restantes (F17) | Los 4 `verify_*_end_to_end.py` nuevos pasan contra Postgres real; regresión completa de Track A/C sigue en verde |
+| 🆕 **C11-2/3** | E21 | *(agregado 2026-09-11)* Panel de Validación (VEE) por etapa V/E/E, cada una con sus KPIs reales (tasa de excepción con banda de color, tendencia 7 días, % de la serie estimada por método, historial real de ediciones) | El usuario confirma que el panel ya no "se ve como un bosquejo" — 3 secciones reales, no una tabla plana |
+| 🆕 **C11-4** | E21 | *(agregado 2026-09-11)* Panel de HES/Ingesta: eventos/alarmas reales (F05) + auditoría de comunicación (F09) + cola de reintentos (F08) expuestas por primera vez | KPIs de alarmas/éxito de comunicación/medidores en cola, feed filtrable por tipo, todo sobre datos reales ya escritos por el backend, cero hardcode |
+| 🆕 **C11-5** | E21 | *(agregado 2026-09-11)* Panel de Control (SCR): tasa de éxito de comando + historial real + **lista de cuentas protegidas contra suspensión/desconexión** (Ley 142 + normas CRA/CREG, migración `0012_meter_protection.sql`) con bloqueo real (422) salvo override auditado | Una orden de suspensión contra una cuenta protegida se rechaza de entrada; con override real, queda trazada con su propio motivo en la auditoría |
+| 🆕 **C11-6** | E21 | *(agregado 2026-09-11)* Panel de Consumo: KPIs (tasa de anomalía, % listo para facturar) + feed real de órdenes de relectura/inspección (F23, invisible desde Sprint 5) + acción real de "Resolver" (`anomaly_status='resolved'`, en el esquema desde Sprint 0, nunca escrito) | Una anomalía investigada se cierra desde la UI; intentar resolverla dos veces da 404, no un éxito falso |
 
 **Definition of Ready/Done igual que el Track A** (§5), con un agregado propio de UI: ninguna
 pantalla de Nivel 2/3 puede mostrar una tabla cruda como su vista por defecto — el patrón
 "exception-first" (§9 de `02-arquitectura-general.md`) es un criterio de aceptación, no una
-sugerencia de diseño. Los sprints **C5-C10** (agregados 2026-09-11) siguen el mismo criterio;
+sugerencia de diseño. Los sprints **C5-C11-6** (agregados 2026-09-11) siguen el mismo criterio;
 ninguno reabre lógica ya verificada — ver `06-benchmark-e2e-y-brechas.md` para el benchmark
-E2E de mercado y el detalle de cada brecha que los originó.
+E2E de mercado (C5-C10) y `05-ejecucion.md` (bitácora de Sprint C11 en adelante) para las
+fuentes del benchmark por módulo (C11-2 a C11-6).
 
 ## 10. Próximos pasos
 
@@ -194,4 +202,14 @@ por confirmar como el Track B.
 (`docs/05-ejecucion.md`). El usuario pidió un benchmark E2E del proceso completo Meter-to-Cash
 contra las herramientas líderes del mercado (`docs/06-benchmark-e2e-y-brechas.md`) — de ahí
 salieron las épicas **E16-E19** y los sprints **C5-C10**, ya incorporados a la tabla de §9.
-Son el próximo trabajo real de Track C.
+
+**Actualización 2026-09-11 (cierre de sesión)**: C5-C10 se cerraron y desplegaron. El usuario
+pidió cerrar los 4 parciales que quedaban en Track A (**C11**, épica E20) — no Track B, que
+sigue sin una oportunidad comercial concreta — y después repetir el benchmark de mercado, esta
+vez módulo por módulo (**C11-2 a C11-6**, épica E21): VEE, HES/Ingesta, Control (SCR) y Consumo.
+De Control salió un hallazgo real fuera del alcance de UI — la lista de cuentas protegidas
+contra suspensión (Ley 142/CREG), confirmada y construida con el usuario. **Con esto, Track A y
+Track C están completos salvo lo que depende de un piloto real (F05 operando en producción,
+F07) o de elegir un CIS real (F25)** — ninguno de los dos es trabajo de desarrollo pendiente,
+son bloqueos externos ya documentados. Track B sigue siendo el único bloque grande sin empezar,
+deliberadamente pospuesto hasta que haya una oportunidad comercial real.

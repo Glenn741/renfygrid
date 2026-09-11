@@ -58,7 +58,12 @@ def mark_protection(
     """Marca (o quita) la proteccion de UN medidor/cuenta a mano -- deja
     quien y cuando, siempre (aunque se este desmarcando), para que la
     decision quede trazable igual que cualquier otra accion sobre una
-    orden de control."""
+    orden de control. Marcar SIN motivo no se permite -- mismo criterio
+    que `bulk_mark_protection`, que ya exigia `reason`; desmarcar si lo
+    permite (no hace falta justificar por que una cuenta deja de estar
+    protegida, solo queda quien lo hizo)."""
+    if protected and not reason:
+        raise ValueError("No se puede marcar una cuenta como protegida sin `reason`")
     with conn.transaction():
         with tenant_scope(conn, tenant_id):
             with conn.cursor() as cur:

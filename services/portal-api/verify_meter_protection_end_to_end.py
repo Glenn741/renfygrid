@@ -78,7 +78,14 @@ def run(dsn: str) -> int:
             ).json()["access_token"]
             headers = {"Authorization": f"Bearer {token}"}
 
-            # 1. Marcar el medidor como protegido.
+            # 0. Marcar SIN motivo -> 422 (no se permite proteger sin razon documentada).
+            mark_no_reason = client.post(
+                f"/meters/{meter_id}/protection", headers=headers, json={"protected": True},
+            )
+            print(f"POST /meters/{{id}}/protection sin reason: {mark_no_reason.status_code}")
+            ok_no_reason_blocked = mark_no_reason.status_code == 422
+
+            # 1. Marcar el medidor como protegido, con motivo.
             mark_resp = client.post(
                 f"/meters/{meter_id}/protection", headers=headers,
                 json={"protected": True, "reason": "Hospital -- Ley 142/CREG"},
@@ -94,7 +101,19 @@ def run(dsn: str) -> int:
             print(f"POST /control-orders sin override: {blocked_resp.status_code}, {blocked_resp.json()}")
             ok_blocked = blocked_resp.status_code == 422 and "protegida" in blocked_resp.json()["detail"]
 
-            # 3. Con override -> 201, y la auditoria trae el detalle real.
+            # 2b. Override con la MISMA justificacion que el pedido original -> 422
+            # (el override necesita su propio motivo, no repetir el original).
+            same_justification_resp = client.post(
+                "/control-orders", headers=headers,
+                json={
+                    "meter_id": meter_id, "order_type": "suspension", "justification": "mora de 3 meses",
+                    "override_protection": True, "override_justification": "mora de 3 meses",
+                },
+            )
+            print(f"POST /control-orders override con misma justificacion: {same_justification_resp.status_code}")
+            ok_same_justification_blocked = same_justification_resp.status_code == 422
+
+            # 3. Con override real (motivo propio) -> 201, y la auditoria trae el detalle real.
             override_resp = client.post(
                 "/control-orders", headers=headers,
                 json={
@@ -148,7 +167,10 @@ def run(dsn: str) -> int:
             print(f"GET /control-orders/summary (1 confirmada + 1 fallida reales): {summary_after}")
             ok_summary_rate = summary_after["command_success_rate_pct"] == 50.0 and summary_after["total_orders"] == 3
 
-            ok = ok_mark and ok_blocked and ok_override and ok_audit and ok_bulk and ok_list and ok_summary_none and ok_summary_rate
+            ok = (
+                ok_no_reason_blocked and ok_mark and ok_blocked and ok_same_justification_blocked and ok_override
+                and ok_audit and ok_bulk and ok_list and ok_summary_none and ok_summary_rate
+            )
             print("SPRINT C11-5 METER PROTECTION E2E OK" if ok else "SPRINT C11-5 METER PROTECTION E2E FALLA")
             return 0 if ok else 1
         finally:

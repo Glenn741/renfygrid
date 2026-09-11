@@ -824,5 +824,22 @@ cliente (es un hospital, es un colegio...) queda fuera de RenfyGrid, es dato de 
 | 2026-09-11 | `tsc -b && vite build` limpio, bundle sin rutas mangled, contiene "consumption/summary"/"control-orders/summary"/"meters/protected"/"meters/protection". Desplegado: migración 0012 con respaldo real primero, backend (Nuitka) a `essmarplapp02`, frontend a `essmarplpxy03`. Verificado en vivo: bundle coincide exacto, `/api/consumption/summary` responde 401 (gateado, no 404/500) | `curl https://renfygrid.rensoftlabs.com/...` |
 
 **Nota suelta**: se encontró un endpoint viejo `GET /events` en `main.py` (Sprint temprano), no
-usado por ningún frontend, superado por `/meters/events` (Sprint C11-4) — no se tocó (fuera de
-alcance), queda señalado para una limpieza futura.
+usado por ningún frontend, superado por `/meters/events` (Sprint C11-4) — cerrado más abajo,
+en la ronda de endurecimiento/limpieza.
+
+### Endurecimiento + limpieza de cabos sueltos (2026-09-11)
+
+**Motivo:** con VEE/HES/Control/Consumo ya al mismo nivel de rigor, el usuario pidió seguir
+con la recomendación: endurecer lo construido en vez de abrir alcance nuevo (Track B sigue sin
+una oportunidad comercial concreta, confirmado explícitamente por el usuario — "no tengo un
+medidor real todavía").
+
+| Fecha | Avance | Evidencia |
+|---|---|---|
+| 2026-09-11 | **Hallazgo real en la protección de cuentas (Sprint C11-5)**: el docstring de `request_order` prometía que el override nunca podía repetir la justificación original, pero el código nunca lo verificaba — cualquiera podía mandar `override_justification` idéntica a `justification` y pasar el chequeo. Corregido: comparación case-insensitive, rechaza con 422 si son iguales. También se encontró que `mark_protection` (marcar UNA cuenta, a diferencia de la carga masiva que ya exigía `reason`) permitía proteger una cuenta SIN motivo — corregido, ahora exige `reason` para `protected=true` (desmarcar no lo necesita) | `services/control/control_service.py`, `account_protection.py` |
+| 2026-09-11 | 2 casos nuevos en el E2E real: override con la misma justificación → 422; marcar protegida sin `reason` → 422. Regresión completa (`control`/`portal-api` unit tests, `verify_control_execution_end_to_end.py` F28/F29/F30, `verify_stage_screens_end_to_end.py`, `verify_service_orders_end_to_end.py`) sigue en verde | `verify_meter_protection_end_to_end.py` → `SPRINT C11-5 METER PROTECTION E2E OK` |
+| 2026-09-11 | Desplegado a producción (backend Nuitka a `essmarplapp02`, restart, verificado `openapi.json` 200) | — |
+| 2026-09-11 | **Limpieza**: eliminado el endpoint viejo `GET /events` (sin uso, superado por `/meters/events`) — verificado que ningún script/frontend lo llamaba antes de borrarlo, regresión completa sigue en verde, desplegado y confirmado que ya no aparece en `openapi.json` | `services/portal-api/main.py` |
+| 2026-09-11 | **`partition_maintenance.py` — cron real configurado** (pendiente desde Sprint C11): se encontró que `python -m renmeter_common.partition_maintenance` NO funciona contra el `.so` compilado con Nuitka ("No code object available" — el mecanismo `-m` no soporta extensiones compiladas). Corregido con un entry-point kept-as-source real, `services/common/run_partition_maintenance.py` (mismo patrón que `poller.py`/`main.py`: texto plano que importa y llama al módulo compilado). Cron real en `essmarplapp02` (`crontab -u postgres`, lunes 3am, autenticación peer sin password — mismo mecanismo que ya usan las migraciones vía `sudo -u postgres`), probado en vivo con una corrida manual real | `services/common/run_partition_maintenance.py`, `renmeter_common/partition_maintenance.py` (docstring corregido) |
+| 2026-09-11 | **`04-plan-sprints.md` §9 formalizado**: épicas E20 (cierre de parciales)/E21 (paneles por etapa con benchmark real) + sprints C11 a C11-6 agregados a la tabla oficial, marcados 🆕 — antes solo vivían en la bitácora. §10 actualizado con el estado real de cierre de sesión | `docs/04-plan-sprints.md` |
+| 2026-09-11 | **`.github/workflows/tests.yml` finalmente trackeado en git** — existía en el repo desde Sprint 0 (CI básico de `services/common`) pero nunca se había hecho `git add`, señalado como nota suelta en sesiones anteriores; confirmado su contenido (CI legítimo, sin nada sospechoso) antes de agregarlo | `.github/workflows/tests.yml` |

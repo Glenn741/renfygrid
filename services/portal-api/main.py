@@ -298,6 +298,8 @@ def mark_meter_protection_endpoint(
             mark_protection(conn, actor["tenant_id"], meter_id, body.protected, body.reason, actor["email"])
         except ProtectionMeterNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
     return {"meter_id": meter_id, "protected": body.protected}
 
 
@@ -321,32 +323,6 @@ def get_control_order_detail_endpoint(order_id: str, tenant_id: str = Depends(ge
     if detail is None:
         raise HTTPException(status_code=404, detail="Orden no encontrada")
     return detail
-
-
-@app.get("/events")
-def list_events(tenant_id: str = Depends(get_tenant_id), meter_id: str | None = None) -> list[dict]:
-    with db_conn() as conn:
-        with conn.transaction():
-            with tenant_scope(conn, tenant_id):
-                with conn.cursor() as cur:
-                    if meter_id:
-                        cur.execute(
-                            "SELECT id, meter_id, type, \"timestamp\", severity FROM meter_event "
-                            "WHERE meter_id = %s ORDER BY \"timestamp\" DESC",
-                            (meter_id,),
-                        )
-                    else:
-                        cur.execute(
-                            "SELECT id, meter_id, type, \"timestamp\", severity FROM meter_event "
-                            "ORDER BY \"timestamp\" DESC"
-                        )
-                    return [
-                        {
-                            "id": str(row[0]), "meter_id": str(row[1]), "type": row[2],
-                            "timestamp": row[3].isoformat(), "severity": row[4],
-                        }
-                        for row in cur.fetchall()
-                    ]
 
 
 class ControlOrderRequest(BaseModel):
