@@ -61,11 +61,11 @@ código, no por fecha. Complementa el Plan de sprints (`04-plan-sprints.md`).
 
 | # | Función | Sprint | Estado |
 |---|---|---|---|
-| F26 | Solicitud de orden de control | 6 | ⚪ |
-| F27 | Flujo de aprobación configurable por tenant/tipo | 6 | ⚪ |
-| F28 | Firma y validación de orden antes de ejecución | 6-7 | ⚪ |
+| F26 | Solicitud de orden de control | 6 | 🟢 |
+| F27 | Flujo de aprobación configurable por tenant/tipo | 6 | 🟢 |
+| F28 | Firma y validación de orden antes de ejecución | 6-7 | 🟡 (validación de estado sí, firma criptográfica es Sprint 7) |
 | F29 | Ejecución vía adaptador HES | 7 | ⚪ |
-| F30 | Confirmación de estado y auditoría inmutable | 7 | ⚪ |
+| F30 | Confirmación de estado y auditoría inmutable | 7 | 🟡 (inmutabilidad de la auditoría ya verificada, confirmación post-ejecución sigue en Sprint 7) |
 
 ### Transversal
 
@@ -278,3 +278,29 @@ estaba planeado — no se tocó; requiere definir el contrato de entrega con un 
 todavía no existe para el piloto de referencia.
 
 *(Esta tabla se sigue completando a medida que avanza el Sprint 5 real.)*
+
+### Sprint 6 — Módulo SCR: modelo de estados y aprobación
+
+**Objetivo:** una orden de prueba pasa por `requested→pending_approval→approved` con auditoría
+(`04-plan-sprints.md` §4). **Estado:** 🟢 objetivo cumplido con evidencia real — iniciado y
+cerrado 2026-09-10.
+
+Nuevo servicio independiente `services/control/` (SCR: Suspensión/Corte/Reconexión — servicio
+aislado por diseño, ver `02-arquitectura-general.md` §6: "el canal de control es el punto de
+mayor impacto si falla").
+
+| Fecha | Avance | Función(es) | Evidencia |
+|---|---|---|---|
+| 2026-09-10 | **`control_order_audit` hecha verdaderamente inmutable**: la tabla ya existía desde Sprint 0 con un comentario explícito de que la inmutabilidad quedaba pendiente. Migración `0007_control_order_audit_immutable.sql`: mismo patrón que `validated_reading_edit` (Sprint 4) — `REVOKE UPDATE, DELETE` al rol de aplicación | F30 (parcial) | `infra/db/migrations/0007_control_order_audit_immutable.sql` |
+| 2026-09-10 | **Decisión de diseño explícita sobre `min_required_role`**: se compara por **igualdad exacta**, no por una jerarquía de roles ("supervisor > operador") — el diseño no define ninguna tabla de rangos entre roles, e inventar una jerarquía no pedida habría sido alcance no solicitado. Fail-safe: sin ninguna `control_approval_level` configurada para un tipo de orden, se exige aprobación humana por defecto — nunca se auto-aprueba por ausencia de configuración | F27 | Docstring de `control_engine.py` |
+| 2026-09-10 | **Motor construido**: `control_engine.py` (`approval_level_for`, `status_after_request`, `can_approve` — lógica pura) + `approval_levels_cache.py` (mismo patrón de config cacheada) + `control_service.py` (`request_order` — F26, nace `requested` y transiciona de inmediato a `pending_approval` o, si el tenant configuró auto-aprobación, a `approved` con actor `system:auto_approval`, trazable igual que cualquier aprobación humana; `approve_order` — F27, valida estado y rol antes de transicionar; `is_ready_to_execute` — la porción de F28 que corresponde a este sprint, antes de la ejecución real que es Sprint 7) | F26, F27, F28 (parcial) | `services/control/*.py` |
+| 2026-09-10 | **7/7 pruebas unitarias puras** sobre `control_engine` (sin configuración exige aprobación humana por defecto, configuración respetada, solo aplica al tipo de orden correcto, requiere-aprobación → pending_approval, no-requiere → approved directo, coincidencia exacta de rol aprueba, rol distinto no aprueba) | F26, F27 | `python -m unittest discover -s tests -v` (en `services/control/`) → **Ran 7 tests in 0.001s / OK** |
+| 2026-09-10 | **`verify_control_end_to_end.py` — corrida real, exitosa, 6 verificaciones en una pasada**: (1) orden de `suspension` (requiere aprobación humana) queda `pending_approval`; (2) un rol insuficiente (`operator`) intenta aprobarla y es rechazado (`InsufficientRoleError`); (3) el rol correcto (`supervisor`) la aprueba → `approved`, `is_ready_to_execute=True`, y **3 filas de auditoría trazables** (`requested→pending_approval→approved`); (4) orden de `reconnection` (configurada sin aprobación humana) queda `approved` de inmediato con `approved_by='system:auto_approval'`; (5) **intento de `UPDATE` directo sobre `control_order_audit` con el rol de aplicación real, rechazado por Postgres** (`InsufficientPrivilege`) | F26, F27, F28, F30 (parcial) | `python verify_control_end_to_end.py "postgresql://renfygrid_app:...@localhost:5455/renfygrid"` → **"SPRINT 6 E2E OK"**, exit code 0 |
+
+**F28/F30 quedan en 🟡 a propósito**: la validación de que una orden está en el estado correcto
+antes de poder ejecutarse (F28) y la inmutabilidad de la auditoría (F30) ya están hechas y
+verificadas; lo que falta de cada una — la firma criptográfica de la orden antes de llegar al
+adaptador HES (F28) y la confirmación de estado real post-ejecución (F30) — depende de F29
+(ejecución vía adaptador HES), que es Sprint 7, tal como estaba planeado.
+
+*(Esta tabla se sigue completando a medida que avanza el Sprint 6 real.)*
