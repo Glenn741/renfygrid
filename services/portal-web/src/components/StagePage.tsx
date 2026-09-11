@@ -1,25 +1,17 @@
-import { Link } from "react-router-dom";
 import type { ReactNode } from "react";
+import { AppShell } from "./AppShell";
 
 interface StagePageProps {
   title: string;
   children: ReactNode;
 }
 
-// Layout compartido de Nivel 2 -- header con vuelta al tablero general
-// (Nivel 1), mismo patron en las 5 pantallas de etapa.
+// Layout compartido de Nivel 2 (Sprint C9: ahora delega en AppShell -- panel
+// lateral con las 8 rutas de nivel superior siempre visible, en vez del link
+// suelto "Vuelta al tablero" de antes). Ninguna de las 8 pantallas que usan
+// StagePage cambio su logica -- solo el wrapper.
 export function StagePage({ title, children }: StagePageProps) {
-  return (
-    <div className="min-h-screen bg-slate-50">
-      <header className="border-b border-slate-200 bg-white px-6 py-4 flex items-center gap-4">
-        <Link to="/" className="text-sm text-indigo-600 hover:text-indigo-700">
-          ← Vista general
-        </Link>
-        <h1 className="text-lg font-bold text-slate-900">{title}</h1>
-      </header>
-      <main className="p-6">{children}</main>
-    </div>
-  );
+  return <AppShell title={title}>{children}</AppShell>;
 }
 
 export function EmptyState({ message }: { message: string }) {

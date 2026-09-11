@@ -1,6 +1,17 @@
 @import "tailwindcss";
 
+/* Rebranding (Sprint C9, docs/04-plan-sprints.md E18): tokens tomados
+   directo de rensoftlabs.com (C:\PCGM\RENSOFTLABS\core\rnsftlbs\com\www\index.html)
+   -- --indigo/--indigo-dark ya coinciden por casualidad con el indigo-600/700
+   por defecto de Tailwind (por eso las pantallas ya lo usaban); lo unico que
+   faltaba era el tono oscuro de marca para el panel lateral. */
+@theme {
+  --color-ink: #0a0f1e;
+  --color-ink-light: #141a30;
+  --font-sans: Inter, system-ui, "Segoe UI", Roboto, sans-serif;
+}
+
 body {
   margin: 0;
-  font-family: system-ui, "Segoe UI", Roboto, sans-serif;
+  font-family: var(--font-sans);
 }

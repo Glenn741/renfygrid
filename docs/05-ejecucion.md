@@ -586,3 +586,26 @@ tenía ninguna de las dos, solo la tabla por medidor de Sprint C2.
 | 2026-09-11 | Verificado en vivo desde internet: `/api/openapi.json` en producción lista `/meters/fleet-summary` y `/gateways`; ambos + `/observability/ingestion` responden 401 (gateados por auth, no 404/500) sin token; `https://renfygrid.rensoftlabs.com/` y `/api/openapi.json` → 200 | `curl https://renfygrid.rensoftlabs.com/api/...` |
 
 Sigue **C9** (rebranding visual + navegación real de 9 pantallas) y **C10** (editor de mapeo OBIS en Configuración) — planificados en `04-plan-sprints.md` §9, no iniciados.
+
+### Sprint C9 — Rebranding + navegación lateral real en las 9 pantallas (2026-09-11)
+
+**Objetivo:** cerrar E18 — las 9 pantallas comparten el mismo shell visual (tokens de marca de
+rensoftlabs.com, panel lateral con las 8 rutas de nivel superior siempre visible), sin tocar la
+lógica de ninguna. El usuario lo pidió tras ver el demo funcionando pero "muy básico" — quería
+ver el menú y los paneles con cara de producto real, no que se cargaran datos nuevos.
+**Estado:** 🟢 cerrado y desplegado a producción.
+
+| Fecha | Avance | Evidencia |
+|---|---|---|
+| 2026-09-11 | **Tokens de marca** tomados de `rnsftlbs/com/www/index.html` (indigo `#4F46E5` — coincide con el `indigo-600` de Tailwind que las pantallas ya usaban por convención —, tono oscuro de marca `#0A0F1E`, Inter). Registrados en `index.css` vía `@theme` de Tailwind v4 (`--color-ink`, `--font-sans`) | `services/portal-web/src/index.css` |
+| 2026-09-11 | **`AppShell.tsx` nuevo**: panel lateral fijo en desktop (cajón deslizante en móvil) con las 8 rutas de nivel superior, resaltado de ruta activa, botón de cerrar sesión — capa puramente visual/de navegación | `services/portal-web/src/components/AppShell.tsx` |
+| 2026-09-11 | **`StagePage.tsx` ahora delega en `AppShell`** — las 8 pantallas que ya usaban `StagePage` (Meters/Vee/Consumption/Control/ControlOrderDetail/Observability/Integrations/Configuration) adoptan el nuevo shell sin que ninguna cambiara una línea de su lógica (solo cambió el wrapper compartido) | `services/portal-web/src/components/StagePage.tsx` |
+| 2026-09-11 | **`Overview.tsx`** (no usaba `StagePage`) migrada a `AppShell` — se quitó su header/nav propio (links sueltos + botón de logout), el contenido (KPIs, queries) no cambió | `services/portal-web/src/pages/Overview.tsx` |
+| 2026-09-11 | **`Login.tsx`**: retoque visual (fondo de marca oscuro, isotipo "R" en indigo) — mismos campos/handlers, sin cambio de lógica | `services/portal-web/src/pages/Login.tsx` |
+| 2026-09-11 | `tsc -b && vite build` limpio (el chequeo de tipos de TypeScript ya cubre props/imports rotos de un cambio de wrapper), bundle sin rutas mangled, contiene el color de marca `#0a0f1e` | `dist/assets/*.css` contiene "#0a0f1e" |
+| 2026-09-11 | Desplegado a `essmarplpxy03` (`/var/www/renfygrid`) — solo frontend, sin cambios de backend en este sprint, no hizo falta tocar `essmarplapp02` | `nginx -t` OK, reload |
+| 2026-09-11 | Verificado en vivo: el HTML servido en `https://renfygrid.rensoftlabs.com/` referencia exactamente los mismos hashes de build (`index-C4dipvks.js`/`index-Du77VRtQ.css`) que el build local recién generado | `curl https://renfygrid.rensoftlabs.com/` |
+| 2026-09-11 | **Credenciales del tenant demo reparadas**: la contraseña de `demo@renfygrid.com` en producción no coincidía con la documentada — reseteada por SQL directo (mismo hash PBKDF2 de `renmeter_common/passwords.py`) para que el usuario pudiera entrar y ver el rediseño en su propio navegador. Tenant demo tiene 5 medidores pero 0 gateways/lecturas — aviso dado al usuario para que el estado vacío de Concentradores no se lea como error | login real por HTTP → 200, JWT válido |
+
+Sigue **C10** (editor de mapeo OBIS en Configuración) — planificado en `04-plan-sprints.md` §9,
+no iniciado.

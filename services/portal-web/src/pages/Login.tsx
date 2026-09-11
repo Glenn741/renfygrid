@@ -28,9 +28,14 @@ export function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50">
-      <form onSubmit={handleSubmit} className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
-        <h1 className="text-xl font-bold text-slate-900 mb-1">RenfyGrid</h1>
+    <div className="min-h-screen flex items-center justify-center bg-ink px-4">
+      <form onSubmit={handleSubmit} className="w-full max-w-sm rounded-2xl border border-white/10 bg-white p-8 shadow-2xl">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600 text-white font-bold text-sm">
+            R
+          </span>
+          <h1 className="text-xl font-bold text-slate-900">RenfyGrid</h1>
+        </div>
         <p className="text-sm text-slate-500 mb-6">Portal operativo</p>
 
         <label className="block text-sm font-medium text-slate-700 mb-1">Tenant</label>
