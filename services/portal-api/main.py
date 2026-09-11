@@ -39,7 +39,7 @@ from pydantic import BaseModel  # noqa: E402
 
 from approval_levels_admin import create_approval_level, list_approval_levels  # noqa: E402
 from approval_levels_cache import fetch_active_approval_levels  # noqa: E402
-from auth_dependency import get_tenant_id  # noqa: E402
+from auth_dependency import get_actor, get_tenant_id, requested_by_label  # noqa: E402
 from billing_export import billing_ready_consumption, to_csv  # noqa: E402
 from config import Settings  # noqa: E402
 from consumption_anomaly_rules_admin import (  # noqa: E402
@@ -61,9 +61,11 @@ from list_invalid_readings import list_invalid_readings  # noqa: E402
 from manual_edit import ReadingNotFoundError, edit_reading  # noqa: E402
 from observability import ingestion_metrics  # noqa: E402
 from on_demand_reader import MeterNotReadableError, read_meter_now  # noqa: E402
+from meter_ping import MeterNotReachableError, ping_meter  # noqa: E402
 from renmeter_common.auth import create_token  # noqa: E402
 from renmeter_common.db import tenant_scope  # noqa: E402
 from renmeter_common.user_service import InvalidCredentialsError, authenticate  # noqa: E402
+from service_orders import list_service_orders  # noqa: E402
 from vee_rules_admin import create_vee_rule, deactivate_vee_rule, list_vee_rules  # noqa: E402
 from vee_rules_admin import RuleNotFoundError as VeeRuleNotFoundError  # noqa: E402
 from consumption_anomaly_rules_admin import RuleNotFoundError as AnomalyRuleNotFoundError  # noqa: E402
@@ -107,7 +109,12 @@ def login(body: LoginRequest) -> dict:
         except InvalidCredentialsError as exc:
             raise HTTPException(status_code=401, detail=str(exc)) from exc
     token = create_token(
-        {"tenant_id": body.tenant_id, "role": identity["role"], "user_id": identity["user_id"]},
+        {
+            "tenant_id": body.tenant_id,
+            "role": identity["role"],
+            "user_id": identity["user_id"],
+            "email": body.email,  # Sprint C5: convencion real de origen (auth_dependency.requested_by_label)
+        },
         app.state.settings.jwt_secret,
     )
     return {"access_token": token, "token_type": "bearer"}
@@ -233,31 +240,30 @@ def list_events(tenant_id: str = Depends(get_tenant_id), meter_id: str | None = 
 class ControlOrderRequest(BaseModel):
     meter_id: str
     order_type: str
-    requested_by: str
     justification: str
 
 
 @app.post("/control-orders", status_code=201)
-def create_control_order(body: ControlOrderRequest, tenant_id: str = Depends(get_tenant_id)) -> dict:
+def create_control_order(body: ControlOrderRequest, actor: dict = Depends(get_actor)) -> dict:
+    # Sprint C5 (G1): requested_by ya no llega en el body -- sale del JWT,
+    # nunca de algo que el cliente HTTP pueda escribir a mano.
     with db_conn() as conn:
-        levels = fetch_active_approval_levels(conn, tenant_id)
+        levels = fetch_active_approval_levels(conn, actor["tenant_id"])
         order_id = request_control_order(
-            conn, tenant_id, body.meter_id, body.order_type, body.requested_by, body.justification, levels
+            conn, actor["tenant_id"], body.meter_id, body.order_type,
+            requested_by_label(actor), body.justification, levels,
         )
         return {"order_id": order_id}
 
 
-class ApproveOrderRequest(BaseModel):
-    approver_name: str
-    approver_role: str
-
-
 @app.post("/control-orders/{order_id}/approve")
-def approve_control_order(order_id: str, body: ApproveOrderRequest, tenant_id: str = Depends(get_tenant_id)) -> dict:
+def approve_control_order(order_id: str, actor: dict = Depends(get_actor)) -> dict:
+    # Sprint C5 (G1): approver_name/approver_role ya no llegan en el body --
+    # un aprobador no puede elegir su propio rol en la peticion.
     with db_conn() as conn:
-        levels = fetch_active_approval_levels(conn, tenant_id)
+        levels = fetch_active_approval_levels(conn, actor["tenant_id"])
         try:
-            approve_order(conn, tenant_id, order_id, body.approver_name, body.approver_role, levels)
+            approve_order(conn, actor["tenant_id"], order_id, actor["email"], actor["role"], levels)
         except InvalidTransitionError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         except InsufficientRoleError as exc:
@@ -270,15 +276,40 @@ class ReadNowRequest(BaseModel):
 
 
 @app.post("/meters/{meter_id}/reads")
-def read_meter_now_endpoint(meter_id: str, body: ReadNowRequest, tenant_id: str = Depends(get_tenant_id)) -> dict:
+def read_meter_now_endpoint(meter_id: str, body: ReadNowRequest, actor: dict = Depends(get_actor)) -> dict:
     with db_conn() as conn:
         try:
-            reading = read_meter_now(conn, tenant_id, meter_id, body.channel)
+            reading = read_meter_now(conn, actor["tenant_id"], meter_id, body.channel, requested_by=requested_by_label(actor))
         except MeterNotReadableError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         row = reading.as_row()
         row["timestamp"] = row["timestamp"].isoformat()
         return row
+
+
+@app.post("/meters/{meter_id}/ping")
+def ping_meter_endpoint(meter_id: str, actor: dict = Depends(get_actor)) -> dict:
+    """F07 (Sprint C5, `06-benchmark-e2e-y-brechas.md` G2): "esta vivo el
+    medidor" sin leer ningun registro -- asociacion DLMS y listo. Es el
+    comando mas liviano del set estandar (connect/disconnect/ping/lectura,
+    ver el mismo doc SS2)."""
+    with db_conn() as conn:
+        try:
+            ok = ping_meter(conn, actor["tenant_id"], meter_id, requested_by=requested_by_label(actor))
+        except MeterNotReachableError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return {"meter_id": meter_id, "reachable": ok}
+
+
+@app.get("/integrations/service-orders")
+def service_orders_endpoint(tenant_id: str = Depends(get_tenant_id), limit: int = 50) -> list[dict]:
+    """Sprint C5 (G3): panel unificado de "Service Orders" -- une
+    `control_order` (suspension/reconexion/desconexion) con las lecturas
+    bajo demanda y los pings (auditados en `meter_event` desde Sprint 9),
+    sea que los haya pedido el CIS externo, un operador del Portal, o el
+    propio sistema (auto-aprobacion)."""
+    with db_conn() as conn:
+        return list_service_orders(conn, tenant_id, limit)
 
 
 @app.get("/observability/ingestion")

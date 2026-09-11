@@ -133,11 +133,13 @@ def run(dsn: str) -> int:
             print(f"Tras editar: value={edited_value}, is_valid={is_valid}, source={source}, filas de auditoria={edit_count}")
 
             # --- 2: detalle de orden con auditoria ---
+            # Sprint C5: requested_by/approver_name/approver_role ya no van en
+            # el body -- salen del actor autenticado (headers, rol 'supervisor').
             order_id = client.post(
                 "/control-orders", headers=headers,
-                json={"meter_id": meter_id, "order_type": "suspension", "requested_by": "ana@renfygrid.demo", "justification": "prueba C4"},
+                json={"meter_id": meter_id, "order_type": "suspension", "justification": "prueba C4"},
             ).json()["order_id"]
-            client.post(f"/control-orders/{order_id}/approve", headers=headers, json={"approver_name": "carla@renfygrid.demo", "approver_role": "supervisor"})
+            client.post(f"/control-orders/{order_id}/approve", headers=headers, json={})
 
             detail_resp = client.get(f"/control-orders/{order_id}", headers=headers)
             detail = detail_resp.json()

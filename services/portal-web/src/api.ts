@@ -141,11 +141,10 @@ export function getControlOrders(status?: string): Promise<ControlOrder[]> {
   return request(`/control-orders${status ? `?status=${status}` : ""}`);
 }
 
-export function approveControlOrder(
-  orderId: string,
-  body: { approver_name: string; approver_role: string },
-): Promise<{ order_id: string; status: string }> {
-  return request(`/control-orders/${orderId}/approve`, { method: "POST", body: JSON.stringify(body) });
+export function approveControlOrder(orderId: string): Promise<{ order_id: string; status: string }> {
+  // Sprint C5: quien aprueba sale del JWT del que hace la llamada, no de un
+  // campo de texto libre -- ver services/portal-api/auth_dependency.py.
+  return request(`/control-orders/${orderId}/approve`, { method: "POST", body: "{}" });
 }
 
 // --- Configuración: editor de reglas (F50, Sprint C3) ---

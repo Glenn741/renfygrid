@@ -156,6 +156,10 @@ temporal. Ver la investigación y las decisiones de arquitectura en `02-arquitec
 | E13 | Pantallas de Nivel 2 (colas de excepción) | Medidores/HES, Validación (VEE), Consumos, Control (SCR), Observabilidad |
 | E14 | Editor de reglas (Configuración) | Alta/versionado de `vee_rule`, `consumption_anomaly_rule`, `control_approval_level` desde la UI |
 | E15 | Detalle y acciones (Nivel 3) | Aprobar/rechazar orden, editar lectura VEE, forzar lectura bajo demanda — todo accionable desde la UI, no solo lectura |
+| 🆕 E16 | *(agregada 2026-09-11)* Integraciones (CIS) | Convención real de origen de la petición (`requested_by`: CIS externo / Portal / sistema) + comando de "ping"/estado nuevo + panel unificado de "Service Orders" — ver `06-benchmark-e2e-y-brechas.md` §2-3 |
+| 🆕 E17 | *(agregada 2026-09-11)* HES / Ingesta — flota y agregación | Vista de flota por marca/modelo + capa de agregación (concentradores/gateways, ciclo de polling) — hoy el esquema ya tiene `brand`/`model`/`gateway` desde Sprint 0-1, nunca se agregaron en una vista |
+| 🆕 E18 | *(agregada 2026-09-11)* Rebranding y navegación real | Paleta/tipografía de rensoftlabs.com + navegación lateral real en las 9 pantallas — hoy el Portal es un header simple con 2 links |
+| 🆕 E19 | *(agregada 2026-09-11)* Editor de mapeo OBIS | `meter_protocol.obis_mapping` (F06) es una tabla de configuración versionada como las otras 3, pero nunca entró al editor de reglas (Sprint C3) — se sigue editando por SQL/script directo |
 
 | Sprint | Épica | Objetivo | Entregable verificable |
 |---|---|---|---|
@@ -163,11 +167,19 @@ temporal. Ver la investigación y las decisiones de arquitectura en `02-arquitec
 | **C2** | E13 | Los 5 tableros de Nivel 2, cada uno con sus propios KPIs y alertas | Cada tablero de etapa muestra solo lo anormal (medidor caído, lectura inválida, consumo en revisión, orden pendiente) — un tenant sin anomalías ve un tablero "limpio" |
 | **C3** | E14 | Editor de reglas para las 3 tablas de configuración versionada | Un operador crea una nueva versión de `vee_rule` desde la UI (sin SQL) y el siguiente pase de validación ya la usa |
 | **C4** | E15 | Pantallas de detalle (Nivel 3) con la acción de cada entidad | Un operador aprueba una orden de control y edita una lectura VEE, ambas desde la UI, sin usar `curl`/Postman/DBeaver |
+| 🆕 **C5** | E16 | *(agregado 2026-09-11)* Convención `requested_by` (`cis:<sistema>` / `portal:<usuario>` / `system:<regla>`) aplicada en `control_order` y en la auditoría de lectura bajo demanda; comando de ping/estado (extensión menor de F07/F29); endpoint `GET /integrations/service-orders` | Una petición simulada del CIS y una del Portal quedan diferenciables en un solo query; el ping nuevo se prueba contra el simulador real |
+| 🆕 **C6** | E16 | *(agregado 2026-09-11)* Pantalla **Integraciones (CIS)** real (mockup ya aprobado por el usuario) sobre el endpoint de C5 | Un operador ve el log real, filtra por automático/manual, y el enlace a Configuración resuelve a la regla vigente real |
+| 🆕 **C7** | E17 | *(agregado 2026-09-11)* Endpoints de agregación: `GET /meters/fleet-summary` (por marca/modelo) y `GET /gateways` (ciclo de polling, marcas agrupadas) — sobre tablas ya existentes, sin migración | Con datos reales de 2+ marcas y 2+ gateways, los conteos/porcentajes calculan correcto |
+| 🆕 **C8** | E17 | *(agregado 2026-09-11)* Pantalla **HES / Ingesta** rediseñada (mockup ya aprobado) sobre C7, tabla de medidores con columna de concentrador | La pantalla real muestra la flota agrupada y el estado real del último ciclo de cada gateway |
+| 🆕 **C9** | E18 | *(agregado 2026-09-11)* Rebranding + navegación lateral aplicados a las 9 pantallas existentes, sin tocar su lógica | Las 9 pantallas comparten el mismo shell visual; todos los `verify_*` de Track A/C existentes siguen pasando sin cambios |
+| 🆕 **C10** | E19 | *(agregado 2026-09-11)* Editor de mapeo OBIS en Configuración, mismo patrón que las otras 3 tablas versionadas | Un operador cambia el mapeo OBIS de una marca desde la UI (sin SQL) y el siguiente ciclo del poller ya lo usa — mismo criterio de verificación que F06 en Sprint 2 |
 
 **Definition of Ready/Done igual que el Track A** (§5), con un agregado propio de UI: ninguna
 pantalla de Nivel 2/3 puede mostrar una tabla cruda como su vista por defecto — el patrón
 "exception-first" (§9 de `02-arquitectura-general.md`) es un criterio de aceptación, no una
-sugerencia de diseño.
+sugerencia de diseño. Los sprints **C5-C10** (agregados 2026-09-11) siguen el mismo criterio;
+ninguno reabre lógica ya verificada — ver `06-benchmark-e2e-y-brechas.md` para el benchmark
+E2E de mercado y el detalle de cada brecha que los originó.
 
 ## 10. Próximos pasos
 
@@ -177,3 +189,9 @@ explícitamente de un tenant piloto real (F05/F07). Track B (§8) sigue sin inic
 de una oportunidad comercial concreta. **Track C (§9), el Portal Web, es el próximo trabajo de
 desarrollo real** — parte de una necesidad ya confirmada por el usuario, no de una oportunidad
 por confirmar como el Track B.
+
+**Actualización 2026-09-11**: Track C (C1-C4) se cerró y se desplegó a producción
+(`docs/05-ejecucion.md`). El usuario pidió un benchmark E2E del proceso completo Meter-to-Cash
+contra las herramientas líderes del mercado (`docs/06-benchmark-e2e-y-brechas.md`) — de ahí
+salieron las épicas **E16-E19** y los sprints **C5-C10**, ya incorporados a la tabla de §9.
+Son el próximo trabajo real de Track C.

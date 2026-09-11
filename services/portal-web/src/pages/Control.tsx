@@ -12,13 +12,10 @@ export function ControlPage() {
     refetchInterval: 30_000,
   });
 
-  const [approverName, setApproverName] = useState("");
-  const [approverRole, setApproverRole] = useState("supervisor");
   const [error, setError] = useState<string | null>(null);
 
   const approveMutation = useMutation({
-    mutationFn: (orderId: string) =>
-      approveControlOrder(orderId, { approver_name: approverName, approver_role: approverRole }),
+    mutationFn: (orderId: string) => approveControlOrder(orderId),
     onSuccess: () => {
       setError(null);
       queryClient.invalidateQueries({ queryKey: ["control-orders"] });
@@ -29,26 +26,11 @@ export function ControlPage() {
 
   return (
     <StagePage title="Control (SCR)">
-      <div className="mb-4 flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-white p-4">
-        <div>
-          <label className="block text-xs font-medium text-slate-500 mb-1">Quién aprueba</label>
-          <input
-            className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm"
-            value={approverName}
-            onChange={(e) => setApproverName(e.target.value)}
-            placeholder="nombre@empresa.com"
-          />
+      {error && (
+        <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3">
+          <p className="text-sm text-red-600">{error}</p>
         </div>
-        <div>
-          <label className="block text-xs font-medium text-slate-500 mb-1">Rol</label>
-          <input
-            className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm"
-            value={approverRole}
-            onChange={(e) => setApproverRole(e.target.value)}
-          />
-        </div>
-        {error && <p className="text-sm text-red-600">{error}</p>}
-      </div>
+      )}
 
       {isLoading && <p className="text-sm text-slate-500">Cargando...</p>}
       {data && data.length === 0 && <EmptyState message="Sin órdenes pendientes de aprobación." />}
@@ -77,7 +59,7 @@ export function ControlPage() {
                   <td className="px-4 py-3 text-slate-600">{order.justification ?? "—"}</td>
                   <td className="px-4 py-3">
                     <button
-                      disabled={!approverName || approveMutation.isPending}
+                      disabled={approveMutation.isPending}
                       onClick={() => approveMutation.mutate(order.order_id)}
                       className="rounded-lg bg-indigo-600 text-white text-xs font-semibold px-3 py-1.5 hover:bg-indigo-700 disabled:opacity-40"
                     >

@@ -114,7 +114,9 @@ def run(dsn: str) -> int:
             order_resp = client.post(
                 "/control-orders",
                 headers=headers,
-                json={"meter_id": str(meter_id), "order_type": "suspension", "requested_by": "ana@renfygrid.demo", "justification": "prueba C2"},
+                # Sprint C5: requested_by ya no va en el body -- sale del actor
+                # autenticado (el login de arriba, "operador@renfygrid.demo").
+                json={"meter_id": str(meter_id), "order_type": "suspension", "justification": "prueba C2"},
             )
             order_id = order_resp.json()["order_id"]
 
@@ -123,11 +125,10 @@ def run(dsn: str) -> int:
             print(f"GET /control-orders?status=pending_approval (antes de aprobar): {resp_pending.status_code}, {pending_rows}")
             ok_pending_before = len(pending_rows) == 1 and pending_rows[0]["order_id"] == order_id
 
-            approve_resp = client.post(
-                f"/control-orders/{order_id}/approve",
-                headers=headers,
-                json={"approver_name": "carla.supervisora@renfygrid.demo", "approver_role": "supervisor"},
-            )
+            # Sprint C5: approver_name/approver_role ya no van en el body --
+            # el mismo usuario logueado (rol 'supervisor') aprueba con su
+            # identidad real, tomada del JWT.
+            approve_resp = client.post(f"/control-orders/{order_id}/approve", headers=headers, json={})
             print(f"POST approve: {approve_resp.status_code}")
 
             resp_pending_after = client.get("/control-orders?status=pending_approval", headers=headers)

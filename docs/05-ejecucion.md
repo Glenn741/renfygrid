@@ -533,3 +533,24 @@ verificados con evidencia real, no solo escritos.**
 
 *(Track C cerrado. El próximo trabajo de UI depende de qué decida el usuario — no hay más
 sprints de Portal Web planificados sin nueva dirección.)*
+
+### Sprint C5 — Integraciones (CIS): origen real de la petición + ping (2026-09-11)
+
+**Objetivo:** convención real de `requested_by` (CIS externo / Portal / sistema), comando de
+ping/estado nuevo, endpoint unificado de "Service Orders" — ver `06-benchmark-e2e-y-brechas.md`
+§2-3/G1-G3, `04-plan-sprints.md` §9 (E16, sprint C5). **Estado:** 🟢 cerrado y desplegado a
+producción, verificado con evidencia real.
+
+| Fecha | Avance | Evidencia |
+|---|---|---|
+| 2026-09-11 | **Gap de seguridad real encontrado y corregido**: `requested_by` (control-orders) y `approver_name`/`approver_role` (aprobación) llegaban como texto libre en el body — cualquiera con un JWT válido podía escribir "cis:facturación" o subirse el rol a "supervisor" sin serlo. Corregido: `auth_dependency.get_actor()` devuelve la identidad completa y firmada del JWT; `requested_by_label()` deriva `cis:<email>` (rol `integration`, la cuenta de servicio de un CIS externo) o `portal:<email>` (cualquier humano) — nunca del body. El login (`/auth/login`) ahora incluye `email` como claim | `services/portal-api/auth_dependency.py`, `main.py` |
+| 2026-09-11 | **Comando de ping construido** (`meter_ping.py`, hes-adapter-dlms): asociación DLMS real sin leer ningún registro — el comando más liviano del set estándar de industria (connect/disconnect/ping/lectura). `POST /meters/{id}/ping` | `services/hes-adapter-dlms/meter_ping.py` |
+| 2026-09-11 | **Panel unificado real** (`service_orders.py`, portal-api): junta `control_order` + lecturas bajo demanda/pings auditados en `meter_event` (F09) en un solo feed, con origen (`_origin()`) y modo (automático/manual) resueltos — sin tabla nueva. `GET /integrations/service-orders` | `services/portal-api/service_orders.py` |
+| 2026-09-11 | **8 pruebas unitarias puras nuevas** (`requested_by_label`, `_origin`) — 82/82 en total en los 6 servicios | `python -m unittest discover -s tests -v` → OK en los 6 servicios |
+| 2026-09-11 | **`verify_service_orders_end_to_end.py` — corrida real, exitosa**: dos actores reales (rol `supervisor` vía Portal, rol `integration` simulando el CIS) hacen ping real contra el simulador y piden una orden de control cada uno — el feed unificado resuelve el origen correcto de las 4 filas sin que ningún actor lo haya podido declarar él mismo; un ping a un medidor sin gateway da 422, no 500 | `python verify_service_orders_end_to_end.py "postgresql://...@localhost:5455/renfygrid"` → **"SPRINT C5 E2E OK"** |
+| 2026-09-11 | **4 scripts de verificación existentes actualizados y re-corridos sin regresiones** tras el cambio de contrato de `/control-orders`/`/control-orders/{id}/approve` (ya no reciben `requested_by`/`approver_name`/`approver_role` en el body) — `verify_portal_api_end_to_end.py`, `verify_stage_screens_end_to_end.py`, `verify_detail_actions_end_to_end.py` (backend) + `Control.tsx`/`api.ts` (frontend, se quitaron los dos campos de texto libre "Quién aprueba"/"Rol") | Los 8 `verify_*.py` de portal-api re-corridos → todos OK; `npm run build` limpio |
+| 2026-09-11 | **Desplegado a producción**: recompilado con Nuitka (incremental), `renfygrid-portal-api` reiniciado en essmarplapp02, frontend actualizado en essmarplpxy03 — probado en vivo desde internet: `GET /api/integrations/service-orders` y `POST /api/meters/{id}/ping` responden correcto contra datos reales del tenant demo | `curl https://renfygrid.rensoftlabs.com/api/integrations/service-orders` con el JWT real del tenant demo |
+
+**Pendiente real para C6** (la pantalla): el endpoint ya existe y está probado, pero el Portal
+Web todavía no tiene la pantalla "Integraciones (CIS)" — sigue siendo el mockup aprobado por el
+usuario, no código React real todavía.

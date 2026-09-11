@@ -117,8 +117,10 @@ def run(dsn: str) -> int:
                             (tenant_a_id,),
                         )
 
-            token_a = create_token({"tenant_id": tenant_a_id, "role": "operator"}, JWT_SECRET)
-            token_b = create_token({"tenant_id": tenant_b_id, "role": "operator"}, JWT_SECRET)
+            # Sprint C5: email en el claim -- requested_by ya no llega en el body,
+            # sale del actor autenticado (auth_dependency.requested_by_label).
+            token_a = create_token({"tenant_id": tenant_a_id, "role": "operator", "email": "ana@renfygrid.demo"}, JWT_SECRET)
+            token_b = create_token({"tenant_id": tenant_b_id, "role": "operator", "email": "bruno@renfygrid.demo"}, JWT_SECRET)
 
             resp_a = client.get("/meters", headers={"Authorization": f"Bearer {token_a}"})
             resp_b = client.get("/meters", headers={"Authorization": f"Bearer {token_b}"})
@@ -147,7 +149,7 @@ def run(dsn: str) -> int:
                 headers={"Authorization": f"Bearer {token_a}"},
                 json={
                     "meter_id": meter_ids[tenant_a_id], "order_type": "suspension",
-                    "requested_by": "ana@renfygrid.demo", "justification": "Prueba E2E Portal",
+                    "justification": "Prueba E2E Portal",
                 },
             )
             print(f"POST /control-orders: {resp_order.status_code}, body={resp_order.json()}")

@@ -61,12 +61,16 @@ def _meter_connection_and_mapping(conn: psycopg.Connection, tenant_id: str, mete
                 }
 
 
-def read_meter_now(conn: psycopg.Connection, tenant_id: str, meter_id: str, channel: str) -> NormalizedReading:
+def read_meter_now(
+    conn: psycopg.Connection, tenant_id: str, meter_id: str, channel: str, requested_by: str | None = None
+) -> NormalizedReading:
     """Lee AHORA (no espera al proximo ciclo del poller) y guarda el
-    resultado en `raw_reading` igual que cualquier otra lectura real."""
+    resultado en `raw_reading` igual que cualquier otra lectura real.
+    `requested_by` (Sprint C5) queda en la auditoria para el panel de
+    Integraciones/Service Orders -- ver `communication_audit.py`."""
     target = _meter_connection_and_mapping(conn, tenant_id, meter_id, channel)
 
-    with audited_communication(conn, tenant_id, meter_id, "on_demand_read"):
+    with audited_communication(conn, tenant_id, meter_id, "on_demand_read", requested_by=requested_by):
         media = GXNet(NetworkType.TCP, target["host"], target["port"])
         client = GXDLMSClient(
             True, target["client_address"], target["server_address"], Authentication.NONE, None, InterfaceType.WRAPPER
