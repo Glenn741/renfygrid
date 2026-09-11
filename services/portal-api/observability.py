@@ -25,28 +25,39 @@ def ingestion_metrics(conn: psycopg.Connection, tenant_id: str, stale_after_seco
     cuando fue la ultima, y si esta "caido" (sin lectura hace mas de
     `stale_after_seconds`). Un medidor sin ninguna lectura nunca (nuevo,
     recien registrado) no cuenta como caido -- no hay con que compararlo
-    todavia, no se adivina una alerta sin datos."""
+    todavia, no se adivina una alerta sin datos.
+
+    `brand`/`model`/`gateway_name` (Sprint C7, G4/G5): la fila ya existia,
+    solo le faltaba mostrar de que marca es y a que concentrador esta
+    enlazado -- el gap real que encontro el benchmark E2E, no un dato
+    nuevo que haya que capturar."""
     with conn.transaction():
         with tenant_scope(conn, tenant_id):
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT m.id, m.account_number, "
+                    "SELECT m.id, m.account_number, m.brand, m.model, g.name, "
                     "  (SELECT count(*) FROM raw_reading r WHERE r.meter_id = m.id AND r.\"timestamp\" > now() - interval '24 hours') AS readings_24h, "
                     "  (SELECT max(r.\"timestamp\") FROM raw_reading r WHERE r.meter_id = m.id) AS last_reading_at, "
                     "  (SELECT count(*) FROM meter_event e WHERE e.meter_id = m.id AND e.type = 'communication_failure' "
                     "     AND e.\"timestamp\" > now() - interval '24 hours') AS communication_failures_24h "
-                    "FROM meter m WHERE m.status = 'active'"
+                    "FROM meter m "
+                    "LEFT JOIN meter_gateway mg ON mg.meter_id = m.id "
+                    "LEFT JOIN gateway g ON g.id = mg.gateway_id "
+                    "WHERE m.status = 'active'"
                 )
                 rows = cur.fetchall()
 
     now = datetime.now(timezone.utc)
     meters = []
     alerts = []
-    for meter_id, account_number, readings_24h, last_reading_at, failures_24h in rows:
+    for meter_id, account_number, brand, model, gateway_name, readings_24h, last_reading_at, failures_24h in rows:
         is_stale = last_reading_at is not None and (now - last_reading_at).total_seconds() > stale_after_seconds
         meter_metrics = {
             "meter_id": str(meter_id),
             "account_number": account_number,
+            "brand": brand,
+            "model": model,
+            "gateway_name": gateway_name,
             "readings_24h": readings_24h,
             "last_reading_at": last_reading_at.isoformat() if last_reading_at else None,
             "communication_failures_24h": failures_24h,

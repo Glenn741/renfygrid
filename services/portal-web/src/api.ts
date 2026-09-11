@@ -75,6 +75,9 @@ export function getDashboardOverview(): Promise<DashboardOverview> {
 export interface MeterIngestion {
   meter_id: string;
   account_number: string;
+  brand: string | null;
+  model: string | null;
+  gateway_name: string | null;
   readings_24h: number;
   last_reading_at: string | null;
   communication_failures_24h: number;
@@ -95,6 +98,36 @@ export interface IngestionMetrics {
 
 export function getIngestionMetrics(staleAfterSeconds = 3600): Promise<IngestionMetrics> {
   return request(`/observability/ingestion?stale_after_seconds=${staleAfterSeconds}`);
+}
+
+// --- HES / Ingesta -- flota por marca y capa de agregacion (Sprint C7/C8) ---
+
+export interface FleetSummaryRow {
+  brand: string;
+  model: string | null;
+  total: number;
+  active: number;
+  reporting: number;
+  reporting_pct: number;
+}
+
+export function getFleetSummary(): Promise<FleetSummaryRow[]> {
+  return request("/meters/fleet-summary");
+}
+
+export interface Gateway {
+  gateway_id: string;
+  name: string;
+  host: string | null;
+  port: number | null;
+  meter_count: number;
+  brands: string[];
+  last_poll_at: string | null;
+  success_rate_24h: number | null;
+}
+
+export function getGateways(): Promise<Gateway[]> {
+  return request("/gateways");
 }
 
 export interface InvalidReading {

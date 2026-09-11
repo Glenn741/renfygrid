@@ -567,3 +567,22 @@ usuario, no código React real todavía.
 | 2026-09-11 | `npm run build` limpio, desplegado a producción — verificado en vivo: la ruta resuelve, y el bundle real contiene la pantalla y la llamada al endpoint | `curl https://renfygrid.rensoftlabs.com/integrations` → 200; bundle contiene "Integraciones (CIS)"/"service-orders" |
 
 Commit `e20f04b`. Sigue **C7-C8** (HES/Ingesta: flota por marca + capa de agregación).
+
+### Sprint C7-C8 — HES/Ingesta: flota por marca/modelo + capa de agregación (2026-09-11)
+
+**Objetivo:** cerrar G4/G5 del benchmark E2E — un HES real siempre tiene una vista de flota
+por marca/modelo y una vista de la capa de agregación (concentradores/gateways); RenfyGrid no
+tenía ninguna de las dos, solo la tabla por medidor de Sprint C2.
+**Estado:** 🟢 cerrado y desplegado a producción.
+
+| Fecha | Avance | Evidencia |
+|---|---|---|
+| 2026-09-11 | **Backend (C7)**: `fleet_aggregation.py` nuevo — `fleet_summary()` (por marca/modelo: total, activos, reportando, % reportando, mismo criterio de "caído" que F34) y `gateway_summary()` (por concentrador: medidores, marcas agrupadas, último ciclo de polling real, % éxito 24h auditado en `meter_event`, F09). `observability.ingestion_metrics()` (F34) extendido con `brand`/`model`/`gateway_name` por medidor — el dato ya existía en el esquema desde Sprint 0-1, solo faltaba la vista. Dos endpoints nuevos: `GET /meters/fleet-summary`, `GET /gateways` | `services/portal-api/fleet_aggregation.py`, `observability.py`, `main.py` |
+| 2026-09-11 | E2E real (Postgres + FastAPI TestClient): 2 marcas, 3 medidores, 2 concentradores, lecturas y eventos de polling reales insertados — confirma % reportando y % éxito 24h correctos, y que `/observability/ingestion` ya trae marca/modelo/concentrador | `verify_fleet_aggregation_end_to_end.py` → `SPRINT C7 E2E OK` |
+| 2026-09-11 | Regresión completa sin romper nada: 8/8 unit tests, F34 OK, SPRINT C2/C4/C5/8 E2E OK | `python -m unittest discover -s tests`, `verify_observability_end_to_end.py`, `verify_stage_screens_end_to_end.py`, `verify_service_orders_end_to_end.py`, `verify_portal_api_end_to_end.py`, `verify_detail_actions_end_to_end.py` |
+| 2026-09-11 | **Frontend (C8)**: `Meters.tsx` rediseñada como pantalla "HES / Ingesta" — tarjetas de flota por marca/modelo con barra de % reportando, tabla de concentradores (medidores/marcas/último polling/% éxito 24h), tabla de medidores ahora con columnas marca/modelo/concentrador. `api.ts` extendido: `getFleetSummary()`, `getGateways()`, `MeterIngestion` con `brand`/`model`/`gateway_name` | `services/portal-web/src/pages/Meters.tsx`, `api.ts` |
+| 2026-09-11 | Backend compilado con Nuitka (WSL2, venv Python 3.9) — solo los módulos cambiados (`fleet_aggregation`, `observability`), `main.py` se mantiene como fuente (punto de entrada, política de portafolio) — desplegado a `essmarplapp02`, servicio `renfygrid-portal-api` reiniciado | `~/package_deploy_c7.sh` (WSL), `systemctl restart renfygrid-portal-api` → activo |
+| 2026-09-11 | Frontend: `npm run build` limpio (bundle sin rutas mangled, `/api` correcto, contiene "fleet-summary"/"gateways"), desplegado a `essmarplpxy03` (`/var/www/renfygrid`) | `dist/assets/*.js` contiene "fleet-summary" y "/gateways" |
+| 2026-09-11 | Verificado en vivo desde internet: `/api/openapi.json` en producción lista `/meters/fleet-summary` y `/gateways`; ambos + `/observability/ingestion` responden 401 (gateados por auth, no 404/500) sin token; `https://renfygrid.rensoftlabs.com/` y `/api/openapi.json` → 200 | `curl https://renfygrid.rensoftlabs.com/api/...` |
+
+Sigue **C9** (rebranding visual + navegación real de 9 pantallas) y **C10** (editor de mapeo OBIS en Configuración) — planificados en `04-plan-sprints.md` §9, no iniciados.

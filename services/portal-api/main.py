@@ -56,6 +56,7 @@ from control_service import (  # noqa: E402
     list_control_orders,
 )
 from dashboard import dashboard_overview  # noqa: E402
+from fleet_aggregation import fleet_summary, gateway_summary  # noqa: E402
 from get_consumption import get_consumption  # noqa: E402
 from list_invalid_readings import list_invalid_readings  # noqa: E402
 from manual_edit import ReadingNotFoundError, edit_reading  # noqa: E402
@@ -310,6 +311,23 @@ def service_orders_endpoint(tenant_id: str = Depends(get_tenant_id), limit: int 
     propio sistema (auto-aprobacion)."""
     with db_conn() as conn:
         return list_service_orders(conn, tenant_id, limit)
+
+
+@app.get("/meters/fleet-summary")
+def fleet_summary_endpoint(tenant_id: str = Depends(get_tenant_id), stale_after_seconds: int = 3600) -> list[dict]:
+    """Sprint C7 (G4): flota agrupada por marca/modelo, con % de medidores
+    activos que de verdad estan reportando -- no solo el conteo total."""
+    with db_conn() as conn:
+        return fleet_summary(conn, tenant_id, stale_after_seconds)
+
+
+@app.get("/gateways")
+def gateways_endpoint(tenant_id: str = Depends(get_tenant_id)) -> list[dict]:
+    """Sprint C7 (G5): la capa de agregacion -- un concentrador por fila,
+    con cuantos medidores y de que marcas agrupa, y el estado real de su
+    ultimo ciclo de polling."""
+    with db_conn() as conn:
+        return gateway_summary(conn, tenant_id)
 
 
 @app.get("/observability/ingestion")

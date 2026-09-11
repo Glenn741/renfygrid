@@ -1,10 +1,42 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ApiError, getIngestionMetrics, readMeterNow } from "../api";
+import {
+  ApiError,
+  getFleetSummary,
+  getGateways,
+  getIngestionMetrics,
+  readMeterNow,
+} from "../api";
 import { StagePage, EmptyState } from "../components/StagePage";
+
+// HES / Ingesta (Sprint C7/C8, `docs/06-benchmark-e2e-y-brechas.md` G4/G5):
+// el benchmark E2E encontro que aca faltaban dos vistas que un HES real
+// siempre tiene -- flota por marca/modelo (G4) y la capa de agregacion de
+// concentradores (G5) -- antes de llegar a la tabla por medidor que ya
+// existia desde Sprint C2.
+
+function ratePillClass(pct: number | null): string {
+  if (pct === null) return "bg-slate-50 text-slate-500";
+  if (pct >= 90) return "bg-emerald-50 text-emerald-700";
+  if (pct >= 60) return "bg-amber-50 text-amber-700";
+  return "bg-red-50 text-red-600";
+}
 
 export function MetersPage() {
   const queryClient = useQueryClient();
+
+  const { data: fleet, isLoading: fleetLoading } = useQuery({
+    queryKey: ["fleet-summary"],
+    queryFn: getFleetSummary,
+    refetchInterval: 30_000,
+  });
+
+  const { data: gateways, isLoading: gatewaysLoading } = useQuery({
+    queryKey: ["gateways"],
+    queryFn: getGateways,
+    refetchInterval: 30_000,
+  });
+
   const { data, isLoading } = useQuery({
     queryKey: ["ingestion-metrics"],
     queryFn: () => getIngestionMetrics(),
@@ -21,13 +53,116 @@ export function MetersPage() {
       setError(null);
       setLastRead({ meterId, value: reading.value });
       queryClient.invalidateQueries({ queryKey: ["ingestion-metrics"] });
+      queryClient.invalidateQueries({ queryKey: ["fleet-summary"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard-overview"] });
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : "No se pudo leer el medidor ahora."),
   });
 
   return (
-    <StagePage title="Medidores / HES">
+    <StagePage title="Medidores / HES / Ingesta">
+      {/* Flota por marca/modelo (G4) -- lo primero que pregunta un operador
+          de HES: "¿cuántos medidores de cada marca tengo y qué porcentaje
+          está reportando ahora?" */}
+      <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-2">
+        Flota por marca / modelo
+      </h2>
+      {fleetLoading && <p className="text-sm text-slate-500 mb-4">Cargando...</p>}
+      {fleet && fleet.length === 0 && (
+        <div className="mb-6">
+          <EmptyState message="No hay medidores registrados todavía." />
+        </div>
+      )}
+      {fleet && fleet.length > 0 && (
+        <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {fleet.map((row) => (
+            <div key={`${row.brand}-${row.model ?? ""}`} className="rounded-xl border border-slate-200 bg-white p-4">
+              <div className="flex items-baseline justify-between">
+                <div>
+                  <div className="text-sm font-bold text-slate-900">{row.brand}</div>
+                  <div className="text-xs text-slate-500">{row.model ?? "modelo sin especificar"}</div>
+                </div>
+                <span
+                  className={`rounded-full px-2 py-0.5 text-xs font-semibold ${ratePillClass(row.reporting_pct)}`}
+                >
+                  {row.reporting_pct}% reportando
+                </span>
+              </div>
+              <div className="mt-3 h-2 rounded-full bg-slate-100 overflow-hidden">
+                <div
+                  className={`h-full ${
+                    row.reporting_pct >= 90 ? "bg-emerald-500" : row.reporting_pct >= 60 ? "bg-amber-500" : "bg-red-500"
+                  }`}
+                  style={{ width: `${row.reporting_pct}%` }}
+                />
+              </div>
+              <div className="mt-2 flex justify-between text-xs text-slate-500">
+                <span>{row.total} medidores</span>
+                <span>{row.active} activos</span>
+                <span>{row.reporting} reportando</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Capa de agregacion (G5) -- concentradores/gateways que agrupan
+          medidores de una o varias marcas, con su tasa de exito real de
+          polling en 24h (auditada, F09). */}
+      <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-2">
+        Concentradores (capa de agregación)
+      </h2>
+      {gatewaysLoading && <p className="text-sm text-slate-500 mb-4">Cargando...</p>}
+      {gateways && gateways.length === 0 && (
+        <div className="mb-6">
+          <EmptyState message="No hay concentradores registrados todavía." />
+        </div>
+      )}
+      {gateways && gateways.length > 0 && (
+        <div className="mb-6 overflow-x-auto rounded-xl border border-slate-200 bg-white">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+              <tr>
+                <th className="px-4 py-3">Concentrador</th>
+                <th className="px-4 py-3">Conexión</th>
+                <th className="px-4 py-3">Medidores</th>
+                <th className="px-4 py-3">Marcas</th>
+                <th className="px-4 py-3">Último ciclo de polling</th>
+                <th className="px-4 py-3">Éxito 24h</th>
+              </tr>
+            </thead>
+            <tbody>
+              {gateways.map((gw) => (
+                <tr key={gw.gateway_id}>
+                  <td className="px-4 py-3 font-medium text-slate-900">{gw.name}</td>
+                  <td className="px-4 py-3 text-slate-600">
+                    {gw.host ? `${gw.host}${gw.port ? `:${gw.port}` : ""}` : "—"}
+                  </td>
+                  <td className="px-4 py-3 tabular-nums">{gw.meter_count}</td>
+                  <td className="px-4 py-3 text-slate-600">
+                    {gw.brands.length > 0 ? gw.brands.join(", ") : "—"}
+                  </td>
+                  <td className="px-4 py-3 text-slate-600">
+                    {gw.last_poll_at ? new Date(gw.last_poll_at).toLocaleString() : "nunca"}
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${ratePillClass(gw.success_rate_24h)}`}>
+                      {gw.success_rate_24h === null ? "sin datos" : `${gw.success_rate_24h}%`}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Detalle por medidor (Sprint C2, extendido con marca/modelo/
+          concentrador en C7) -- exception-first: solo importa el que esta
+          caido o al que hay que leerle algo ahora. */}
+      <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-2">
+        Medidores
+      </h2>
       <div className="mb-4 flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-white p-4">
         <div>
           <label className="block text-xs font-medium text-slate-500 mb-1">Canal para "Leer ahora"</label>
@@ -51,6 +186,8 @@ export function MetersPage() {
             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
               <tr>
                 <th className="px-4 py-3">Cuenta</th>
+                <th className="px-4 py-3">Marca / modelo</th>
+                <th className="px-4 py-3">Concentrador</th>
                 <th className="px-4 py-3">Estado</th>
                 <th className="px-4 py-3">Última lectura</th>
                 <th className="px-4 py-3">Lecturas 24h</th>
@@ -62,6 +199,11 @@ export function MetersPage() {
               {data.meters.map((meter) => (
                 <tr key={meter.meter_id} className={meter.is_stale ? "bg-amber-50" : ""}>
                   <td className="px-4 py-3 font-medium text-slate-900">{meter.account_number}</td>
+                  <td className="px-4 py-3 text-slate-600">
+                    {meter.brand ?? "—"}
+                    {meter.model ? ` / ${meter.model}` : ""}
+                  </td>
+                  <td className="px-4 py-3 text-slate-600">{meter.gateway_name ?? "—"}</td>
                   <td className="px-4 py-3">
                     {meter.is_stale ? (
                       <span className="text-amber-700">⚠ Caído</span>
