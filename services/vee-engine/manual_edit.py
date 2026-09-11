@@ -1,9 +1,15 @@
 """Edicion manual auditada de una lectura validada (F18, Sprint 4).
 
-`validated_reading.value` SI se actualiza in place (source pasa a 'edited')
--- lo que nunca se puede tocar ni borrar es el rastro de la edicion en
+`validated_reading.value` SI se actualiza in place (source pasa a 'edited',
+`is_valid` pasa a `true` -- una vez que un humano la corrige, deja de
+aparecer en la cola de invalidas del Portal Web, Sprint C2) -- lo que nunca
+se puede tocar ni borrar es el rastro de la edicion en
 `validated_reading_edit`: esa tabla tiene UPDATE/DELETE revocados al rol de
 aplicacion a nivel de BD (migracion 0005), no solo por convencion de codigo.
+
+Gap encontrado y corregido en Sprint C1: antes de esto, `is_valid` no se
+tocaba al editar -- una lectura corregida a mano seguia apareciendo como
+"invalida" para siempre, lo cual no tenia sentido operativo.
 
 `user_name` y `justification` son obligatorios (columnas NOT NULL) --
 `edit_reading` no acepta editar sin ambos, para que no exista un cambio de
@@ -56,7 +62,7 @@ def edit_reading(
                 reading_id, previous_value = row
 
                 cur.execute(
-                    "UPDATE validated_reading SET value = %s, source = 'edited' WHERE id = %s",
+                    "UPDATE validated_reading SET value = %s, source = 'edited', is_valid = true WHERE id = %s",
                     (new_value, reading_id),
                 )
                 cur.execute(

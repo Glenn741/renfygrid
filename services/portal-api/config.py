@@ -20,6 +20,7 @@ class Settings:
     dsn: str
     jwt_secret: str
     order_signing_secret: str
+    cors_origins: list[str]
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -30,8 +31,17 @@ class Settings:
         ]
         if missing:
             raise MissingConfigError(f"Faltan variables de entorno obligatorias: {missing}")
+        # RENFYGRID_CORS_ORIGINS: lista separada por comas -- el Portal Web
+        # (Sprint C1) corre en un origen HTTP distinto al API. Default de
+        # desarrollo (Vite en :5173), nunca asumido en un entorno real.
+        cors_origins = [
+            origin.strip()
+            for origin in os.environ.get("RENFYGRID_CORS_ORIGINS", "http://localhost:5173").split(",")
+            if origin.strip()
+        ]
         return cls(
             dsn=os.environ["RENFYGRID_DSN"],
             jwt_secret=os.environ["RENFYGRID_JWT_SECRET"],
             order_signing_secret=os.environ["RENFYGRID_ORDER_SIGNING_SECRET"],
+            cors_origins=cors_origins,
         )

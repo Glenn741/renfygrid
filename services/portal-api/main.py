@@ -32,6 +32,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "hes-adapter-dlms")
 
 import psycopg  # noqa: E402
 from fastapi import Depends, FastAPI, HTTPException  # noqa: E402
+from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.responses import PlainTextResponse  # noqa: E402
 from pydantic import BaseModel  # noqa: E402
 
@@ -41,13 +42,23 @@ from billing_export import billing_ready_consumption, to_csv  # noqa: E402
 from config import Settings  # noqa: E402
 from control_order_gateway import request_control_order  # noqa: E402
 from control_service import InsufficientRoleError, InvalidTransitionError, approve_order  # noqa: E402
+from dashboard import dashboard_overview  # noqa: E402
 from get_consumption import get_consumption  # noqa: E402
 from observability import ingestion_metrics  # noqa: E402
 from on_demand_reader import MeterNotReadableError, read_meter_now  # noqa: E402
+from renmeter_common.auth import create_token  # noqa: E402
 from renmeter_common.db import tenant_scope  # noqa: E402
+from renmeter_common.user_service import InvalidCredentialsError, authenticate  # noqa: E402
 
 app = FastAPI(title="RenfyGrid Portal/API")
 app.state.settings = Settings.from_env()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=app.state.settings.cors_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @contextmanager
@@ -59,6 +70,35 @@ def db_conn() -> Iterator[psycopg.Connection]:
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok"}
+
+
+class LoginRequest(BaseModel):
+    tenant_id: str
+    email: str
+    password: str
+
+
+@app.post("/auth/login")
+def login(body: LoginRequest) -> dict:
+    """F47: sin JWT previo -- por eso `tenant_id` viene explícito en el
+    body (no hay todavía un mecanismo de "qué tenant es este email" sin que
+    el cliente lo diga, ver docs/03-diseno.md SS9.1)."""
+    with db_conn() as conn:
+        try:
+            identity = authenticate(conn, body.tenant_id, body.email, body.password)
+        except InvalidCredentialsError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+    token = create_token(
+        {"tenant_id": body.tenant_id, "role": identity["role"], "user_id": identity["user_id"]},
+        app.state.settings.jwt_secret,
+    )
+    return {"access_token": token, "token_type": "bearer"}
+
+
+@app.get("/dashboard/overview")
+def dashboard_overview_endpoint(tenant_id: str = Depends(get_tenant_id), stale_after_seconds: int = 3600) -> dict:
+    with db_conn() as conn:
+        return dashboard_overview(conn, tenant_id, stale_after_seconds)
 
 
 @app.get("/meters")

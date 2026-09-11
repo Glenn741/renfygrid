@@ -98,8 +98,8 @@ al sprint donde se construye y a su estado real.
 
 | # | Función | Sprint | Estado |
 |---|---|---|---|
-| F47 | Autenticación real de usuarios (`app_user` + `POST /auth/login`) | C1 | ⚪ |
-| F48 | Tablero general (Nivel 1: KPIs + alertas por etapa) | C1 | ⚪ |
+| F47 | Autenticación real de usuarios (`app_user` + `POST /auth/login`) | C1 | 🟢 |
+| F48 | Tablero general (Nivel 1: KPIs + alertas por etapa) | C1 | 🟢 |
 | F49 | Tableros por etapa (Nivel 2: HES, VEE, Consumos, Control, Observabilidad) | C2 | ⚪ |
 | F50 | Editor de reglas (Configuración: `vee_rule`/`consumption_anomaly_rule`/`control_approval_level`) | C3 | ⚪ |
 | F51 | Pantallas de detalle y acciones (Nivel 3) | C4 | ⚪ |
@@ -439,3 +439,23 @@ todas en ⚪ — **es planificación, no construcción**, tal como el usuario pi
 proyecto desde el primer mensaje.
 
 *(Esta tabla se actualiza cuando arranque la construcción real de Track C.)*
+
+### Sprint C1 — Autenticación real + tablero general: cerrado (2026-09-11)
+
+**Objetivo:** un usuario real (no un JWT emitido a mano) inicia sesión y ve el tablero general
+con conteos reales de un tenant de prueba. **Estado:** 🟢 — verificado por HTTP real y **de
+forma visual real por el usuario en su propio navegador** (única vez hasta ahora que este
+proyecto se confirma visualmente en un navegador, no solo con scripts).
+
+| Fecha | Avance | Función(es) | Evidencia |
+|---|---|---|---|
+| 2026-09-11 | **F47 construido**: migración `0009_app_user.sql` (RLS igual que el resto del esquema); `renmeter_common/passwords.py` (PBKDF2-HMAC-SHA256, stdlib, mismo criterio que `auth.py`); `renmeter_common/user_service.py` (`create_app_user`, `authenticate` — mensaje de error deliberadamente genérico, no distingue "no existe" de "contraseña incorrecta"); `POST /auth/login` en `portal-api` | F47 | `infra/db/migrations/0009_app_user.sql`, `services/common/renmeter_common/passwords.py`, `user_service.py` |
+| 2026-09-11 | **Gap encontrado y corregido de paso**: `manual_edit.py` (F18, Sprint 4) actualizaba `value`/`source` al editar una lectura pero nunca tocaba `is_valid` — una lectura corregida a mano seguía apareciendo como "inválida" para siempre. Corregido: ahora `is_valid` pasa a `true` al editar | F18 (corregido) | `services/vee-engine/manual_edit.py` |
+| 2026-09-11 | **F48 construido**: `portal-api/dashboard.py::dashboard_overview` — un conteo por etapa (medidores caídos, lecturas VEE inválidas, consumos en revisión, órdenes pendientes de aprobación), patrón exception-first; `GET /dashboard/overview` | F48 | `services/portal-api/dashboard.py` |
+| 2026-09-11 | **18/18 pruebas unitarias puras nuevas** (`test_passwords.py`, en `services/common`) — verifica contraseña correcta, incorrecta, dos hashes de la misma contraseña son distintos (salt aleatorio), contraseña vacía rechazada, hash corrupto falla cerrado | F47 | `python -m unittest discover -s tests -v` (en `services/common/`) → **68/68 en total, todos los servicios** |
+| 2026-09-11 | **`verify_login_and_dashboard_end_to_end.py` — corrida real**: usuario real dado de alta, login exitoso, contraseña incorrecta → 401, usuario desactivado → 401; con el JWT real que devolvió el login (no uno emitido a mano), `GET /dashboard/overview` refleja datos reales insertados directo en BD | F47, F48 | `python verify_login_and_dashboard_end_to_end.py "postgresql://...@localhost:5455/renfygrid"` → **"F47/F48 OK"** |
+| 2026-09-11 | **Esqueleto del Portal Web real**: `services/portal-web/` — React 19 + TypeScript + Vite + Tailwind v4 + TanStack Query + React Router. Pantallas: Login (tenant/email/contraseña) y Overview (4 tiles Nivel 1, patrón exception-first, refetch cada 30s). `npm run build` limpio | F47, F48 | `services/portal-web/` |
+| 2026-09-11 | **Gap real encontrado y corregido**: `portal-api` no tenía CORS habilitado — el navegador habría bloqueado toda llamada del frontend (puerto 5173) al backend (puerto 8000). Agregado `CORSMiddleware` + `RENFYGRID_CORS_ORIGINS` (variable de entorno, nunca un origen fijo) | F47, F48 | `services/portal-api/config.py`, `main.py` |
+| 2026-09-11 | **Confirmado visualmente por el usuario, en su propio navegador**: se creó un usuario real (`demo@renfygrid.com`) sobre el tenant de demostración persistente ("RenfyGrid Demo"), el usuario abrió `http://localhost:5173`, inició sesión con esas credenciales reales, y confirmó ver el tablero general con las 4 tarjetas — la primera verificación visual real de todo el proyecto, no solo scripts/tests | F47, F48 | Confirmación directa del usuario tras probarlo |
+
+*(Esta tabla se sigue completando a medida que avanza el Track C real.)*
