@@ -94,6 +94,15 @@ producto (la capa en sí, y el principio de modularidad) sí queda incorporado a
 | **Modelado de Red** *(agregado 2026-09-10)* | Gestión del ciclo de vida de modelos de red (creación, calibración, mantenimiento), integración con motores estándar (EPANET/WNTR para agua), soporte a planificación estratégica |
 | **Gemelo Digital** *(agregado 2026-09-10)* | Inventario operativo de la red: activos (tuberías, válvulas, tanques, bombas, medidores), su conectividad/topología y atributos operativos (material, diámetro, capacidad, año, condición) — el insumo real que necesitan Balance de Red y Modelado de Red para simular; sincronizable con el SIG del cliente |
 | **Gestión de Mantenimiento** *(agregado 2026-09-10)* | Genera órdenes de mantenimiento (preventivo/correctivo) a partir de la condición del activo, resultados de simulación o anomalías de balance; la ejecución en campo (ruteo, cuadrillas, app móvil, liquidación) se delega a **BayForce** — ya en el portafolio, no se reconstruye |
+| **Portal Web (UI operativa)** *(agregado 2026-09-10)* | Vista integral y accionable de todo el pipeline meter-to-cash para el operador del tenant — no un CRUD de tablas, sino una consola de operación con el patrón "exception-first" que usan los MDM de referencia (validado con investigación externa, ver `04-plan-sprints.md` épica E12): medidores caídos, lecturas inválidas, consumos en revisión y órdenes de control pendientes de aprobación, cada una con su acción, no solo su dato. Requiere usuarios reales con login (hasta ahora los JWT se emitían a mano en scripts de prueba, no había un `app_user` con credenciales) |
+
+**Por qué se agrega ahora, no antes:** el Portal/API (Sprint 8) ya expone medidores, consumos,
+eventos y control por HTTP con aislamiento RLS real — pero "Portal" hasta ese sprint significó
+únicamente la API (JSON), nunca una pantalla. El usuario preguntó explícitamente por la vista
+integral que le falta a RenfyGrid y por cómo lo resuelven los sistemas de referencia del rubro;
+la respuesta (investigación real, no inventada — ver `02-arquitectura-general.md` §9) es que
+esta capa de UI es autónoma del resto del backend (ya construido y verificado en Sprints 0-10) y
+se puede desarrollar como su propio track, sin bloquear ni ser bloqueada por Track B.
 
 **Módulos "à la carte":** cualquier subconjunto de las 9 capas de arriba es una oferta válida —
 ver el principio de modularidad en §3. No todas dependen entre sí (Balance de Red, Modelado de

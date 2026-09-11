@@ -141,10 +141,39 @@ depende de E10 — necesita `network_asset` para saber sobre qué activo generar
 **Definition of Ready/Done igual que el Track A** (§5) — ningún umbral/fórmula de pérdida fijo
 en código, todo trazable a `network_balance.method` o configuración de zona.
 
-## 9. Próximos pasos
+## 9. Track C — Portal Web (agregado 2026-09-10)
 
-Este plan cierra la fase de planeación pedida. El siguiente paso natural es **Sprint 0**:
-crear el repositorio, el esqueleto multi-tenant y la librería de configuración cacheada — es
-decir, empezar a construir. Se retoma cuando el usuario confirme luz verde para pasar de
-planeación a desarrollo. El Track B (§8) arranca cuando haya una oportunidad comercial
-concreta que lo justifique.
+Corre **en paralelo** al Track A, igual que el Track B — pero a diferencia del Track B (que
+depende de una oportunidad comercial concreta), el Track C responde a una necesidad ya
+confirmada: hoy no existe ninguna UI para operar RenfyGrid (solo DBeaver y la API en crudo), y
+el usuario confirmó que esta capa **es parte del producto real**, no una herramienta interna
+temporal. Ver la investigación y las decisiones de arquitectura en `02-arquitectura-general.md`
+§9 y el diseño de pantallas en `03-diseno.md` §9.
+
+| # | Épica | Objetivo |
+|---|---|---|
+| E12 | Autenticación real + fundaciones del Portal Web | `app_user` + `POST /auth/login`; esqueleto React/Vite/Tailwind; Nivel 1 (Overview) |
+| E13 | Pantallas de Nivel 2 (colas de excepción) | Medidores/HES, Validación (VEE), Consumos, Control (SCR), Observabilidad |
+| E14 | Editor de reglas (Configuración) | Alta/versionado de `vee_rule`, `consumption_anomaly_rule`, `control_approval_level` desde la UI |
+| E15 | Detalle y acciones (Nivel 3) | Aprobar/rechazar orden, editar lectura VEE, forzar lectura bajo demanda — todo accionable desde la UI, no solo lectura |
+
+| Sprint | Épica | Objetivo | Entregable verificable |
+|---|---|---|---|
+| **C1** | E12 | `app_user` + login real + esqueleto del SPA + tablero Nivel 1 | Un usuario real (no un JWT emitido a mano) inicia sesión y ve el tablero general con conteos reales de un tenant de prueba |
+| **C2** | E13 | Los 5 tableros de Nivel 2, cada uno con sus propios KPIs y alertas | Cada tablero de etapa muestra solo lo anormal (medidor caído, lectura inválida, consumo en revisión, orden pendiente) — un tenant sin anomalías ve un tablero "limpio" |
+| **C3** | E14 | Editor de reglas para las 3 tablas de configuración versionada | Un operador crea una nueva versión de `vee_rule` desde la UI (sin SQL) y el siguiente pase de validación ya la usa |
+| **C4** | E15 | Pantallas de detalle (Nivel 3) con la acción de cada entidad | Un operador aprueba una orden de control y edita una lectura VEE, ambas desde la UI, sin usar `curl`/Postman/DBeaver |
+
+**Definition of Ready/Done igual que el Track A** (§5), con un agregado propio de UI: ninguna
+pantalla de Nivel 2/3 puede mostrar una tabla cruda como su vista por defecto — el patrón
+"exception-first" (§9 de `02-arquitectura-general.md`) es un criterio de aceptación, no una
+sugerencia de diseño.
+
+## 10. Próximos pasos
+
+**Estado real (actualizado 2026-09-10, ver `docs/05-ejecucion.md` para el detalle verificado):**
+Track A (Sprints 0-10) está construido y verificado end-to-end salvo lo que depende
+explícitamente de un tenant piloto real (F05/F07). Track B (§8) sigue sin iniciar, a la espera
+de una oportunidad comercial concreta. **Track C (§9), el Portal Web, es el próximo trabajo de
+desarrollo real** — parte de una necesidad ya confirmada por el usuario, no de una oportunidad
+por confirmar como el Track B.

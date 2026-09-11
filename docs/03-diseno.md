@@ -363,9 +363,70 @@ cliente puntual):
   3. Como operador, quiero ver en RenfyGrid el estado de una orden que ya se envió a BayForce
      (enviada → en ejecución → completada), sin tener que entrar a dos sistemas distintos.
 
-## 9. Próximos pasos
+## 9. Diseño del Portal Web (agregado 2026-09-10)
+
+Ver la decisión de arquitectura y las fuentes de la investigación en
+`02-arquitectura-general.md` §9. Esta sección detalla lo que falta para construirlo: el
+usuario real (gap encontrado), los contratos de API nuevos, y las pantallas.
+
+### 9.1 Usuario real (gap nuevo, no existía)
+
+```sql
+app_user (
+  id, tenant_id, email, password_hash,   -- hash, nunca la contraseña en texto plano
+  role,           -- mismo valor que ya usa role_permission/control_approval_level.min_required_role
+  is_active,
+  created_at
+)
+```
+
+`POST /auth/login` (nuevo endpoint del Portal/API, Sprint 8 existente): recibe
+`{email, password}`, valida contra `app_user` (dentro del tenant que ese email pertenece — el
+login es el único endpoint que *no* recibe el tenant por JWT, porque todavía no hay uno), emite
+un JWT igual al que ya usa `renmeter_common/auth.py` (Sprint 0) con `tenant_id`/`role` como
+claims. El resto de endpoints no cambia — siguen exigiendo ese JWT exactamente como ya lo hacen
+desde Sprint 8.
+
+### 9.2 Contratos de API nuevos para el Portal Web
+
+| Endpoint | Método | Devuelve |
+|---|---|---|
+| `/auth/login` | POST | JWT (ver 9.1) |
+| `/dashboard/overview` | GET | Nivel 1: conteos por etapa — medidores activos/caídos (reusa `observability.ingestion_metrics`), lecturas VEE inválidas pendientes, consumos en revisión, órdenes de control pendientes de aprobación |
+| `/vee-rules` | GET/POST/PATCH | Editor de reglas VEE (9.3) — lista, crea una nueva versión, desactiva una vigente (nunca `DELETE`: `vee_rule` es versionado, `valid_to` cierra una versión, no se borra) |
+| `/consumption-anomaly-rules`, `/control-approval-levels` | GET/POST/PATCH | Mismo patrón que `/vee-rules`, misma naturaleza de tabla versionada |
+
+Los endpoints que ya existían (Sprint 8-10: `/meters`, `/consumption`, `/events`,
+`/control-orders`, `/observability/ingestion`, `/billing-export`) no cambian — el Portal Web es
+un cliente nuevo de esa misma API, no un rediseño de ella.
+
+### 9.3 Editor de reglas (pedido explícito del usuario)
+
+Una pantalla de **Configuración**, no ligada a una etapa del pipeline — administra las 3 tablas
+de configuración versionada que hoy solo se editan por SQL directo (`vee_rule`,
+`consumption_anomaly_rule`, `control_approval_level`). Mismo patrón para las tres: listar
+versiones vigentes, crear una nueva (queda `valid_from = now()`), y al crear una nueva para el
+mismo `(tenant_id, type/order_type)` la anterior se cierra (`valid_to = now()`) — igual que ya
+hace el patrón de configuración cacheada (`03-diseno.md` §2), el editor no inventa un mecanismo
+de versionado nuevo, usa el que ya existe.
+
+### 9.4 Pantallas (jerarquía de 3 niveles, ver `02-arquitectura-general.md` §9)
+
+| Nivel | Pantalla | KPIs / contenido | Acción disponible |
+|---|---|---|---|
+| 1 | **Overview** | Tablero general: medidores activos/caídos, % lecturas a tiempo, lecturas VEE inválidas, consumos en revisión, órdenes pendientes de aprobación — cada tile con su ícono de alerta si hay algo que atender | Navega a la pantalla de Nivel 2 de esa etapa |
+| 2 | **Medidores / HES** | Lista de medidores con estado (activo/caído), última lectura, fallas de comunicación 24h (`meter_event`, F09) | Ver detalle (Nivel 3), forzar lectura bajo demanda (F04) |
+| 2 | **Validación (VEE)** | Cola de `validated_reading` con `is_valid=false`, filtrable por `vee_rule_id` | Editar manualmente (F18, ya construido) |
+| 2 | **Consumos** | Cola de `consumption` con `anomaly_status='under_review'` | Ver detalle, marcar resuelto |
+| 2 | **Control (SCR)** | Cola de `control_order` en `pending_approval` + historial | Aprobar/rechazar (F27, ya construido) |
+| 2 | **Observabilidad** | Igual a `GET /observability/ingestion` (F34, ya construido) | — |
+| — | **Configuración** (transversal, no es una etapa) | Editor de reglas (9.3) | Alta de nueva versión de regla |
+| 3 | **Detalle** | El registro puntual (un medidor, una lectura, una orden) con su historial de auditoría completo | La acción de esa entidad (aprobar, editar, reintentar) |
+
+## 10. Próximos pasos
 
 Con el modelo de datos, contratos de API y flujos de secuencia definidos, se pasa a la
 **Fase 4: Plan de desarrollo ágil por sprints** — desglose en épicas/historias priorizadas,
 definición del MVP del piloto (qué protocolo, qué tenant, qué alcance de VEE/SCR entra en el
-primer incremento), y estimación de sprints.
+primer incremento), y estimación de sprints. El plan de sprints del Portal Web (nuevo track)
+se detalla en `04-plan-sprints.md` §9.

@@ -7,8 +7,9 @@ código, no por fecha. Complementa el Plan de sprints (`04-plan-sprints.md`).
 
 ## 1. Matriz funcional
 
-34 funciones concretas derivadas del alcance (`01-planteamiento.md` §4) y del diseño
-(`03-diseno.md`). Cada una mapeada al sprint donde se construye y a su estado real.
+51 funciones concretas derivadas del alcance (`01-planteamiento.md` §4) y del diseño
+(`03-diseno.md`): 35 del Track A, 11 del Track B, 5 del Track C (Portal Web). Cada una mapeada
+al sprint donde se construye y a su estado real.
 
 **Leyenda de estado:** ⚪ Planeado · 🟡 En progreso · 🟢 Hecho (con evidencia verificable)
 
@@ -92,6 +93,16 @@ código, no por fecha. Complementa el Plan de sprints (`04-plan-sprints.md`).
 | F43 | Derivar `network_model` desde el Gemelo Digital (export EPANET) | B6 | ⚪ |
 | F44 | Generación de `maintenance_order` desde anomalías (condición/simulación/balance) | B7 | ⚪ |
 | F45 | Integración con BayForce (envío de orden + webhook de cierre) | B7 | ⚪ |
+
+### Portal Web — Track C (agregado 2026-09-10)
+
+| # | Función | Sprint | Estado |
+|---|---|---|---|
+| F47 | Autenticación real de usuarios (`app_user` + `POST /auth/login`) | C1 | ⚪ |
+| F48 | Tablero general (Nivel 1: KPIs + alertas por etapa) | C1 | ⚪ |
+| F49 | Tableros por etapa (Nivel 2: HES, VEE, Consumos, Control, Observabilidad) | C2 | ⚪ |
+| F50 | Editor de reglas (Configuración: `vee_rule`/`consumption_anomaly_rule`/`control_approval_level`) | C3 | ⚪ |
+| F51 | Pantallas de detalle y acciones (Nivel 3) | C4 | ⚪ |
 
 **Cobertura por vertical en el MVP:** las 34 funciones del Track A se construyen para
 **energía eléctrica** (protocolo DLMS/COSEM) primero. Ninguna está bloqueada por diseño para
@@ -403,3 +414,28 @@ simular de forma honesta con datos sintéticos — sería fingir un resultado qu
 depende de tener un cliente real.
 
 *(Esta tabla queda abierta hasta que haya un tenant piloto real con el que correr el resto de Sprint 10.)*
+
+### Track C — Portal Web: planificado (2026-09-10, sin código todavía)
+
+El usuario preguntó qué UI existe para tener una vista integral de todo lo que procesa
+RenfyGrid. Respuesta honesta: **ninguna** — "Portal" hasta Sprint 8 siempre significó la API
+(JSON), nunca una pantalla; lo único visual hasta ahora es DBeaver (browser de tablas genérico)
+y el artifact de progreso de este documento (que es del *plan*, no de la *operación*). El
+usuario confirmó que esta capa es parte del producto real, no una herramienta interna temporal.
+
+Antes de construir nada (mismo método pedido al inicio del proyecto: planteamiento → arquitectura
+→ diseño → plan de sprints), se investigó el patrón real de la industria en vez de inventarlo —
+hallazgo: **"exception-first"** + jerarquía de pantallas **ISA-101** (estándar real de
+automatización industrial, no específico de un vendor) es el patrón que se repite en MDM y
+consolas de operación NOC/SCADA de referencia. El usuario confirmó y agregó un requisito
+concreto: un **editor de reglas VEE** en algún punto de la UI.
+
+Las 4 fases se actualizaron con el nuevo Track C: `01-planteamiento.md` (fila nueva en la tabla
+de alcance), `02-arquitectura-general.md` §9 (stack: React+TypeScript+Vite+Tailwind+TanStack
+Query, fuentes de la investigación, gap de `app_user`/login real encontrado), `03-diseno.md` §9
+(entidad `app_user`, contratos de API nuevos, editor de reglas, jerarquía de pantallas de 3
+niveles), `04-plan-sprints.md` §9 (épicas E12-E15, sprints C1-C4). Matriz funcional: F47-F51,
+todas en ⚪ — **es planificación, no construcción**, tal como el usuario pidió para todo el
+proyecto desde el primer mensaje.
+
+*(Esta tabla se actualiza cuando arranque la construcción real de Track C.)*

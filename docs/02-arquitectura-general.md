@@ -83,7 +83,8 @@ flowchart LR
     BUS{{Bus de eventos / API interna}}
 
     CIS[CIS/Facturación\npropio o del cliente]
-    PORTAL[Portal web + API pública\nmulti-tenant]
+    PORTAL_API[Portal/API\nHTTP + JWT, multi-tenant]
+    PORTAL_UI[Portal Web\nReact — consola operativa, agregado 2026-09-10]
 
     M1 <--> AD
     AD --> SCH --> RAW
@@ -98,8 +99,9 @@ flowchart LR
     MANT -->|integración| BAYFORCE
     BAYFORCE -.->|orden completada| MANT
     BUS --> CIS
-    BUS --> PORTAL
-    PORTAL --> SCR
+    BUS --> PORTAL_API
+    PORTAL_API --> SCR
+    PORTAL_UI --> PORTAL_API
 ```
 
 ## 3. Stack tecnológico propuesto (por capa)
@@ -120,6 +122,7 @@ flowchart LR
 | **Motor de Modelado de Red** *(nuevo)* | Servicio Python sobre **WNTR** (Water Network Tool for Resilience, USEPA — open source, compatible EPANET) para agua; adaptadores equivalentes para energía/gas quedan como trabajo futuro | Evita reimplementar un motor de simulación hidráulica; WNTR es Python-nativo, coherente con el resto del stack |
 | **Gemelo Digital (Inventario de activos)** *(nuevo)* | Servicio Python, catálogo de activos + conectividad, geoespacial (PostGIS como extensión de Postgres, mismo motor que Timescale) | Un solo motor de base de datos para todo (relacional, series de tiempo, geoespacial) — no suma un motor SIG aparte |
 | **Gestión de Mantenimiento** *(nuevo)* | Servicio Python, genera `maintenance_order` y la entrega a **BayForce** vía API | No construye ruteo/dispatch/app móvil — eso ya existe en el portafolio (principio 7) |
+| **Portal Web (UI operativa)** *(nuevo, 2026-09-10)* | **React + TypeScript + Vite**, Tailwind CSS (mismo lenguaje visual que `rnsftlbs`/el resto del portafolio), **TanStack Query** para consumir el Portal/API (Sprint 8) sin escribir cacheo/fetch a mano, un componente de gráficos liviano (ej. Recharts) para los tableros de KPIs | React es el estándar de facto para este tipo de consola operativa (ecosistema maduro de tablas/gráficos, evita reinventarlos); Tailwind mantiene consistencia visual con el resto de rensoftlabs; TanStack Query evita escribir una capa de estado/cache propia para algo ya resuelto |
 
 ### 3.1 Nota sobre Gurux (DLMS/COSEM)
 
@@ -228,9 +231,58 @@ Es el punto de mayor impacto si falla, así que se le pone más fricción que al
    a utilities grandes es una motion comercial distinta a la del piloto SMB)? Se resuelve en la
    Fase 4 (`04-plan-sprints.md`).
 
-## 9. Próximos pasos
+## 9. Portal Web — arquitectura de la UI operativa (agregado 2026-09-10)
+
+El usuario preguntó qué UI tienen los sistemas de referencia del rubro para ver y gestionar
+cada etapa del pipeline meter-to-cash, y confirmó que esta capa **es parte del producto real**
+(no una herramienta interna temporal). Se investigó el patrón real de la industria (no
+inventado — ver fuentes abajo) antes de proponer nada.
+
+**Hallazgo de la investigación**: el patrón que se repite en los MDM de referencia y en
+consolas de operación tipo NOC/SCADA es **"exception-first"**, con una jerarquía de pantallas
+de 2-3 niveles (estándar **ISA-101**, de automatización industrial):
+
+- **Nivel 1 — Tablero general**: todas las etapas del pipeline en una sola vista, con iconos de
+  alerta por etapa y un tablero de KPIs generales (medidores activos, % con lectura reciente,
+  lecturas VEE inválidas pendientes, consumos en revisión, órdenes de control pendientes de
+  aprobación). Solo resalta lo anormal — un tablero "limpio" significa que no hace falta actuar.
+- **Nivel 2 — Un tablero por etapa**, mismo patrón (KPIs + alertas) pero acotado a esa etapa:
+  Medidores/Ingesta (HES), Validación (VEE), Consumos, Control (SCR), Observabilidad.
+- **Nivel 3 — Detalle accionable**: el registro puntual (un medidor, una lectura inválida, una
+  orden de control) con la acción disponible ahí mismo (aprobar/rechazar, editar, reintentar) —
+  nunca solo lectura.
+
+Fuentes: patrón de gestión de excepciones en VEE de MDM reales
+([Landis+Gyr MDMS](https://www.landisgyr.com/nam/en/home/software/meter-data-management-system),
+[Bynry](https://www.bynry.com/blog/mdm-meter-data-management)); jerarquía de pantallas ISA-101 y
+diseño de HMI industrial
+([ISA-101 best practices](https://industrialmonitordirect.com/blogs/knowledgebase/scada-hmi-design-standards-and-isa-101-best-practices));
+patrón de tablero NOC centralizado ([InOC](https://www.inoc.com/blog/noc-dashboards)).
+
+**Editor de reglas (pedido explícito del usuario)**: en algún punto del Portal debe poder
+configurarse **cómo se gestiona el VEE** — es decir, una pantalla de administración de
+`vee_rule` (alta/edición/versión, no solo lectura). El mismo patrón aplica, por extensión
+natural (no alcance nuevo, mismo tipo de tabla versionada), a `consumption_anomaly_rule` y
+`control_approval_level` — las tres son configuración cacheada que hoy solo se edita por SQL
+directo. El editor de reglas vive fuera de la jerarquía de 3 niveles de arriba: es una pantalla
+de **Configuración**, transversal, no una etapa del pipeline en sí.
+
+**Gap real encontrado al plantear esto**: RenfyGrid no tiene todavía un concepto de **usuario
+real con login**. El JWT (F32, Sprint 0) se probó y se usó en Sprint 8-10, pero siempre emitido
+a mano (`create_token`) desde scripts de prueba — nunca hubo una tabla de usuarios ni un
+`POST /auth/login`. Un Portal real para operadores necesita eso: una entidad `app_user`
+(`tenant_id`, email, password hasheada, rol) y un endpoint de login que la valide y emita el
+JWT — se detalla en `03-diseno.md` §9.
+
+**Decisión de alcance para el primer sprint de este track**: autenticación simple (JWT con
+expiración corta, sin refresh token todavía — alcanza para el tamaño de un piloto) en vez de un
+sistema de sesiones completo; Keycloak/SSO sigue abierto para cuando haya necesidad real de
+login federado (multi-organización), no antes.
+
+## 10. Próximos pasos
 
 Con esta arquitectura validada, se pasa a la **Fase 3: Diseño** — modelo de datos detallado,
 contratos de API entre servicios, diagramas de secuencia del flujo Meter-to-Cash completo, y
 el diseño específico del motor VEE (reglas, umbrales, historias de usuario) y del flujo de
-aprobación de órdenes de control.
+aprobación de órdenes de control. El diseño del Portal Web (pantallas, contratos de API nuevos
+para el editor de reglas y el login) se detalla en `03-diseno.md` §9.
