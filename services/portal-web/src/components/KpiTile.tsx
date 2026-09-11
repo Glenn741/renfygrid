@@ -1,19 +1,22 @@
+import { Link } from "react-router-dom";
+
 interface KpiTileProps {
   label: string;
   value: number;
   alert?: boolean;
   hint?: string;
+  to: string;
 }
 
 // Patron "exception-first" (docs/02-arquitectura-general.md SS9): un tile
-// normal es neutro -- solo se resalta cuando hay algo que atender.
-export function KpiTile({ label, value, alert = false, hint }: KpiTileProps) {
+// normal es neutro -- solo se resalta cuando hay algo que atender. Cada
+// tile es un link a su pantalla de Nivel 2 (Nivel 1 -> Nivel 2).
+export function KpiTile({ label, value, alert = false, hint, to }: KpiTileProps) {
   return (
-    <div
-      className={`rounded-xl border p-4 flex flex-col gap-1 ${
-        alert
-          ? "border-amber-300 bg-amber-50"
-          : "border-slate-200 bg-white"
+    <Link
+      to={to}
+      className={`rounded-xl border p-4 flex flex-col gap-1 transition-shadow hover:shadow-md ${
+        alert ? "border-amber-300 bg-amber-50" : "border-slate-200 bg-white"
       }`}
     >
       <div className="flex items-center justify-between">
@@ -30,6 +33,6 @@ export function KpiTile({ label, value, alert = false, hint }: KpiTileProps) {
         {value}
       </span>
       {hint && <span className="text-xs text-slate-500">{hint}</span>}
-    </div>
+    </Link>
   );
 }

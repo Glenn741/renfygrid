@@ -29,6 +29,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "common"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "consumption"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "control"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "hes-adapter-dlms"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "vee-engine"))
 
 import psycopg  # noqa: E402
 from fastapi import Depends, FastAPI, HTTPException  # noqa: E402
@@ -41,9 +42,10 @@ from auth_dependency import get_tenant_id  # noqa: E402
 from billing_export import billing_ready_consumption, to_csv  # noqa: E402
 from config import Settings  # noqa: E402
 from control_order_gateway import request_control_order  # noqa: E402
-from control_service import InsufficientRoleError, InvalidTransitionError, approve_order  # noqa: E402
+from control_service import InsufficientRoleError, InvalidTransitionError, approve_order, list_control_orders  # noqa: E402
 from dashboard import dashboard_overview  # noqa: E402
 from get_consumption import get_consumption  # noqa: E402
+from list_invalid_readings import list_invalid_readings  # noqa: E402
 from observability import ingestion_metrics  # noqa: E402
 from on_demand_reader import MeterNotReadableError, read_meter_now  # noqa: E402
 from renmeter_common.auth import create_token  # noqa: E402
@@ -126,13 +128,29 @@ def consumption_endpoint(
     meter_id: str | None = None,
     period_start: date | None = None,
     period_end: date | None = None,
+    anomaly_status: str | None = None,
 ) -> list[dict]:
     with db_conn() as conn:
-        rows = get_consumption(conn, tenant_id, meter_id=meter_id, period_start=period_start, period_end=period_end)
+        rows = get_consumption(
+            conn, tenant_id, meter_id=meter_id, period_start=period_start, period_end=period_end,
+            anomaly_status=anomaly_status,
+        )
         for row in rows:
             row["period"] = str(row["period"])
             row["created_at"] = row["created_at"].isoformat()
         return rows
+
+
+@app.get("/vee/invalid-readings")
+def invalid_readings_endpoint(tenant_id: str = Depends(get_tenant_id)) -> list[dict]:
+    with db_conn() as conn:
+        return list_invalid_readings(conn, tenant_id)
+
+
+@app.get("/control-orders")
+def list_control_orders_endpoint(tenant_id: str = Depends(get_tenant_id), status: str | None = None) -> list[dict]:
+    with db_conn() as conn:
+        return list_control_orders(conn, tenant_id, status)
 
 
 @app.get("/events")

@@ -233,3 +233,40 @@ def _finish_as_failed(conn: psycopg.Connection, tenant_id: str, order_id: str, r
                 cur.execute("UPDATE control_order SET status = 'failed' WHERE id = %s", (order_id,))
                 _write_audit(cur, tenant_id, order_id, "sent", "failed", "system:scr_dispatch", detail={"reason": reason})
     return "failed"
+
+
+def list_control_orders(conn: psycopg.Connection, tenant_id: str, status: str | None = None) -> list[dict]:
+    """Cola/historial de ordenes (F49, Sprint C2, pantalla de Control de
+    Nivel 2) -- sin `status`, devuelve todas; con `status='pending_approval'`,
+    solo la cola de excepciones que de verdad importa ahi."""
+    clauses = ["co.tenant_id = %s"]
+    params: list = [tenant_id]
+    if status is not None:
+        clauses.append("co.status = %s")
+        params.append(status)
+
+    query = (
+        "SELECT co.id, co.meter_id, m.account_number, co.type, co.status, "
+        "       co.requested_by, co.justification, co.requested_at, co.approved_by, co.approved_at "
+        "FROM control_order co JOIN meter m ON m.id = co.meter_id "
+        f"WHERE {' AND '.join(clauses)} ORDER BY co.requested_at DESC"
+    )
+    with conn.transaction():
+        with tenant_scope(conn, tenant_id):
+            with conn.cursor() as cur:
+                cur.execute(query, params)
+                return [
+                    {
+                        "order_id": str(row[0]),
+                        "meter_id": str(row[1]),
+                        "account_number": row[2],
+                        "type": row[3],
+                        "status": row[4],
+                        "requested_by": row[5],
+                        "justification": row[6],
+                        "requested_at": row[7].isoformat() if row[7] else None,
+                        "approved_by": row[8],
+                        "approved_at": row[9].isoformat() if row[9] else None,
+                    }
+                    for row in cur.fetchall()
+                ]

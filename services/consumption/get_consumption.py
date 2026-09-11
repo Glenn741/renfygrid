@@ -27,23 +27,32 @@ def get_consumption(
     meter_id: str | None = None,
     period_start: date | None = None,
     period_end: date | None = None,
+    anomaly_status: str | None = None,
 ) -> list[dict]:
     """Sin filtros, devuelve todo el consumo del tenant. Con `period_start`/
     `period_end`, solo los periodos que se solapan con ese rango (operador
-    `&&` de rangos de Postgres) -- con `meter_id`, solo ese medidor."""
-    clauses = ["tenant_id = %s"]
+    `&&` de rangos de Postgres) -- con `meter_id`, solo ese medidor. Con
+    `anomaly_status`, solo ese estado -- la pantalla de Consumos del Portal
+    Web (Nivel 2, Sprint C2) lo usa para pedir solo `under_review`, la cola
+    de excepciones, no el consumo completo."""
+    clauses = ["c.tenant_id = %s"]
     params: list = [tenant_id]
 
     if meter_id is not None:
-        clauses.append("meter_id = %s")
+        clauses.append("c.meter_id = %s")
         params.append(meter_id)
     if period_start is not None and period_end is not None:
-        clauses.append("period && %s")
+        clauses.append("c.period && %s")
         params.append(Range(period_start, period_end, bounds="[)"))
+    if anomaly_status is not None:
+        clauses.append("c.anomaly_status = %s")
+        params.append(anomaly_status)
 
     query = (
-        "SELECT meter_id, period, value, anomaly_status, created_at FROM consumption "
-        f"WHERE {' AND '.join(clauses)} ORDER BY period"
+        "SELECT c.meter_id, m.account_number, c.period, c.value, c.anomaly_status, c.created_at "
+        "FROM consumption c JOIN meter m ON m.id = c.meter_id "
+        f"WHERE {' AND '.join(clauses)} "
+        "ORDER BY c.period"
     )
     with conn.transaction():
         with tenant_scope(conn, tenant_id):
@@ -52,10 +61,11 @@ def get_consumption(
                 return [
                     {
                         "meter_id": str(row[0]),
-                        "period": row[1],
-                        "value": float(row[2]),
-                        "anomaly_status": row[3],
-                        "created_at": row[4],
+                        "account_number": row[1],
+                        "period": row[2],
+                        "value": float(row[3]),
+                        "anomaly_status": row[4],
+                        "created_at": row[5],
                     }
                     for row in cur.fetchall()
                 ]

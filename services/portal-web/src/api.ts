@@ -68,4 +68,84 @@ export function getDashboardOverview(): Promise<DashboardOverview> {
   return request("/dashboard/overview");
 }
 
+// --- Nivel 2 (Sprint C2): un endpoint por etapa, cada uno YA filtrado del
+// lado del servidor a lo que hay que atender -- el patron exception-first
+// no es un filtro de UI, es como estan escritos los endpoints. ---
+
+export interface MeterIngestion {
+  meter_id: string;
+  account_number: string;
+  readings_24h: number;
+  last_reading_at: string | null;
+  communication_failures_24h: number;
+  is_stale: boolean;
+}
+
+export interface IngestionAlert {
+  meter_id: string;
+  account_number: string;
+  type: string;
+  detail: string;
+}
+
+export interface IngestionMetrics {
+  meters: MeterIngestion[];
+  alerts: IngestionAlert[];
+}
+
+export function getIngestionMetrics(staleAfterSeconds = 3600): Promise<IngestionMetrics> {
+  return request(`/observability/ingestion?stale_after_seconds=${staleAfterSeconds}`);
+}
+
+export interface InvalidReading {
+  meter_id: string;
+  account_number: string;
+  channel: string;
+  timestamp: string;
+  value: number;
+  vee_rule_id: string | null;
+  validation_notes: string | null;
+}
+
+export function getInvalidReadings(): Promise<InvalidReading[]> {
+  return request("/vee/invalid-readings");
+}
+
+export interface Consumption {
+  meter_id: string;
+  account_number: string;
+  period: string;
+  value: number;
+  anomaly_status: string;
+  created_at: string;
+}
+
+export function getConsumptionUnderReview(): Promise<Consumption[]> {
+  return request("/consumption?anomaly_status=under_review");
+}
+
+export interface ControlOrder {
+  order_id: string;
+  meter_id: string;
+  account_number: string;
+  type: string;
+  status: string;
+  requested_by: string;
+  justification: string | null;
+  requested_at: string | null;
+  approved_by: string | null;
+  approved_at: string | null;
+}
+
+export function getControlOrders(status?: string): Promise<ControlOrder[]> {
+  return request(`/control-orders${status ? `?status=${status}` : ""}`);
+}
+
+export function approveControlOrder(
+  orderId: string,
+  body: { approver_name: string; approver_role: string },
+): Promise<{ order_id: string; status: string }> {
+  return request(`/control-orders/${orderId}/approve`, { method: "POST", body: JSON.stringify(body) });
+}
+
 export { ApiError };

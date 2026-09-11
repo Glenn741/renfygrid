@@ -100,7 +100,7 @@ al sprint donde se construye y a su estado real.
 |---|---|---|---|
 | F47 | Autenticación real de usuarios (`app_user` + `POST /auth/login`) | C1 | 🟢 |
 | F48 | Tablero general (Nivel 1: KPIs + alertas por etapa) | C1 | 🟢 |
-| F49 | Tableros por etapa (Nivel 2: HES, VEE, Consumos, Control, Observabilidad) | C2 | ⚪ |
+| F49 | Tableros por etapa (Nivel 2: HES, VEE, Consumos, Control, Observabilidad) | C2 | 🟢 |
 | F50 | Editor de reglas (Configuración: `vee_rule`/`consumption_anomaly_rule`/`control_approval_level`) | C3 | ⚪ |
 | F51 | Pantallas de detalle y acciones (Nivel 3) | C4 | ⚪ |
 
@@ -457,5 +457,20 @@ proyecto se confirma visualmente en un navegador, no solo con scripts).
 | 2026-09-11 | **Esqueleto del Portal Web real**: `services/portal-web/` — React 19 + TypeScript + Vite + Tailwind v4 + TanStack Query + React Router. Pantallas: Login (tenant/email/contraseña) y Overview (4 tiles Nivel 1, patrón exception-first, refetch cada 30s). `npm run build` limpio | F47, F48 | `services/portal-web/` |
 | 2026-09-11 | **Gap real encontrado y corregido**: `portal-api` no tenía CORS habilitado — el navegador habría bloqueado toda llamada del frontend (puerto 5173) al backend (puerto 8000). Agregado `CORSMiddleware` + `RENFYGRID_CORS_ORIGINS` (variable de entorno, nunca un origen fijo) | F47, F48 | `services/portal-api/config.py`, `main.py` |
 | 2026-09-11 | **Confirmado visualmente por el usuario, en su propio navegador**: se creó un usuario real (`demo@renfygrid.com`) sobre el tenant de demostración persistente ("RenfyGrid Demo"), el usuario abrió `http://localhost:5173`, inició sesión con esas credenciales reales, y confirmó ver el tablero general con las 4 tarjetas — la primera verificación visual real de todo el proyecto, no solo scripts/tests | F47, F48 | Confirmación directa del usuario tras probarlo |
+
+*(Esta tabla se sigue completando a medida que avanza el Track C real.)*
+
+### Sprint C2 — Tableros de Nivel 2: cerrado (2026-09-11)
+
+**Objetivo:** cada tablero de etapa muestra solo lo anormal — un tenant sin anomalías ve un
+tablero "limpio". **Estado:** 🟢 verificado real (backend por `TestClient`, frontend con
+`npm run build` limpio + servido en vivo).
+
+| Fecha | Avance | Función(es) | Evidencia |
+|---|---|---|---|
+| 2026-09-11 | **3 piezas de backend nuevas/extendidas**: `vee-engine/list_invalid_readings.py` (`GET /vee/invalid-readings`, nuevo); `consumption/get_consumption.py` ampliado con filtro `anomaly_status` (`GET /consumption?anomaly_status=under_review`); `control/control_service.py::list_control_orders` (`GET /control-orders?status=`, nuevo — hasta ahora solo existían `POST /control-orders` y `POST /control-orders/{id}/approve`, sin forma de listar) | F49 | `services/vee-engine/list_invalid_readings.py`, `get_consumption.py`, `control_service.py` |
+| 2026-09-11 | **`verify_stage_screens_end_to_end.py` — corrida real**: una lectura inválida real aparece en `/vee/invalid-readings` con su `validation_notes`; un consumo `under_review` aparece filtrado, uno `ok` no; una orden `pending_approval` aparece en la cola y desaparece de ella al aprobarla (mismo endpoint de Sprint 6) | F49 | `python verify_stage_screens_end_to_end.py "postgresql://...@localhost:5455/renfygrid"` → **"SPRINT C2 BACKEND E2E OK"** |
+| 2026-09-11 | **5 pantallas de Nivel 2 + navegación**: `Meters.tsx` (HES), `Vee.tsx`, `Consumption.tsx`, `Control.tsx` (con acción de aprobar, no solo lectura), `Observability.tsx` — cada una consultando su endpoint ya filtrado del lado del servidor, con un estado vacío explícito ("Sin lecturas inválidas pendientes 👍") en vez de una tabla vacía sin contexto. Los tiles del tablero general (Nivel 1) ahora son links a su pantalla de Nivel 2 correspondiente | F49 | `services/portal-web/src/pages/{Meters,Vee,Consumption,Control,Observability}.tsx` |
+| 2026-09-11 | **68/68 pruebas unitarias siguen pasando** tras los cambios en `get_consumption`/`control_service` (nada roto) + `npm run build` limpio del frontend | F49 | `python -m unittest discover` en los 5 servicios Python → OK; `npm run build` → exit 0 |
 
 *(Esta tabla se sigue completando a medida que avanza el Track C real.)*
