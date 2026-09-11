@@ -19,7 +19,7 @@ código, no por fecha. Complementa el Plan de sprints (`04-plan-sprints.md`).
 | F01 | Registro de medidores/concentradores | 0-1 | 🟢 |
 | F02 | Adaptador de protocolo DLMS/COSEM (Gurux) | 1 | 🟢 |
 | F03 | Lectura remota programada (polling) | 1 | 🟢 |
-| F04 | Lectura remota bajo demanda | 8 | ⚪ |
+| F04 | Lectura remota bajo demanda | 8 | 🟢 |
 | F05 | Recepción de eventos/alarmas del medidor | 1-2 | ⚪ (diferido a Sprint 2, ver bitácora) |
 | F06 | Mapeo OBIS configurable por marca/modelo (cacheado) | 2 | 🟢 |
 | F07 | Envío de comandos SCR al medidor | 7 | ⚪ |
@@ -73,7 +73,7 @@ código, no por fecha. Complementa el Plan de sprints (`04-plan-sprints.md`).
 |---|---|---|---|
 | F31 | Multi-tenencia con Row-Level Security | 0 | 🟢 |
 | F32 | Autenticación JWT y control de roles/permisos | 0 | 🟢 |
-| F33 | Portal/API pública multi-tenant (RLS end-to-end) | 8 | ⚪ |
+| F33 | Portal/API pública multi-tenant (RLS end-to-end) | 8 | 🟢 |
 | F34 | Observabilidad (métricas de ingesta, alertas) | 9 | ⚪ |
 | F46 | Clúster k3s bootstrapeado + primer servicio desplegado como pod | 0 | 🟢 |
 
@@ -328,3 +328,26 @@ principio que Sprint 1). Con esto, **Track A completo hasta Sprint 7 de 10** —
 (Portal/API con RLS end-to-end), 9 (hardening/observabilidad) y 10 (piloto real).
 
 *(Esta tabla se sigue completando a medida que avanza el Sprint 7 real.)*
+
+### Sprint 8 — Portal/API pública multi-tenant
+
+**Objetivo:** un usuario del tenant piloto solo ve sus propios datos, verificado con un segundo
+tenant de prueba (`04-plan-sprints.md` §4). **Estado:** 🟢 objetivo cumplido con evidencia real
+end-to-end — iniciado y cerrado 2026-09-10. **Primer servicio HTTP real de RenfyGrid.**
+
+Nuevo servicio `services/portal-api/` (FastAPI + uvicorn). Config 100% por variable de entorno
+(`RENFYGRID_DSN`, `RENFYGRID_JWT_SECRET`, `RENFYGRID_ORDER_SIGNING_SECRET`) — nunca un valor fijo
+en código, mismo criterio que la contraseña de `0002_app_role.sql`.
+
+| Fecha | Avance | Función(es) | Evidencia |
+|---|---|---|---|
+| 2026-09-10 | **`auth_dependency.py`**: primer uso real de `renmeter_common/auth.py` (JWT, Sprint 0) fuera de sus propias pruebas unitarias — cada endpoint exige `Authorization: Bearer <token>`, y el `tenant_id` sale del claim firmado, nunca de un query param o del body. Es lo único que hace que F33 sea real aislamiento y no un filtro "de confianza" | F32, F33 | `services/portal-api/auth_dependency.py` |
+| 2026-09-10 | **Endpoints construidos**: `GET /meters`, `GET /consumption` (reusa `get_consumption` de Sprint 5), `GET /events`, `POST /control-orders` — **no llama a `services/control` directo**: pasa por `services/consumption/control_order_gateway.py`, honrando `02-arquitectura-general.md` §6 punto 4 ("el módulo SCR únicamente habla con los adaptadores HES... se llega a él a través de Gestión de Consumos") — `POST /control-orders/{id}/approve`, `POST /meters/{id}/reads` (F04, lectura bajo demanda) | F33, F04 | `services/portal-api/main.py` |
+| 2026-09-10 | **F04 construido**: `hes-adapter-dlms/on_demand_reader.py::read_meter_now` — mismo pipeline de `main.py`/`poller.py` pero resolviendo conexión/mapeo OBIS de un medidor puntual bajo pedido, no en un ciclo programado | F04 | `services/hes-adapter-dlms/on_demand_reader.py` |
+| 2026-09-10 | **`verify_portal_api_end_to_end.py` — corrida real con `fastapi.testclient.TestClient` (ASGI real, Postgres real, sin mocks)**: 2 tenants con 1 medidor cada uno, JWT real por tenant — `GET /meters` con el token de A devuelve **solo** el medidor de A (no ve el de B, aunque ambos estén en la misma BD), lo mismo para B; sin token → 401; token con firma inválida → 401; `POST /control-orders` crea una orden real (201); `POST /meters/{id}/reads` ejecuta una lectura DLMS real contra el simulador de Sprint 1 y devuelve el valor correcto (777000); **el token de B intentando leer bajo demanda un medidor de A es rechazado (422) por la misma RLS**, no por una validación de aplicación aparte | F33, F04 | `python verify_portal_api_end_to_end.py "postgresql://renfygrid_app:...@localhost:5455/renfygrid"` → **"SPRINT 8 E2E OK"**, exit code 0 |
+
+**Con esto, Track A completo hasta Sprint 8 de 10** — el primer HTTP real del proyecto, con el
+aislamiento multi-tenant probado de punta a punta sobre ese HTTP, no solo a nivel de BD. Quedan
+Sprint 9 (hardening: auditoría end-to-end, observabilidad, alertas) y Sprint 10 (piloto real).
+
+*(Esta tabla se sigue completando a medida que avanza el Sprint 8 real.)*
