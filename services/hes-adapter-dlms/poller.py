@@ -33,6 +33,7 @@ from gurux_dlms.enums import Authentication, InterfaceType  # noqa: E402
 from gurux_net import GXNet  # noqa: E402
 from gurux_net.enums import NetworkType  # noqa: E402
 
+from communication_audit import audited_communication  # noqa: E402
 from dlms_session import DlmsSession  # noqa: E402
 from meter_reader import read_register  # noqa: E402
 from obis_mapping import ConfigCache, channels_for  # noqa: E402
@@ -113,11 +114,12 @@ def read_one_meter_with_retries(
     last_error: Exception | None = None
     for attempt in range(1, read_retries + 1):
         try:
-            readings = read_all_channels(
-                meter["meter_id"], meter["server_address"], meter["connection"], channels
-            )
-            for reading in readings:
-                insert_raw_reading(conn, tenant_id, reading)
+            with audited_communication(conn, tenant_id, meter["meter_id"], "poller_read"):
+                readings = read_all_channels(
+                    meter["meter_id"], meter["server_address"], meter["connection"], channels
+                )
+                for reading in readings:
+                    insert_raw_reading(conn, tenant_id, reading)
             return
         except Exception as exc:  # falla de comunicacion con el concentrador/medidor
             last_error = exc

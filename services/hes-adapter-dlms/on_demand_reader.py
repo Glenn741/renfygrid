@@ -19,6 +19,7 @@ from gurux_dlms.enums import Authentication, InterfaceType  # noqa: E402
 from gurux_net import GXNet  # noqa: E402
 from gurux_net.enums import NetworkType  # noqa: E402
 
+from communication_audit import audited_communication  # noqa: E402
 from dlms_session import DlmsSession  # noqa: E402
 from meter_reader import NormalizedReading, read_register  # noqa: E402
 from reading_store import insert_raw_reading  # noqa: E402
@@ -65,18 +66,19 @@ def read_meter_now(conn: psycopg.Connection, tenant_id: str, meter_id: str, chan
     resultado en `raw_reading` igual que cualquier otra lectura real."""
     target = _meter_connection_and_mapping(conn, tenant_id, meter_id, channel)
 
-    media = GXNet(NetworkType.TCP, target["host"], target["port"])
-    client = GXDLMSClient(
-        True, target["client_address"], target["server_address"], Authentication.NONE, None, InterfaceType.WRAPPER
-    )
-    media.open()
-    try:
-        session = DlmsSession(client=client, media=media)
-        session.associate()
-        reading = read_register(session, meter_id, target["obis_code"], channel, target["attribute_index"])
-        session.disconnect()
-    finally:
-        media.close()
+    with audited_communication(conn, tenant_id, meter_id, "on_demand_read"):
+        media = GXNet(NetworkType.TCP, target["host"], target["port"])
+        client = GXDLMSClient(
+            True, target["client_address"], target["server_address"], Authentication.NONE, None, InterfaceType.WRAPPER
+        )
+        media.open()
+        try:
+            session = DlmsSession(client=client, media=media)
+            session.associate()
+            reading = read_register(session, meter_id, target["obis_code"], channel, target["attribute_index"])
+            session.disconnect()
+        finally:
+            media.close()
 
-    insert_raw_reading(conn, tenant_id, reading)
+        insert_raw_reading(conn, tenant_id, reading)
     return reading

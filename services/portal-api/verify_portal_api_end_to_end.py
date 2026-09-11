@@ -184,6 +184,7 @@ def run(dsn: str) -> int:
                     with tenant_scope(conn, tenant_id):
                         with conn.cursor() as cur:
                             cur.execute("DELETE FROM raw_reading WHERE tenant_id = %s", (tenant_id,))
+                            cur.execute("DELETE FROM meter_event WHERE tenant_id = %s", (tenant_id,))
                             cur.execute("DELETE FROM control_order WHERE tenant_id = %s", (tenant_id,))
                             cur.execute("DELETE FROM control_approval_level WHERE tenant_id = %s", (tenant_id,))
                             cur.execute("DELETE FROM meter_gateway WHERE meter_id IN (SELECT id FROM meter WHERE tenant_id = %s)", (tenant_id,))

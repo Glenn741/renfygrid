@@ -24,7 +24,7 @@ código, no por fecha. Complementa el Plan de sprints (`04-plan-sprints.md`).
 | F06 | Mapeo OBIS configurable por marca/modelo (cacheado) | 2 | 🟢 |
 | F07 | Envío de comandos SCR al medidor | 7 | ⚪ |
 | F08 | Reintentos / cola ante caída de concentrador | 2 | 🟡 (reintentos sí, cola persistente no — ver bitácora) |
-| F09 | Auditoría de comunicación con dispositivos | 9 | ⚪ |
+| F09 | Auditoría de comunicación con dispositivos | 9 | 🟢 |
 
 ### Almacenamiento
 
@@ -33,7 +33,7 @@ código, no por fecha. Complementa el Plan de sprints (`04-plan-sprints.md`).
 | F10 | Ingesta de lecturas crudas (hypertable Timescale) | 1 | 🟡 |
 | F11 | Metadatos de medidor/ubicación/catastro | 0-1 | 🟢 |
 | F12 | Retención histórica configurable por tenant | 10 | ⚪ |
-| F13 | Respaldo y recuperación | 9 | ⚪ |
+| F13 | Respaldo y recuperación | 9 | 🟢 |
 
 ### VEE (Validación · Estimación · Edición)
 
@@ -74,7 +74,7 @@ código, no por fecha. Complementa el Plan de sprints (`04-plan-sprints.md`).
 | F31 | Multi-tenencia con Row-Level Security | 0 | 🟢 |
 | F32 | Autenticación JWT y control de roles/permisos | 0 | 🟢 |
 | F33 | Portal/API pública multi-tenant (RLS end-to-end) | 8 | 🟢 |
-| F34 | Observabilidad (métricas de ingesta, alertas) | 9 | ⚪ |
+| F34 | Observabilidad (métricas de ingesta, alertas) | 9 | 🟢 |
 | F46 | Clúster k3s bootstrapeado + primer servicio desplegado como pod | 0 | 🟢 |
 
 ### Balance de Red y Modelado de Red — Track B (agregado 2026-09-10)
@@ -351,3 +351,29 @@ aislamiento multi-tenant probado de punta a punta sobre ese HTTP, no solo a nive
 Sprint 9 (hardening: auditoría end-to-end, observabilidad, alertas) y Sprint 10 (piloto real).
 
 *(Esta tabla se sigue completando a medida que avanza el Sprint 8 real.)*
+
+### Sprint 9 — Hardening: auditoría, respaldo, observabilidad
+
+**Objetivo:** auditoría inmutable end-to-end, métricas de ingesta, alertas de caída — panel de
+observabilidad mínimo funcionando (`04-plan-sprints.md` §4). **Estado:** 🟢 objetivo cumplido
+con evidencia real — iniciado y cerrado 2026-09-10.
+
+| Fecha | Avance | Función(es) | Evidencia |
+|---|---|---|---|
+| 2026-09-10 | **F09 construido**: `hes-adapter-dlms/communication_audit.py` (`audited_communication`, un context manager que envuelve un intento de comunicación real con un medidor y deja la auditoría sola, exitosa o no, en `meter_event` — se reusa esa tabla en vez de crear una nueva, con una columna `detail` nueva, migración `0008_meter_event_detail.sql`). Instrumentado en `poller.py` (cada intento, incluyendo reintentos) y `on_demand_reader.py` (F04, Sprint 8) | F09 | `services/hes-adapter-dlms/communication_audit.py`, migración `0008` |
+| 2026-09-10 | **`verify_communication_audit_end_to_end.py` — corrida real**: un ciclo de polling exitoso, uno fallido (concentrador caído, puerto cerrado) y una lectura bajo demanda — confirma las 3 filas `meter_event` en orden, con `detail.operation`/`detail.error` correctos en cada una | F09 | `python verify_communication_audit_end_to_end.py "postgresql://...@localhost:5455/renfygrid"` → **"F09 OK"** |
+| 2026-09-10 | **F13 construido**: `infra/db/backup.py`/`restore.py` — wrappers sobre `pg_dump`/`pg_restore` (formato custom, comprimido), nada reimplementado, todo por argumento (host/puerto/usuario/base/ruta, hasta la ubicación del binario) | F13 | `infra/db/backup.py`, `infra/db/restore.py` |
+| 2026-09-10 | **`verify_backup_restore_end_to_end.py` — corrida real, con pg_dump/pg_restore reales**: inserta un tenant marcador en la BD de desarrollo real, corre un respaldo real, restaura sobre una **base temporal separada** (nunca sobre la BD de desarrollo en uso, que tiene datos de demo reales para el usuario) y confirma que el tenant marcador aparece intacto en la base restaurada — limpia el marcador, la base temporal y el archivo de respaldo al final. Se confirmó explícitamente que los datos de demo (`RenfyGrid Demo`) sobrevivieron intactos | F13 | `python infra/db/verify_backup_restore_end_to_end.py` → **"F13 OK"**, confirmado con una consulta aparte que `RenfyGrid Demo` sigue con sus 4 lecturas |
+| 2026-09-10 | **F34 construido**: `portal-api/observability.py::ingestion_metrics` + `GET /observability/ingestion` (nuevo endpoint) — lecturas de las últimas 24h y última lectura por medidor, fallas de comunicación (F09) de las últimas 24h, y alerta `ingestion_stale` si un medidor activo no reporta hace más de `stale_after_seconds` (parámetro, nunca fijo). Un medidor que nunca reportó **no** se marca caído — no hay con qué comparar, no se adivina una alerta sin datos | F34 | `services/portal-api/observability.py`, `main.py` |
+| 2026-09-10 | **`verify_observability_end_to_end.py` — corrida real via `TestClient`**: 3 medidores (lectura reciente, lectura de hace 2h con umbral de 1h, y uno sin ninguna lectura nunca) — confirma que solo el segundo aparece en `alerts`, y que la falla de comunicación real registrada por F09 aparece en `communication_failures_24h` | F34 | `python verify_observability_end_to_end.py "postgresql://...@localhost:5455/renfygrid"` → **"F34 OK"** |
+
+**Con esto, Track A queda en 27 funciones 🟢, 4 🟡 (alcance parcial documentado explícitamente en
+cada una) y solo 4 🟪 pendientes de las 35 — F05 (diferido a propósito, Sprint 1-2), F07 (envío
+de comandos SCR *al medidor*, depende de confirmar que el medidor del piloto real soporta
+corte/reconexión), F12 (retención histórica) y F25 (entrega a CIS), estas dos últimas ligadas a
+tener un piloto real corriendo, no a más código genérico. Queda únicamente **Sprint 10**: piloto
+real con el tenant, ajuste de reglas VEE con datos de producción. Track B (Balance de Red,
+Modelado, Gemelo Digital, Mantenimiento — 11 funciones) sigue sin iniciar, tal como estaba
+planeado (corre en paralelo cuando haya una oportunidad comercial concreta, no por fecha fija).
+
+*(Esta tabla se sigue completando a medida que avanza el Sprint 9 real.)*

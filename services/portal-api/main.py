@@ -40,6 +40,7 @@ from config import Settings  # noqa: E402
 from control_order_gateway import request_control_order  # noqa: E402
 from control_service import InsufficientRoleError, InvalidTransitionError, approve_order  # noqa: E402
 from get_consumption import get_consumption  # noqa: E402
+from observability import ingestion_metrics  # noqa: E402
 from on_demand_reader import MeterNotReadableError, read_meter_now  # noqa: E402
 from renmeter_common.db import tenant_scope  # noqa: E402
 
@@ -167,3 +168,9 @@ def read_meter_now_endpoint(meter_id: str, body: ReadNowRequest, tenant_id: str 
         row = reading.as_row()
         row["timestamp"] = row["timestamp"].isoformat()
         return row
+
+
+@app.get("/observability/ingestion")
+def ingestion_observability(tenant_id: str = Depends(get_tenant_id), stale_after_seconds: int = 3600) -> dict:
+    with db_conn() as conn:
+        return ingestion_metrics(conn, tenant_id, stale_after_seconds)
