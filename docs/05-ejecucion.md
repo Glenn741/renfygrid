@@ -82,10 +82,10 @@ al sprint donde se construye y a su estado real.
 
 | # | Función | Sprint | Estado |
 |---|---|---|---|
-| F35 | `network_zone` jerárquica (DMA/circuito/distrito) | B1 | ⚪ |
-| F36 | Endpoint de ingesta externa (venta modular sin HES propio) | B1 | ⚪ |
-| F37 | Cálculo de balance Top-Down (IWA) | B2 | ⚪ |
-| F38 | Cálculo de balance Bottom-Up (IWA) | B2 | ⚪ |
+| F35 | `network_zone` jerárquica (DMA/circuito/distrito) | B1 | 🟢 (con insumos de infraestructura para ILI — ver `07-track-b-alcance-funcional.md`) |
+| F36 | Endpoint de ingesta externa (venta modular sin HES propio) | B1 | 🟢 |
+| F37 | Cálculo de balance Top-Down (IWA) | B2 | 🟡 (NRW/ILI se calculan igual sin importar el método — `method` es metadata trazable, no una fórmula distinta; ver bitácora Sprint B1) |
+| F38 | Cálculo de balance Bottom-Up (IWA) | B2 | 🟡 (mismo alcance que F37 — la estimación de componentes por flujo mínimo nocturno/frecuencia de fugas es trabajo especializado fuera de alcance, `07-track-b-alcance-funcional.md` §6) |
 | F39 | Carga y versionado de modelo hidráulico (`.inp`) | B3 | ⚪ |
 | F40 | Simulación vía WNTR | B3 | ⚪ |
 | F41 | Calibración de modelo con datos de `network_balance` | B4 | ⚪ |
@@ -843,3 +843,38 @@ medidor real todavía").
 | 2026-09-11 | **`partition_maintenance.py` — cron real configurado** (pendiente desde Sprint C11): se encontró que `python -m renmeter_common.partition_maintenance` NO funciona contra el `.so` compilado con Nuitka ("No code object available" — el mecanismo `-m` no soporta extensiones compiladas). Corregido con un entry-point kept-as-source real, `services/common/run_partition_maintenance.py` (mismo patrón que `poller.py`/`main.py`: texto plano que importa y llama al módulo compilado). Cron real en `essmarplapp02` (`crontab -u postgres`, lunes 3am, autenticación peer sin password — mismo mecanismo que ya usan las migraciones vía `sudo -u postgres`), probado en vivo con una corrida manual real | `services/common/run_partition_maintenance.py`, `renmeter_common/partition_maintenance.py` (docstring corregido) |
 | 2026-09-11 | **`04-plan-sprints.md` §9 formalizado**: épicas E20 (cierre de parciales)/E21 (paneles por etapa con benchmark real) + sprints C11 a C11-6 agregados a la tabla oficial, marcados 🆕 — antes solo vivían en la bitácora. §10 actualizado con el estado real de cierre de sesión | `docs/04-plan-sprints.md` |
 | 2026-09-11 | **`.github/workflows/tests.yml` — intento de trackear en git, bloqueado por GitHub, no por decisión propia**: confirmado su contenido (CI legítimo de Sprint 0, nada sospechoso) y se intentó el `git add` + push — GitHub lo rechazó: *"refusing to allow a Personal Access Token to create or update workflow `tests.yml` without `workflow` scope"*. El token configurado para este repo no tiene permiso de escribir en `.github/workflows/`. Revertido del commit (sigue `??` en `git status`, sin tocar el archivo en disco) — para trackearlo hace falta que el usuario regenere el PAT con el scope `workflow`, o lo suba él mismo | — |
+
+### Track B, Sprint B1 — Balance de Red: esquema real + ingesta externa (2026-09-11)
+
+**Motivo:** el usuario confirmó activar Track B ("lo demás está estable... vamos con el Track
+B") pidiendo primero una investigación profunda de mercado y una definición de alcance
+funcional, y solo después implementar — ver `07-track-b-alcance-funcional.md` para la
+investigación completa (matriz de Balance Hídrico IWA, marco regulatorio CRA/IANC en Colombia,
+mapa de mercado).
+**Hallazgo real antes de escribir código**: `network_zone`/`network_balance` (y
+`network_asset`/`asset_connectivity`/`maintenance_order`) **ya existían desde `0001_init.sql`**
+(Sprint 0 escribió el esquema completo del producto de una sola vez, incluyendo Track B, aunque
+el código nunca se construyó encima) — con la versión APLANADA de la Fase 2/3
+(`inflow`/`authorized_consumption`/`losses`), insuficiente para calcular ILI. La migración 0013
+es un `ALTER TABLE`, no un `CREATE TABLE` — ambas tablas tenían 0 filas en desarrollo y en
+producción, ALTER seguro sin migración de datos.
+**Estado:** 🟢 cerrado y desplegado a producción.
+
+| Fecha | Avance | Evidencia |
+|---|---|---|
+| 2026-09-11 | **Migración `0013_network_balance.sql`**: `network_zone` +4 columnas (`network_length_km`/`num_connections`/`avg_pressure_mca`/`avg_service_connection_length_km` — insumos para UARL); `network_balance` con la matriz IWA completa (`system_input_volume`, `billed_metered_consumption`, `billed_unbilled_consumption`, `unbilled_authorized_consumption`, `apparent_losses`, `real_losses`, `nrw`, `ili`) en vez del agregado plano | `infra/db/migrations/0013_network_balance.sql` |
+| 2026-09-11 | **`network_balance_engine.py` (nuevo, lógica pura)**: `non_revenue_water()`, `water_losses()`, `unavoidable_annual_real_losses_liters_per_day()` (fórmula IWA real: `(18·Lm + 0.8·Nc + 25·Lp)·P`) y `infrastructure_leakage_index()` (`CARL/UARL`) — `None` explícito (nunca 0 ni inventado) si faltan los insumos de la zona o el período es inválido | `services/network-balance/network_balance_engine.py` |
+| 2026-09-11 | 12/12 pruebas unitarias puras — incluye el caso real que valida la fórmula UARL contra el cálculo manual (`(18·100 + 0.8·5000)·40 = 232000` L/día) y que ILI sube con más pérdida real | `python -m unittest discover -s tests -v` (en `services/network-balance/`) → **12/12 OK** |
+| 2026-09-11 | **`balance_service.py` (nuevo)**: `register_zone()`/`list_zones()`, `submit_balance()` (arma los insumos desde BD, llama al motor, guarda `nrw`/`ili` calculados — nunca recalculados en cada lectura del panel; versiona por `(zone_id, period)`, un reenvío sube de versión sin perder el historial), `list_balances()` (solo la versión más reciente por zona/período). Endpoints nuevos: `POST/GET /network-zones`, `POST /network-zones/{id}/balance`, `GET /network-balances` | `services/network-balance/balance_service.py`, `services/portal-api/main.py` |
+| 2026-09-11 | E2E real de punta a punta: una zona sin insumos de infraestructura calcula NRW pero ILI queda `None`; una zona con insumos reales calcula NRW=7000 e ILI=1.0 exacto (mismos números que el unit test, ahora vía HTTP+Postgres real); reenviar el mismo período sube a versión 2 y el listado solo trae la última; una zona inexistente da 404 | `verify_network_balance_end_to_end.py` → `SPRINT B1 NETWORK BALANCE E2E OK` |
+| 2026-09-11 | Regresión completa (8/8 unit tests de `portal-api` + `verify_stage_screens_end_to_end.py`/`verify_meter_protection_end_to_end.py`/`verify_fleet_aggregation_end_to_end.py`) sigue en verde | — |
+| 2026-09-11 | **Decisión de arquitectura de despliegue para Track B**: se descarta el bus de eventos/k3s de la Fase 2/3 (`02-arquitectura-general.md` §3, aspiracional, escrito antes de que el proyecto existiera) — Track B se construye como el mismo monolito modular ya probado en Track A/C (`services/network-balance/` importado directo por `portal-api`, systemd+Postgres compartido), documentado en `07-track-b-alcance-funcional.md` §5 | — |
+| 2026-09-11 | Desplegado a producción: respaldo real primero (`pg_dump`), migración 0013 aplicada, backend (Nuitka) a `essmarplapp02`, `systemctl restart renfygrid-portal-api` → activo. Verificado en vivo: `/api/network-zones` responde 401 (gateado por auth, no 404/500) | `curl https://renfygrid.rensoftlabs.com/api/network-zones` |
+| 2026-09-11 | Script de build de Nuitka (WSL, no versionado — pendiente conocido) actualizado con el servicio `network-balance` nuevo, para que un rebuild completo futuro lo incluya | `~/build-renfygrid.sh` (WSL) |
+
+**Pendiente real de Track B**: B2 (fórmulas Top-Down/Bottom-Up) quedó parcialmente cubierto por
+B1 — NRW/ILI se calculan igual sin importar el método (es metadata trazable, no una fórmula
+distinta); la estimación de componentes por flujo mínimo nocturno es trabajo especializado
+fuera de alcance (`07-track-b-alcance-funcional.md` §6). Siguen **B3-B7** (modelado hidráulico
+con WNTR, Gemelo Digital, Gestión de Mantenimiento + BayForce) — no iniciados, pendientes de
+continuar con el usuario.

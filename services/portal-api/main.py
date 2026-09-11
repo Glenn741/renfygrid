@@ -30,6 +30,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "consumption"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "control"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "hes-adapter-dlms"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "vee-engine"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "network-balance"))
 
 import psycopg  # noqa: E402
 from fastapi import Depends, FastAPI, HTTPException  # noqa: E402
@@ -76,6 +77,7 @@ from observability import ingestion_metrics  # noqa: E402
 from on_demand_reader import MeterNotReadableError, read_meter_now  # noqa: E402
 from meter_ping import MeterNotReachableError, ping_meter  # noqa: E402
 from protocol_mapping_admin import create_protocol_mapping, list_protocol_mappings  # noqa: E402
+from balance_service import ZoneNotFoundError, list_balances, list_zones, register_zone, submit_balance  # noqa: E402
 from renmeter_common.auth import create_token  # noqa: E402
 from renmeter_common.db import tenant_scope  # noqa: E402
 from renmeter_common.user_service import InvalidCredentialsError, authenticate  # noqa: E402
@@ -578,3 +580,72 @@ def create_protocol_mapping_endpoint(body: ProtocolMappingRequest, tenant_id: st
             conn, tenant_id, body.brand, body.model, body.protocol, body.obis_mapping, body.security_mode
         )
         return {"id": mapping_id}
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# Track B -- Balance de Red (Sprint B1, docs/07-track-b-alcance-funcional.md):
+# venta modular, sin depender de un medidor RenfyGrid (data_source='external').
+# ══════════════════════════════════════════════════════════════════════════
+
+
+class NetworkZoneRequest(BaseModel):
+    name: str
+    type: str
+    data_source: str = "external"
+    parent_zone_id: str | None = None
+    network_length_km: float | None = None
+    num_connections: int | None = None
+    avg_pressure_mca: float | None = None
+    avg_service_connection_length_km: float | None = None
+
+
+@app.post("/network-zones", status_code=201)
+def create_network_zone_endpoint(body: NetworkZoneRequest, tenant_id: str = Depends(get_tenant_id)) -> dict:
+    with db_conn() as conn:
+        zone_id = register_zone(
+            conn, tenant_id, body.name, body.type, body.data_source, body.parent_zone_id,
+            body.network_length_km, body.num_connections, body.avg_pressure_mca,
+            body.avg_service_connection_length_km,
+        )
+        return {"zone_id": zone_id}
+
+
+@app.get("/network-zones")
+def list_network_zones_endpoint(tenant_id: str = Depends(get_tenant_id)) -> list[dict]:
+    with db_conn() as conn:
+        return list_zones(conn, tenant_id)
+
+
+class NetworkBalanceRequest(BaseModel):
+    period_start: date
+    period_end: date
+    method: str
+    system_input_volume: float
+    billed_metered_consumption: float = 0.0
+    billed_unbilled_consumption: float = 0.0
+    unbilled_authorized_consumption: float = 0.0
+    apparent_losses: float = 0.0
+    real_losses: float = 0.0
+
+
+@app.post("/network-zones/{zone_id}/balance", status_code=201)
+def submit_network_balance_endpoint(
+    zone_id: str, body: NetworkBalanceRequest, tenant_id: str = Depends(get_tenant_id)
+) -> dict:
+    """Ingesta de un periodo de balance -- propia o externa (CIS/HES de
+    terceros, `01-planteamiento.md` SS3). Calcula NRW/ILI al insertar."""
+    with db_conn() as conn:
+        try:
+            return submit_balance(
+                conn, tenant_id, zone_id, body.period_start, body.period_end, body.method,
+                body.system_input_volume, body.billed_metered_consumption, body.billed_unbilled_consumption,
+                body.unbilled_authorized_consumption, body.apparent_losses, body.real_losses,
+            )
+        except ZoneNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get("/network-balances")
+def list_network_balances_endpoint(tenant_id: str = Depends(get_tenant_id), zone_id: str | None = None) -> list[dict]:
+    with db_conn() as conn:
+        return list_balances(conn, tenant_id, zone_id)
