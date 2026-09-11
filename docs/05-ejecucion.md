@@ -24,14 +24,14 @@ al sprint donde se construye y a su estado real.
 | F05 | Recepción de eventos/alarmas del medidor | 1-2 | 🟢 (retomado 2026-09-11, ver bitácora) |
 | F06 | Mapeo OBIS configurable por marca/modelo (cacheado) | 2 | 🟢 |
 | F07 | Envío de comandos SCR al medidor | 7 | ⚪ |
-| F08 | Reintentos / cola ante caída de concentrador | 2, C11 | 🟢 (cola persistente con backoff exponencial, Sprint C11 — verificado localmente, despliegue a producción pendiente, ver bitácora) |
+| F08 | Reintentos / cola ante caída de concentrador | 2, C11 | 🟢 (cola persistente con backoff exponencial, Sprint C11 — desplegado y verificado en producción, ver bitácora) |
 | F09 | Auditoría de comunicación con dispositivos | 9 | 🟢 |
 
 ### Almacenamiento
 
 | # | Función | Sprint | Estado |
 |---|---|---|---|
-| F10 | Ingesta de lecturas crudas (particionado por rango de tiempo) | 1, C11 | 🟢 (particionado nativo de Postgres, sustituto real de TimescaleDB, Sprint C11 — verificado localmente, despliegue a producción pendiente, ver bitácora) |
+| F10 | Ingesta de lecturas crudas (particionado por rango de tiempo) | 1, C11 | 🟢 (particionado nativo de Postgres, sustituto real de TimescaleDB, Sprint C11 — desplegado y verificado en producción, ver bitácora) |
 | F11 | Metadatos de medidor/ubicación/catastro | 0-1 | 🟢 |
 | F12 | Retención histórica configurable por tenant | 10 | 🟢 |
 | F13 | Respaldo y recuperación | 9 | 🟢 |
@@ -41,9 +41,9 @@ al sprint donde se construye y a su estado real.
 | # | Función | Sprint | Estado |
 |---|---|---|---|
 | F14 | Validación de rangos (min/max configurable) | 3 | 🟢 |
-| F15 | Validación de formato/coherencia/integridad | 3, C11 | 🟢 (coherencia entre canales, regla `channel_consistency`, Sprint C11 — verificado localmente, despliegue a producción pendiente, ver bitácora) |
+| F15 | Validación de formato/coherencia/integridad | 3, C11 | 🟢 (coherencia entre canales, regla `channel_consistency`, Sprint C11 — desplegado y verificado en producción, ver bitácora) |
 | F16 | Detección de intervalos faltantes | 4 | 🟢 |
-| F17 | Estimación (método configurable por tenant) | 4, C11 | 🟢 (3/3 métodos: `customer_historical_average`/`similar_customers_average` agregados en Sprint C11 — verificado localmente, despliegue a producción pendiente, ver bitácora) |
+| F17 | Estimación (método configurable por tenant) | 4, C11 | 🟢 (3/3 métodos: `customer_historical_average`/`similar_customers_average` agregados en Sprint C11 — desplegado y verificado en producción, ver bitácora) |
 | F18 | Edición manual auditada | 4 | 🟢 |
 | F19 | Versionado de reglas VEE (trazabilidad) | 0, 3-4 | 🟢 |
 | F20 | Patrón de configuración cacheada (cero hardcode) | 0 | 🟢 |
@@ -652,10 +652,11 @@ pendiente REAL del plan — no Track B (Balance de Red, otro dominio, 11 funcion
 sino los 4 huecos parciales que quedaban en el MVP de energía ya construido: F08 (cola
 persistente de reintentos), F10 (particionado de `raw_reading`), F15 (coherencia entre
 canales), F17 (métodos de estimación restantes).
-**Estado:** 🟡 código real, con tests unitarios y E2E reales pasando **contra Postgres local**
-— el despliegue a producción quedó **bloqueado por el clasificador de auto-modo** ("Production
-Deploy") al intentar aplicar las migraciones 0010/0011 en `essmarplapp02`; pendiente de que el
-usuario autorice esa acción puntual o la corra él mismo (ver nota al final).
+**Estado:** 🟢 cerrado y desplegado a producción. El primer intento de despliegue quedó
+bloqueado por el clasificador de auto-modo ("Production Deploy") al intentar el `pg_dump` de
+respaldo + las migraciones 0010/0011 en `essmarplapp02` — el usuario agregó una regla de
+permiso puntual en `~/.claude/settings.json` (`autoMode.allow`/`environment`) y el despliegue
+se completó en un segundo intento, sin reintentar nada a la fuerza.
 
 | Fecha | Avance | Función(es) | Evidencia |
 |---|---|---|---|
@@ -669,9 +670,10 @@ usuario autorice esa acción puntual o la corra él mismo (ver nota al final).
 | 2026-09-11 | 5 pruebas unitarias puras nuevas (24/24 en `common`) sobre la aritmética de meses + E2E real: dos tenants con una lectura real cada uno — RLS sigue aislando a través de la tabla particionada (con el rol de APLICACIÓN, no el admin — **si se usa el admin la prueba miente**: los superusuarios se saltan RLS siempre, el mismo bug de fondo que Sprint 0 ya documentó, encontrado de nuevo al escribir mal esta misma prueba la primera vez); cada fila cae en la partición del mes correcto, no en `DEFAULT`; `ensure_partitions` crea una partición futura real y una lectura de esa fecha cae ahí | F10 | `infra/db/verify_partitioning_end_to_end.py` → `SPRINT C11 F10 E2E OK` |
 | 2026-09-11 | Regresión completa sin romper nada, incluyendo lo que más podía verse afectado por particionar `raw_reading`: `verify_rls.py`, `verify_retention_end_to_end.py` (F12 — una lectura de "hace 10 años" cae en `DEFAULT` y la retención la sigue borrando igual), `verify_backup_restore_end_to_end.py` (F13), y los E2E de HES/poller/VEE/observabilidad/fleet ya existentes — todos siguen en verde | — | Ver comandos en esta misma sección |
 
-**Pendiente real**: el despliegue a producción de este sprint (migraciones 0010/0011 +
-`poller.py`/`vee_engine.py`/`run_vee_pass.py`/`run_vee_estimation.py`/`partition_maintenance.py`
-compilados/copiados a `essmarplapp02`) quedó bloqueado por el clasificador de auto-modo
-("Production Deploy") al intentar el `pg_dump` de respaldo + `psql -f` de las migraciones. El
-código está commiteado y listo; falta que el usuario autorice esa acción puntual (agregar una
-regla de permiso, o correr `deploy_c11_migrations_remote.sh` él mismo) o pida que se reintente.
+| 2026-09-11 | **Desplegado a producción** (`essmarplapp02`): respaldo real primero (`pg_dump -Fc`, `/tmp/renfygrid_pre_c11_backup_*.dump`, 72 KB), luego las migraciones 0010/0011 — verificado en el propio servidor: tabla particionada con 3 particiones (`raw_reading_y2026_m09`, `_m10`, `default`), `poller_retry_queue` presente. Código: `vee_engine.py` y `partition_maintenance.py` compilados con Nuitka (este último SÍ se compila, a diferencia de los jobs sueltos de `hes-adapter-dlms` — vive dentro del paquete `renmeter_common`, donde la convención ya establecida es compilar todo salvo `__init__.py`); `poller.py`/`run_vee_pass.py`/`run_vee_estimation.py` copiados como fuente (ya eran punto de entrada). `renfygrid-portal-api` no importa ninguno de estos módulos directamente — no hizo falta reiniciarlo, confirmado que sigue respondiendo (200) después del cambio de esquema | F08, F10, F15, F17 | `essmarplapp02:/opt/renfygrid/{hes-adapter-dlms,vee-engine,common}` |
+
+**Pendiente, no urgente**: `partition_maintenance.py` no tiene todavía un cron real que la
+corra periódicamente en producción — las particiones de septiembre/octubre 2026 ya existen
+(las creó la propia migración 0011), pero hace falta antes de que se acabe octubre. Mismo
+criterio que "formalizar el pipeline de build de Nuitka en un script versionado" — pendiente
+real pero no bloqueante para el pilotos actual (0 lecturas en producción todavía).

@@ -1,9 +1,10 @@
 #!/bin/bash
 # Sprint C11 -- aplica las migraciones 0010 (poller_retry_queue, F08) y 0011
 # (particionado de raw_reading, F10) en produccion (essmarplapp02), con
-# respaldo real primero (pg_dump). Pendiente de correr: quedo bloqueado por
-# el clasificador de auto-modo ("Production Deploy") -- ver docs/05-ejecucion.md,
-# Sprint C11, seccion "Pendiente real".
+# respaldo real primero (pg_dump). YA CORRIDO en produccion el 2026-09-11
+# (ver docs/05-ejecucion.md, Sprint C11) -- se deja aca como referencia/para
+# un entorno nuevo, no para volver a correr sobre la misma BD (las
+# migraciones no son idempotentes: un segundo CREATE TABLE fallaria).
 #
 # Uso (desde este PC, sube las migraciones y este script, luego lo corre):
 #   pscp -pw "opc" -P 34 infra/db/migrations/0010_poller_retry_queue.sql opc@158.101.17.14:/tmp/
