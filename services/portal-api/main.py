@@ -63,6 +63,7 @@ from manual_edit import ReadingNotFoundError, edit_reading  # noqa: E402
 from observability import ingestion_metrics  # noqa: E402
 from on_demand_reader import MeterNotReadableError, read_meter_now  # noqa: E402
 from meter_ping import MeterNotReachableError, ping_meter  # noqa: E402
+from protocol_mapping_admin import create_protocol_mapping, list_protocol_mappings  # noqa: E402
 from renmeter_common.auth import create_token  # noqa: E402
 from renmeter_common.db import tenant_scope  # noqa: E402
 from renmeter_common.user_service import InvalidCredentialsError, authenticate  # noqa: E402
@@ -436,3 +437,26 @@ def create_approval_level_endpoint(body: ApprovalLevelRequest, tenant_id: str = 
             conn, tenant_id, body.order_type, body.requires_human_approval, body.min_required_role
         )
         return {"id": level_id}
+
+
+class ProtocolMappingRequest(BaseModel):
+    brand: str
+    model: str
+    protocol: str
+    obis_mapping: dict
+    security_mode: str | None = None
+
+
+@app.get("/obis-mappings")
+def list_protocol_mappings_endpoint(tenant_id: str = Depends(get_tenant_id), active_only: bool = True) -> list[dict]:
+    with db_conn() as conn:
+        return list_protocol_mappings(conn, tenant_id, active_only)
+
+
+@app.post("/obis-mappings", status_code=201)
+def create_protocol_mapping_endpoint(body: ProtocolMappingRequest, tenant_id: str = Depends(get_tenant_id)) -> dict:
+    with db_conn() as conn:
+        mapping_id = create_protocol_mapping(
+            conn, tenant_id, body.brand, body.model, body.protocol, body.obis_mapping, body.security_mode
+        )
+        return {"id": mapping_id}

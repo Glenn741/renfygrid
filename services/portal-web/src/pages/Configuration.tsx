@@ -4,11 +4,13 @@ import {
   ApiError,
   createApprovalLevel,
   createConsumptionAnomalyRule,
+  createProtocolMapping,
   createVeeRule,
   deactivateConsumptionAnomalyRule,
   deactivateVeeRule,
   getApprovalLevels,
   getConsumptionAnomalyRules,
+  getProtocolMappings,
   getVeeRules,
 } from "../api";
 import { StagePage, EmptyState } from "../components/StagePage";
@@ -237,12 +239,115 @@ function ApprovalLevelsSection() {
   );
 }
 
+function ProtocolMappingSection() {
+  const queryClient = useQueryClient();
+  const { data } = useQuery({ queryKey: ["protocol-mappings"], queryFn: getProtocolMappings });
+  const [brand, setBrand] = useState("");
+  const [model, setModel] = useState("");
+  const [protocol, setProtocol] = useState("DLMS_COSEM");
+  const [channel, setChannel] = useState("active_energy");
+  const [obisCode, setObisCode] = useState("1.0.1.8.0.255");
+  const [attributeIndex, setAttributeIndex] = useState("2");
+  const [error, setError] = useState<string | null>(null);
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["protocol-mappings"] });
+
+  // Agregar un canal no reemplaza los demas de esa marca/modelo: si ya hay
+  // una version activa, se parte de su obis_mapping y solo se agrega/edita
+  // el canal del formulario -- el backend sigue cerrando la version vieja y
+  // creando una nueva (mismo patron que ApprovalLevel), pero desde aca nunca
+  // se manda un mapeo a medias por accidente.
+  const existing = data?.find((m) => m.brand === brand && m.model === model);
+
+  const createMutation = useMutation({
+    mutationFn: () =>
+      createProtocolMapping({
+        brand,
+        model,
+        protocol,
+        obis_mapping: {
+          ...(existing?.obis_mapping ?? {}),
+          [channel]: { obis_code: obisCode, attribute_index: Number(attributeIndex) },
+        },
+      }),
+    onSuccess: () => { setError(null); invalidate(); },
+    onError: (err) => setError(err instanceof ApiError ? err.message : "No se pudo guardar el mapeo."),
+  });
+
+  return (
+    <SectionCard
+      title="Mapeo OBIS por marca/modelo"
+      description="Qué código OBIS lee el poller para cada canal, según la marca/modelo del medidor. Guardar agrega o reemplaza un canal y crea una nueva versión — el siguiente ciclo del poller ya la usa, sin tocar código."
+    >
+      <div className="flex flex-wrap items-end gap-3 mb-4">
+        <div>
+          <label className="block text-xs font-medium text-slate-500 mb-1">Marca</label>
+          <input className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm w-32" value={brand} onChange={(e) => setBrand(e.target.value)} />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-slate-500 mb-1">Modelo</label>
+          <input className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm w-32" value={model} onChange={(e) => setModel(e.target.value)} />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-slate-500 mb-1">Protocolo</label>
+          <input className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm w-32" value={protocol} onChange={(e) => setProtocol(e.target.value)} />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-slate-500 mb-1">Canal</label>
+          <input className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm w-36" value={channel} onChange={(e) => setChannel(e.target.value)} />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-slate-500 mb-1">Código OBIS</label>
+          <input className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm w-36" value={obisCode} onChange={(e) => setObisCode(e.target.value)} />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-slate-500 mb-1">Índice de atributo</label>
+          <input className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm w-24" value={attributeIndex} onChange={(e) => setAttributeIndex(e.target.value)} />
+        </div>
+        <button
+          onClick={() => createMutation.mutate()}
+          disabled={createMutation.isPending || !brand || !model}
+          className="rounded-lg bg-indigo-600 text-white text-sm font-semibold px-4 py-1.5 hover:bg-indigo-700 disabled:opacity-50"
+        >
+          Guardar
+        </button>
+      </div>
+      {error && <p className="text-sm text-red-600 mb-3">{error}</p>}
+      {existing && (
+        <p className="text-xs text-slate-500 mb-3">
+          {brand}/{model} ya tiene una versión activa (v{existing.version}) — este canal se agrega o reemplaza ahí, los demás canales se conservan.
+        </p>
+      )}
+
+      {data && data.length === 0 && <EmptyState message="Sin mapeos OBIS configurados todavía." />}
+      {data && data.length > 0 && (
+        <ul className="divide-y divide-slate-100">
+          {data.map((mapping) => (
+            <li key={mapping.id} className="py-2 text-sm text-slate-700">
+              <strong>{mapping.brand} / {mapping.model}</strong>
+              <span className="text-slate-400"> ({mapping.protocol}, v{mapping.version})</span>
+              <div className="mt-1 flex flex-wrap gap-1.5">
+                {Object.entries(mapping.obis_mapping).map(([ch, m]) => (
+                  <span key={ch} className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
+                    {ch} → {m.obis_code} (attr {m.attribute_index})
+                  </span>
+                ))}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </SectionCard>
+  );
+}
+
 export function ConfigurationPage() {
   return (
     <StagePage title="Configuración">
       <VeeRulesSection />
       <ConsumptionAnomalyRulesSection />
       <ApprovalLevelsSection />
+      <ProtocolMappingSection />
     </StagePage>
   );
 }

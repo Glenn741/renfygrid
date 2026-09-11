@@ -261,6 +261,40 @@ export function createApprovalLevel(body: {
   return request<{ id: string }>("/control-approval-levels", { method: "POST", body: JSON.stringify(body) });
 }
 
+// --- Editor de mapeo OBIS (F50/E19, Sprint C10) -- mismo patron de "crear
+// version nueva reemplaza la anterior" que ApprovalLevel, sobre meter_protocol. ---
+
+export interface ObisChannelMapping {
+  obis_code: string;
+  attribute_index: number;
+}
+
+export interface ProtocolMapping {
+  id: string;
+  brand: string;
+  model: string;
+  protocol: string;
+  obis_mapping: Record<string, ObisChannelMapping>;
+  security_mode: string | null;
+  version: number;
+  valid_from: string | null;
+  valid_to: string | null;
+}
+
+export function getProtocolMappings(): Promise<ProtocolMapping[]> {
+  return request("/obis-mappings");
+}
+
+export function createProtocolMapping(body: {
+  brand: string;
+  model: string;
+  protocol: string;
+  obis_mapping: Record<string, ObisChannelMapping>;
+  security_mode?: string | null;
+}) {
+  return request<{ id: string }>("/obis-mappings", { method: "POST", body: JSON.stringify(body) });
+}
+
 // --- Nivel 3: detalle y acciones (F51, Sprint C4) ---
 
 export function editReading(body: {

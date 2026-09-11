@@ -609,3 +609,25 @@ ver el menú y los paneles con cara de producto real, no que se cargaran datos n
 
 Sigue **C10** (editor de mapeo OBIS en Configuración) — planificado en `04-plan-sprints.md` §9,
 no iniciado.
+
+### Sprint C10 — Editor de mapeo OBIS en Configuración (2026-09-11)
+
+**Objetivo:** cerrar E19 — cambiar el mapeo OBIS de una marca/modelo desde la UI en vez de SQL
+directo, mismo patrón de versionado que `control_approval_level` y mismo criterio de
+verificación real que F06 (Sprint 2): el siguiente ciclo del poller ya usa el cambio, sin
+tocar `poller.py`.
+**Estado:** 🟢 cerrado y desplegado a producción.
+
+| Fecha | Avance | Evidencia |
+|---|---|---|
+| 2026-09-11 | **Backend**: `protocol_mapping_admin.py` (nuevo, en `hes-adapter-dlms` junto a `obis_mapping.py`) — `list_protocol_mappings()` y `create_protocol_mapping()`. `meter_protocol` SÍ tiene clave de versión bien definida `(tenant_id, brand, model)` (índice `meter_protocol_active_idx`), igual que `control_approval_level` con `order_type` — por eso `create_protocol_mapping` cierra la versión anterior activa para esa misma marca/modelo antes de insertar la nueva (mismo patrón que `approval_levels_admin.py`, no el de `vee_rule`). Dos endpoints nuevos: `GET /obis-mappings`, `POST /obis-mappings` | `services/hes-adapter-dlms/protocol_mapping_admin.py`, `services/portal-api/main.py` |
+| 2026-09-11 | **E2E real, mismo criterio que F06 pero por el camino de UI**: crea mapeo v1 por HTTP, crea v2 para la misma marca/modelo (confirma que v1 quedó cerrada), y del lado del poller — `obis_mapping.build_cache(...).refresh()` + `.load()`, sin tocar `poller.py` — confirma que `channels_for()` ya ve la v2 | `verify_protocol_mapping_admin_end_to_end.py` → `SPRINT C10 E2E OK` |
+| 2026-09-11 | Bug propio encontrado y corregido en el script de verificación (no del producto): `ConfigCache.refresh()` escribe el snapshot a disco pero no llena la memoria — hace falta `.load()` después, que el script no llamaba al principio | — |
+| 2026-09-11 | Regresión completa sin romper nada: 8/8 unit tests + 6 scripts E2E existentes (C2/C4/C5/C7/8, F34) siguen en verde | `python -m unittest discover -s tests`, más los `verify_*` de C2/C4/C5/C7/8/F34 |
+| 2026-09-11 | **Frontend**: `ProtocolMappingSection` nueva en `Configuration.tsx`, mismo patrón visual que `ApprovalLevelsSection` — formulario marca/modelo/protocolo/canal/código OBIS/índice de atributo, agregar un canal conserva los demás de esa marca/modelo (parte del `obis_mapping` activo si ya existe), lista de mapeos activos con sus canales como chips. `api.ts`: `getProtocolMappings()`, `createProtocolMapping()` | `services/portal-web/src/pages/Configuration.tsx`, `api.ts` |
+| 2026-09-11 | `tsc -b && vite build` limpio, bundle sin rutas mangled, contiene "obis-mappings" | `dist/assets/*.js` |
+| 2026-09-11 | Desplegado: backend compilado con Nuitka (solo `protocol_mapping_admin`, `main.py` como fuente) a `essmarplapp02`; frontend a `essmarplpxy03` | `systemctl restart renfygrid-portal-api` → activo, `nginx reload` |
+| 2026-09-11 | Verificado en vivo: `https://renfygrid.rensoftlabs.com/` sirve exactamente los hashes del build nuevo; `/api/obis-mappings` responde 401 (gateado por auth, no 404/500) sin token | `curl https://renfygrid.rensoftlabs.com/...` |
+
+Con esto se cierran **todos** los sprints C5-C10 planificados en `04-plan-sprints.md` §9 tras el
+benchmark E2E — no queda ningún ítem pendiente de ese plan.
