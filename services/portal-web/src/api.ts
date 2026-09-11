@@ -154,17 +154,41 @@ export function getInvalidReadings(): Promise<InvalidReading[]> {
   return request("/vee/invalid-readings");
 }
 
-// --- Panel real de VEE (Sprint C11-2): resumen + lecturas estimadas --
-// F14-F19 ya estaban construidos, pero el panel solo mostraba la cola de
-// excepciones, sin resumen ni el trabajo de estimacion (F16/F17) visible.
+// --- Panel real de VEE, por etapa (Sprint C11-3): F14-F19 ya estaban
+// construidos, pero el panel no separaba Validacion/Estimacion/Edicion
+// como 3 niveles de procesamiento con sus propios KPIs -- mismo criterio
+// que Oracle Utilities MDM (dashboard "VEE Exceptions": Overview/Trend) o
+// Itron Enterprise Edition (validation sets vs. estimation sets vs. cola
+// de excepciones separadas).
 
-export interface VeeSummary {
-  invalid_pending: number;
+export interface VeeValidationSummary {
+  total_processed: number;
+  invalid_total: number;
+  exception_rate_pct: number | null;
   invalid_by_type: Record<string, number>;
-  estimated_24h: number;
-  edited_24h: number;
   active_rules_by_type: Record<string, number>;
   active_rules_total: number;
+  trend_7d: { date: string; total: number; invalid: number }[];
+}
+
+export interface VeeEstimationSummary {
+  total_estimated: number;
+  estimated_24h: number;
+  fill_rate_pct: number | null;
+  by_method: Record<string, number>;
+  active_rules_total: number;
+}
+
+export interface VeeEditingSummary {
+  total_edits: number;
+  edits_24h: number;
+  top_editors: { user_name: string; count: number }[];
+}
+
+export interface VeeSummary {
+  validation: VeeValidationSummary;
+  estimation: VeeEstimationSummary;
+  editing: VeeEditingSummary;
 }
 
 export function getVeeSummary(): Promise<VeeSummary> {
@@ -183,6 +207,22 @@ export interface EstimatedReading {
 
 export function getEstimatedReadings(): Promise<EstimatedReading[]> {
   return request("/vee/estimated-readings");
+}
+
+export interface VeeEdit {
+  meter_id: string;
+  account_number: string;
+  channel: string;
+  timestamp: string;
+  previous_value: number;
+  new_value: number;
+  user_name: string;
+  justification: string;
+  edited_at: string;
+}
+
+export function getVeeEdits(): Promise<VeeEdit[]> {
+  return request("/vee/edits");
 }
 
 export interface Consumption {

@@ -712,3 +712,37 @@ como un login real y ofrecía generar una contraseña nueva en vez de usar la gu
 |---|---|---|
 | 2026-09-11 | `Login.tsx`: `autoComplete="username"`/`"current-password"` + `name` en los 3 campos — el navegador ahora reconoce el formulario como login, no como registro | `services/portal-web/src/pages/Login.tsx` |
 | 2026-09-11 | `tsc -b && vite build` limpio, desplegado a `essmarplpxy03`, verificado en vivo que el HTML servido referencia el bundle nuevo | `curl https://renfygrid.rensoftlabs.com/` |
+
+### Sprint C11-3 — Panel de VEE por etapa, con benchmark real (2026-09-11)
+
+**Motivo:** el usuario, viendo ya el resultado de C11-2, insistió: "el panel de VEE se ve como
+un bosquejo... cada letra V.E.E. implica un nivel de procesamiento y deberian haber
+estadisticas y KPIs en esos niveles... ¿revisaste el mercado de MDM para ver lo que cubre un
+VEE?". Se investigó de verdad (no memoria de entrenamiento) antes de rediseñar:
+
+- **Oracle Utilities MDM** tiene un dashboard real "VEE Exceptions" con páginas
+  Overview/Exception Trend/Exception Analysis/Exception Analysis Detail, conteo de los 5 tipos
+  de excepción más frecuentes, y KPIs con bandas verde/amarillo/rojo configurables
+  ([Oracle Utilities Analytics — Meter Data Analytics](https://docs.oracle.com/en/industries/energy-water/analytics/251000/ouaw-mdm-metric/G49493.pdf)).
+- **Itron Enterprise Edition** distingue explícitamente "validation sets" de "estimation sets"
+  y una cola de trabajo de excepciones aparte
+  ([Itron — Validation, Estimation, Editing](https://docs.itrontotal.com/IEEMDMInstall/Content/Topics/Validation%20Estimation%20Editing.htm)).
+- **Landis+Gyr Core MDMS**: "exception management to process all validation and estimation
+  exceptions not automatically handled by VEE rules"
+  ([Landis+Gyr — Core MDMS](https://www.landisgyr.com/product/core-mdms/)).
+- Tasa de excepción como KPI de calidad de datos: <2% excelente, 2-5% aceptable, >5%
+  preocupante — banda genérica (no un benchmark propio del sector energía, que no se encontró
+  publicado) usada aquí a falta de uno mejor, documentado como tal.
+
+**Conclusión real, sin inflar el hallazgo**: F14-F19 SIGUEN completos — el gap de C11-2 no era
+falso, solo insuficiente: un resumen plano no es lo mismo que 3 etapas con sus propios números,
+que es exactamente como lo hacen los 3 productos de referencia revisados.
+**Estado:** 🟢 cerrado y desplegado a producción.
+
+| Fecha | Avance | Evidencia |
+|---|---|---|
+| 2026-09-11 | **Backend, `vee_summary.py` reescrito en 3 funciones por etapa**: `validation_summary()` (total procesado, excepciones, `exception_rate_pct` — nunca 0% sin datos, `None` explícito —, excepciones por tipo, reglas activas, tendencia de 7 días), `estimation_summary()` (`fill_rate_pct` = % de la serie que tuvo que estimarse, no solo el conteo crudo, desglose por método real), `editing_summary()` (total/24h, top editores). `list_edits()` nuevo — lee el historial real de `validated_reading_edit` (la auditoría append-only de F18), no una inferencia sobre `source='edited'`. `GET /vee/summary` ahora devuelve `{validation, estimation, editing}`; endpoint nuevo `GET /vee/edits` | `services/vee-engine/vee_summary.py`, `services/portal-api/main.py` |
+| 2026-09-11 | **E2E real con una edición de verdad** (vía `manual_edit.edit_reading`, no un insert que se saltaría la auditoría): 2 excepciones (rango + coherencia) + 1 estimada + 1 edición real — confirma los 3 bloques exactos: `exception_rate_pct=100.0`, `fill_rate_pct≈33.3`, `edits_24h=1` con el editor real en `top_editors`, y que `/vee/edits` trae el valor anterior/nuevo/justificación reales | `verify_vee_summary_end_to_end.py` → `SPRINT C11-3 VEE PANEL E2E OK` |
+| 2026-09-11 | Regresión: 8/8 unit tests + `verify_stage_screens_end_to_end.py`/`verify_detail_actions_end_to_end.py` siguen en verde | — | — |
+| 2026-09-11 | **Frontend, `Vee.tsx` reestructurada en 3 secciones reales** (Validación/Estimación/Edición manual, cada una con su encabezado "V"/"E"/"E"): Validación con tasa de excepción coloreada por banda (verde/amarillo/rojo) + tendencia de 7 días (barras CSS simples, sin librería) + la cola de excepciones filtrable ya existente; Estimación con % de la serie estimada + desglose por método + la lista de estimadas; Edición manual con total/24h + top editores + una tabla nueva del historial real (`valor anterior → valor nuevo`, quién, justificación) | `services/portal-web/src/pages/Vee.tsx`, `api.ts` |
+| 2026-09-11 | `tsc -b && vite build` limpio, bundle sin rutas mangled, contiene "vee/edits"/"trend_7d"/"exception_rate_pct". Desplegado: backend (Nuitka) a `essmarplapp02`; frontend a `essmarplpxy03`. Verificado en vivo: bundle coincide, `/api/vee/edits` responde 401 (gateado, no 404/500) | `curl https://renfygrid.rensoftlabs.com/...` |

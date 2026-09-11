@@ -60,7 +60,7 @@ from fleet_aggregation import fleet_summary, gateway_summary  # noqa: E402
 from get_consumption import get_consumption  # noqa: E402
 from list_invalid_readings import list_invalid_readings  # noqa: E402
 from manual_edit import ReadingNotFoundError, edit_reading  # noqa: E402
-from vee_summary import list_estimated_readings, vee_summary  # noqa: E402
+from vee_summary import list_edits, list_estimated_readings, vee_summary  # noqa: E402
 from observability import ingestion_metrics  # noqa: E402
 from on_demand_reader import MeterNotReadableError, read_meter_now  # noqa: E402
 from meter_ping import MeterNotReachableError, ping_meter  # noqa: E402
@@ -183,6 +183,12 @@ def vee_summary_endpoint(tenant_id: str = Depends(get_tenant_id)) -> dict:
 def estimated_readings_endpoint(tenant_id: str = Depends(get_tenant_id), limit: int = 100) -> list[dict]:
     with db_conn() as conn:
         return list_estimated_readings(conn, tenant_id, limit)
+
+
+@app.get("/vee/edits")
+def vee_edits_endpoint(tenant_id: str = Depends(get_tenant_id), limit: int = 100) -> list[dict]:
+    with db_conn() as conn:
+        return list_edits(conn, tenant_id, limit)
 
 
 class EditReadingRequest(BaseModel):
