@@ -210,4 +210,41 @@ export function createApprovalLevel(body: {
   return request<{ id: string }>("/control-approval-levels", { method: "POST", body: JSON.stringify(body) });
 }
 
+// --- Nivel 3: detalle y acciones (F51, Sprint C4) ---
+
+export function editReading(body: {
+  meter_id: string;
+  channel: string;
+  timestamp: string;
+  new_value: number;
+  user_name: string;
+  justification: string;
+}) {
+  return request<{ status: string }>("/vee/invalid-readings/edit", { method: "POST", body: JSON.stringify(body) });
+}
+
+export function readMeterNow(meterId: string, channel: string) {
+  return request<{ meter_id: string; timestamp: string; channel: string; value: number }>(
+    `/meters/${meterId}/reads`,
+    { method: "POST", body: JSON.stringify({ channel }) },
+  );
+}
+
+export interface ControlOrderAudit {
+  previous_status: string | null;
+  new_status: string;
+  actor: string;
+  timestamp: string;
+  detail: Record<string, unknown> | null;
+}
+
+export interface ControlOrderDetail extends ControlOrder {
+  confirmed_at: string | null;
+  audit: ControlOrderAudit[];
+}
+
+export function getControlOrderDetail(orderId: string): Promise<ControlOrderDetail> {
+  return request(`/control-orders/${orderId}`);
+}
+
 export { ApiError };

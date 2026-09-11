@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import sys
 from contextlib import contextmanager
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from typing import Iterator
 
@@ -48,10 +48,17 @@ from consumption_anomaly_rules_admin import (  # noqa: E402
     list_consumption_anomaly_rules,
 )
 from control_order_gateway import request_control_order  # noqa: E402
-from control_service import InsufficientRoleError, InvalidTransitionError, approve_order, list_control_orders  # noqa: E402
+from control_service import (  # noqa: E402
+    InsufficientRoleError,
+    InvalidTransitionError,
+    approve_order,
+    get_control_order_detail,
+    list_control_orders,
+)
 from dashboard import dashboard_overview  # noqa: E402
 from get_consumption import get_consumption  # noqa: E402
 from list_invalid_readings import list_invalid_readings  # noqa: E402
+from manual_edit import ReadingNotFoundError, edit_reading  # noqa: E402
 from observability import ingestion_metrics  # noqa: E402
 from on_demand_reader import MeterNotReadableError, read_meter_now  # noqa: E402
 from renmeter_common.auth import create_token  # noqa: E402
@@ -156,10 +163,45 @@ def invalid_readings_endpoint(tenant_id: str = Depends(get_tenant_id)) -> list[d
         return list_invalid_readings(conn, tenant_id)
 
 
+class EditReadingRequest(BaseModel):
+    meter_id: str
+    channel: str
+    timestamp: str
+    new_value: float
+    user_name: str
+    justification: str
+
+
+@app.post("/vee/invalid-readings/edit")
+def edit_reading_endpoint(body: EditReadingRequest, tenant_id: str = Depends(get_tenant_id)) -> dict:
+    """F51 (Nivel 3, Sprint C4): edición manual auditada (F18, Sprint 4)
+    ahora accionable desde la UI, no solo desde código."""
+    with db_conn() as conn:
+        try:
+            edit_reading(
+                conn, tenant_id, body.meter_id, body.channel, datetime.fromisoformat(body.timestamp),
+                body.new_value, body.user_name, body.justification,
+            )
+        except ReadingNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"status": "edited"}
+
+
 @app.get("/control-orders")
 def list_control_orders_endpoint(tenant_id: str = Depends(get_tenant_id), status: str | None = None) -> list[dict]:
     with db_conn() as conn:
         return list_control_orders(conn, tenant_id, status)
+
+
+@app.get("/control-orders/{order_id}")
+def get_control_order_detail_endpoint(order_id: str, tenant_id: str = Depends(get_tenant_id)) -> dict:
+    with db_conn() as conn:
+        detail = get_control_order_detail(conn, tenant_id, order_id)
+    if detail is None:
+        raise HTTPException(status_code=404, detail="Orden no encontrada")
+    return detail
 
 
 @app.get("/events")

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, approveControlOrder, getControlOrders } from "../api";
 import { StagePage, EmptyState } from "../components/StagePage";
@@ -66,7 +67,11 @@ export function ControlPage() {
             <tbody>
               {data.map((order) => (
                 <tr key={order.order_id}>
-                  <td className="px-4 py-3 font-medium text-slate-900">{order.account_number}</td>
+                  <td className="px-4 py-3 font-medium text-slate-900">
+                    <Link to={`/control/${order.order_id}`} className="text-indigo-600 hover:text-indigo-700">
+                      {order.account_number}
+                    </Link>
+                  </td>
                   <td className="px-4 py-3 text-slate-600">{order.type}</td>
                   <td className="px-4 py-3 text-slate-600">{order.requested_by}</td>
                   <td className="px-4 py-3 text-slate-600">{order.justification ?? "—"}</td>

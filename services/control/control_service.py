@@ -270,3 +270,54 @@ def list_control_orders(conn: psycopg.Connection, tenant_id: str, status: str | 
                     }
                     for row in cur.fetchall()
                 ]
+
+
+def get_control_order_detail(conn: psycopg.Connection, tenant_id: str, order_id: str) -> dict | None:
+    """Nivel 3 (F51, Sprint C4): la orden puntual + su historial de auditoria
+    completo -- `control_order_audit` es inmutable (migracion 0007), asi que
+    esto es un registro real e intacto de cada transicion, no un resumen."""
+    with conn.transaction():
+        with tenant_scope(conn, tenant_id):
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT co.id, co.meter_id, m.account_number, co.type, co.status, "
+                    "       co.requested_by, co.justification, co.requested_at, "
+                    "       co.approved_by, co.approved_at, co.confirmed_at "
+                    "FROM control_order co JOIN meter m ON m.id = co.meter_id "
+                    "WHERE co.id = %s AND co.tenant_id = %s",
+                    (order_id, tenant_id),
+                )
+                row = cur.fetchone()
+                if row is None:
+                    return None
+
+                cur.execute(
+                    "SELECT previous_status, new_status, actor, \"timestamp\", detail "
+                    "FROM control_order_audit WHERE order_id = %s ORDER BY \"timestamp\"",
+                    (order_id,),
+                )
+                audit = [
+                    {
+                        "previous_status": audit_row[0],
+                        "new_status": audit_row[1],
+                        "actor": audit_row[2],
+                        "timestamp": audit_row[3].isoformat(),
+                        "detail": audit_row[4],
+                    }
+                    for audit_row in cur.fetchall()
+                ]
+
+    return {
+        "order_id": str(row[0]),
+        "meter_id": str(row[1]),
+        "account_number": row[2],
+        "type": row[3],
+        "status": row[4],
+        "requested_by": row[5],
+        "justification": row[6],
+        "requested_at": row[7].isoformat() if row[7] else None,
+        "approved_by": row[8],
+        "approved_at": row[9].isoformat() if row[9] else None,
+        "confirmed_at": row[10].isoformat() if row[10] else None,
+        "audit": audit,
+    }

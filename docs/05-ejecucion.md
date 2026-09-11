@@ -102,7 +102,7 @@ al sprint donde se construye y a su estado real.
 | F48 | Tablero general (Nivel 1: KPIs + alertas por etapa) | C1 | 🟢 |
 | F49 | Tableros por etapa (Nivel 2: HES, VEE, Consumos, Control, Observabilidad) | C2 | 🟢 |
 | F50 | Editor de reglas (Configuración: `vee_rule`/`consumption_anomaly_rule`/`control_approval_level`) | C3 | 🟢 |
-| F51 | Pantallas de detalle y acciones (Nivel 3) | C4 | ⚪ |
+| F51 | Pantallas de detalle y acciones (Nivel 3) | C4 | 🟢 |
 
 **Cobertura por vertical en el MVP:** las 34 funciones del Track A se construyen para
 **energía eléctrica** (protocolo DLMS/COSEM) primero. Ninguna está bloqueada por diseño para
@@ -488,4 +488,19 @@ guardó bien).
 | 2026-09-11 | **Pantalla de Configuración** (`Configuration.tsx`) con las 3 secciones — formularios reales (no un editor JSON genérico): reglas VEE (rango o intervalo esperado, según tipo), reglas de desviación de consumo, niveles de aprobación de control. Link nuevo desde el tablero general | F50 | `services/portal-web/src/pages/Configuration.tsx` |
 | 2026-09-11 | **68/68 tests + todos los `verify_*.py` de sprints anteriores (VEE, consumo, control) re-corridos sin regresiones** tras tocar 3 tablas compartidas con casi todo el proyecto. `npm run build` limpio | F50 | `python -m unittest discover` en los 5 servicios → OK; `npm run build` → exit 0 |
 
-*(Esta tabla se sigue completando a medida que avanza el Track C real.)*
+### Sprint C4 — Nivel 3 (detalle y acciones): cerrado — Track C completo (2026-09-11, /loop autónomo)
+
+**Objetivo:** aprobar/rechazar orden, editar lectura VEE, forzar lectura bajo demanda — todo
+accionable desde la UI, no solo lectura. **Estado:** 🟢 verificado real. **Con este sprint,
+Track C (Portal Web) queda completo: los 4 sprints planificados (C1-C4) están hechos y
+verificados con evidencia real, no solo escritos.**
+
+| Fecha | Avance | Función(es) | Evidencia |
+|---|---|---|---|
+| 2026-09-11 | **3 endpoints nuevos**: `POST /vee/invalid-readings/edit` (envuelve `manual_edit.edit_reading`, F18/Sprint 4, ahora accionable desde la UI); `GET /control-orders/{id}` (la orden puntual + su historial completo de `control_order_audit`, inmutable desde Sprint 6); `POST /meters/{id}/reads` (F04/Sprint 8, reusado tal cual como la acción "leer ahora" de la pantalla de detalle de medidor — no se reimplementó nada) | F51 | `services/portal-api/main.py`, `services/control/control_service.py::get_control_order_detail` |
+| 2026-09-11 | **`verify_detail_actions_end_to_end.py` — corrida real con 3 verificaciones**: (1) editar una lectura inválida real vía HTTP la marca `is_valid=true`/`source='edited'` y deja exactamente 1 fila en `validated_reading_edit` (inmutable); (2) el detalle de una orden aprobada trae las 3 transiciones completas (`requested→pending_approval→approved`); (3) "leer ahora" contra el simulador real de Sprint 1 devuelve el valor correcto | F51 | `python verify_detail_actions_end_to_end.py "postgresql://...@localhost:5455/renfygrid"` → **"SPRINT C4 BACKEND E2E OK"** |
+| 2026-09-11 | **3 piezas de frontend**: `Vee.tsx` ahora con un formulario de edición inline por fila (valor corregido, quién edita, justificación — los mismos 3 datos que exige `edit_reading` a nivel de BD); `Meters.tsx` con botón "Leer ahora" por medidor; `ControlOrderDetail.tsx` (ruta nueva `/control/:orderId`) mostrando el detalle de una orden con su línea de tiempo de auditoría completa | F51 | `services/portal-web/src/pages/{Vee,Meters,ControlOrderDetail}.tsx` |
+| 2026-09-11 | **68/68 tests + `verify_estimation_and_edit_end_to_end.py` (Sprint 4) re-corrido sin regresiones** tras tocar `manual_edit.py`/`control_service.py`. `npm run build` limpio | F51 | `python -m unittest discover` → OK; `npm run build` → exit 0 |
+
+*(Track C cerrado. El próximo trabajo de UI depende de qué decida el usuario — no hay más
+sprints de Portal Web planificados sin nueva dirección.)*
