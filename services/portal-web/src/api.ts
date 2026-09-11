@@ -171,6 +171,25 @@ export function deactivateVeeRule(id: string) {
   return request<{ id: string }>(`/vee-rules/${id}`, { method: "PATCH" });
 }
 
+// --- Integraciones / Service Orders (Sprint C6, sobre el endpoint de C5) ---
+
+export interface ServiceOrder {
+  kind: "control_order" | "on_demand_read" | "ping";
+  id: string;
+  type: string;
+  meter_id: string;
+  account_number: string;
+  status: string;
+  requested_by: string | null;
+  origin: string;
+  mode: "automatico" | "manual";
+  timestamp: string | null;
+}
+
+export function getServiceOrders(): Promise<ServiceOrder[]> {
+  return request("/integrations/service-orders");
+}
+
 export interface ConsumptionAnomalyRule {
   id: string;
   condition: Record<string, unknown>;

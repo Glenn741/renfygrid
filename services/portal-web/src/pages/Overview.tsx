@@ -19,6 +19,9 @@ export function OverviewPage() {
       <header className="border-b border-slate-200 bg-white px-6 py-4 flex items-center justify-between">
         <h1 className="text-lg font-bold text-slate-900">RenfyGrid — Vista general</h1>
         <div className="flex items-center gap-4">
+          <Link to="/integrations" className="text-sm text-slate-500 hover:text-slate-700">
+            Integraciones
+          </Link>
           <Link to="/observability" className="text-sm text-slate-500 hover:text-slate-700">
             Observabilidad
           </Link>
