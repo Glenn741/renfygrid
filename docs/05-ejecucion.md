@@ -32,7 +32,7 @@ código, no por fecha. Complementa el Plan de sprints (`04-plan-sprints.md`).
 |---|---|---|---|
 | F10 | Ingesta de lecturas crudas (hypertable Timescale) | 1 | 🟡 |
 | F11 | Metadatos de medidor/ubicación/catastro | 0-1 | 🟢 |
-| F12 | Retención histórica configurable por tenant | 10 | ⚪ |
+| F12 | Retención histórica configurable por tenant | 10 | 🟢 |
 | F13 | Respaldo y recuperación | 9 | 🟢 |
 
 ### VEE (Validación · Estimación · Edición)
@@ -55,7 +55,7 @@ código, no por fecha. Complementa el Plan de sprints (`04-plan-sprints.md`).
 | F22 | Reglas de crítica/desviación configurables | 5 | 🟢 |
 | F23 | Órdenes de relectura/inspección | 5 | 🟢 |
 | F24 | API de consulta de consumo por período | 5 | 🟢 |
-| F25 | Preparación de datos para facturación (entrega a CIS) | 10 | ⚪ |
+| F25 | Preparación de datos para facturación (entrega a CIS) | 10 | 🟡 (export genérico listo, contrato real depende del CIS elegido) |
 
 ### Control (SCR)
 
@@ -377,3 +377,29 @@ Modelado, Gemelo Digital, Mantenimiento — 11 funciones) sigue sin iniciar, tal
 planeado (corre en paralelo cuando haya una oportunidad comercial concreta, no por fecha fija).
 
 *(Esta tabla se sigue completando a medida que avanza el Sprint 9 real.)*
+
+### Sprint 10 — Piloto real
+
+**Objetivo:** piloto real con el tenant, ajuste de reglas VEE con datos de producción; primer
+ciclo de facturación completo corrido con datos reales (`04-plan-sprints.md` §4). **Estado:**
+🟡 — lo que se puede construir sin un piloto real ya está hecho y verificado; lo que define al
+sprint (un cliente real, corriendo) **no se puede fabricar** — no es una limitación de tiempo,
+es que el propio objetivo del sprint exige un dato que no existe todavía: un tenant piloto real.
+
+| Fecha | Avance | Función(es) | Evidencia |
+|---|---|---|---|
+| 2026-09-10 | **F12 construido**: `infra/db/retention.py` — `tenant.config` (jsonb, Sprint 0, primer uso real) trae `raw_reading_retention_days`/`validated_reading_retention_days` por tenant. Fail-safe explícito: un tenant sin retención configurada **nunca** pierde datos — no hay default adivinado para una operación destructiva | F12 | `infra/db/retention.py` |
+| 2026-09-10 | **`verify_retention_end_to_end.py` — corrida real**: tenant A con retención de 30 días tiene una lectura de hace 60 días y una de hoy — tras correr el job, solo queda la de hoy; tenant B sin configurar tiene una lectura de hace 10 años — sigue intacta, confirmando el fail-safe contra Postgres real, no solo por diseño | F12 | `python infra/db/verify_retention_end_to_end.py "postgresql://...@localhost:5455/renfygrid"` → **"F12 OK"** |
+| 2026-09-10 | **F25, alcance honesto**: sin un CIS real elegido para el piloto no hay un contrato de integración que implementar (formato exacto, SFTP/API, campos) — eso se define CON el CIS real. Se construyó `services/consumption/billing_export.py` (CSV genérico, un renglón por consumo facturable) + `GET /billing-export` — con una regla de negocio real: un consumo `anomaly_status='under_review'` (F22) **no se incluye**, no se factura algo bajo revisión sin resolver | F25 | `services/consumption/billing_export.py`, `main.py` |
+| 2026-09-10 | **`verify_billing_export_end_to_end.py` — corrida real vía `TestClient`**: un consumo `ok` aparece en el CSV, uno `under_review` no | F25 | `python verify_billing_export_end_to_end.py "postgresql://...@localhost:5455/renfygrid"` → **"F25 OK"** |
+| 2026-09-10 | **Herramienta de alta de tenant piloto**: `infra/onboarding/onboard_tenant.py` — junta en un manifiesto JSON (`example_manifest.json`) todo lo que hasta ahora requería llamar a mano por separado (`meter_registry`, `meter_protocol`, `vee_rule`, `consumption_anomaly_rule`, `control_approval_level`, Sprints 1-6) — para que dar de alta un tenant piloto real sea una sola corrida, no una secuencia de pasos manuales propensos a error | — (herramienta operativa, no una función del F-matrix) | `infra/onboarding/onboard_tenant.py`, `verify_onboarding_end_to_end.py` → **"ONBOARDING OK"**, el manifiesto de ejemplo completo (medidor + gateway + mapeo OBIS + 2 reglas VEE + regla de anomalía + 2 niveles de aprobación) quedó dado de alta en una sola corrida |
+
+**Lo que de verdad falta de Sprint 10 no es código**: es una decisión de negocio (conseguir un
+tenant piloto real, con un medidor real que soporte DLMS/COSEM y, si aplica, corte/reconexión
+remoto) y, una vez ahí, correr `onboard_tenant.py` contra ese tenant real, dejar el poller y el
+motor VEE corriendo con datos de producción de verdad, ajustar los umbrales de `vee_rule` según
+lo que se vea en la práctica, y correr un ciclo de facturación completo. Nada de eso se puede
+simular de forma honesta con datos sintéticos — sería fingir un resultado que en realidad
+depende de tener un cliente real.
+
+*(Esta tabla queda abierta hasta que haya un tenant piloto real con el que correr el resto de Sprint 10.)*

@@ -32,10 +32,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "hes-adapter-dlms")
 
 import psycopg  # noqa: E402
 from fastapi import Depends, FastAPI, HTTPException  # noqa: E402
+from fastapi.responses import PlainTextResponse  # noqa: E402
 from pydantic import BaseModel  # noqa: E402
 
 from approval_levels_cache import fetch_active_approval_levels  # noqa: E402
 from auth_dependency import get_tenant_id  # noqa: E402
+from billing_export import billing_ready_consumption, to_csv  # noqa: E402
 from config import Settings  # noqa: E402
 from control_order_gateway import request_control_order  # noqa: E402
 from control_service import InsufficientRoleError, InvalidTransitionError, approve_order  # noqa: E402
@@ -174,3 +176,17 @@ def read_meter_now_endpoint(meter_id: str, body: ReadNowRequest, tenant_id: str 
 def ingestion_observability(tenant_id: str = Depends(get_tenant_id), stale_after_seconds: int = 3600) -> dict:
     with db_conn() as conn:
         return ingestion_metrics(conn, tenant_id, stale_after_seconds)
+
+
+@app.get("/billing-export", response_class=PlainTextResponse)
+def billing_export_endpoint(
+    tenant_id: str = Depends(get_tenant_id), period_start: date | None = None, period_end: date | None = None
+) -> str:
+    """F25: CSV de consumo listo para facturar (excluye lo que está
+    `under_review`) -- ver el docstring de `billing_export.py` sobre el
+    alcance real de esto sin un CIS concreto todavía elegido."""
+    if period_start is None or period_end is None:
+        raise HTTPException(status_code=422, detail="period_start y period_end son obligatorios")
+    with db_conn() as conn:
+        rows = billing_ready_consumption(conn, tenant_id, period_start, period_end)
+        return to_csv(rows)

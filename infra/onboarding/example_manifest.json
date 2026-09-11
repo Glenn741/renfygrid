@@ -1,0 +1,46 @@
+{
+  "tenant_name": "Ejemplo Piloto SMB",
+  "plan": "pilot",
+  "tenant_config": {
+    "raw_reading_retention_days": 1825,
+    "validated_reading_retention_days": 1825
+  },
+  "meters": [
+    {
+      "account_number": "ACC-0001",
+      "serial_number": "SER-0001",
+      "brand": "landis-gyr",
+      "model": "E650",
+      "protocol": "DLMS_COSEM",
+      "location": {"city": "Bogotá", "address": "Ejemplo #123"},
+      "server_address": 1,
+      "gateway": {
+        "name": "Concentrador Zona Norte",
+        "transport_protocol": "TCP",
+        "connection": {"host": "10.0.0.5", "port": 4059, "client_address": 16}
+      }
+    }
+  ],
+  "obis_mappings": [
+    {
+      "brand": "landis-gyr",
+      "model": "E650",
+      "protocol": "DLMS_COSEM",
+      "obis_mapping": {
+        "active_energy": {"obis_code": "1.0.1.8.0.255", "attribute_index": 2, "billable": true},
+        "control": {"obis_code": "0.0.96.3.10.255"}
+      }
+    }
+  ],
+  "vee_rules": [
+    {"type": "range", "params": {"channel": "active_energy", "min": 0, "max": 999999}, "priority": 100},
+    {"type": "missing_interval", "params": {"channel": "active_energy", "expected_interval_seconds": 900, "tolerance_seconds": 60, "estimation_method": "linear_interpolation"}, "priority": 100}
+  ],
+  "consumption_anomaly_rules": [
+    {"condition": {"max_deviation_pct": 30}, "action": "reread_order"}
+  ],
+  "control_approval_levels": [
+    {"order_type": "suspension", "requires_human_approval": true, "min_required_role": "supervisor"},
+    {"order_type": "reconnection", "requires_human_approval": false, "min_required_role": "operator"}
+  ]
+}
