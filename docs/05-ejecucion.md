@@ -554,3 +554,16 @@ producción, verificado con evidencia real.
 **Pendiente real para C6** (la pantalla): el endpoint ya existe y está probado, pero el Portal
 Web todavía no tiene la pantalla "Integraciones (CIS)" — sigue siendo el mockup aprobado por el
 usuario, no código React real todavía.
+
+### Sprint C6 — Pantalla real Integraciones (CIS) (2026-09-11)
+
+**Objetivo:** construir la pantalla sobre el endpoint de C5 (mockup ya aprobado por el usuario).
+**Estado:** 🟢 cerrado y desplegado a producción.
+
+| Fecha | Avance | Evidencia |
+|---|---|---|
+| 2026-09-11 | **`Integrations.tsx` construida**: 3 tarjetas resumen (total/automáticas/manuales), filtro por modo, tabla con hora/tipo/cuenta/origen/modo/estado (colores por origen y modo), nota con enlace real a Configuración → Niveles de aprobación de control | `services/portal-web/src/pages/Integrations.tsx` |
+| 2026-09-11 | Ruta `/integrations` + link desde Vista general | `App.tsx`, `Overview.tsx` |
+| 2026-09-11 | `npm run build` limpio, desplegado a producción — verificado en vivo: la ruta resuelve, y el bundle real contiene la pantalla y la llamada al endpoint | `curl https://renfygrid.rensoftlabs.com/integrations` → 200; bundle contiene "Integraciones (CIS)"/"service-orders" |
+
+Commit `e20f04b`. Sigue **C7-C8** (HES/Ingesta: flota por marca + capa de agregación).
