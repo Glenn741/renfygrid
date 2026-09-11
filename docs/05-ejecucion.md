@@ -1,6 +1,6 @@
 # Ejecución — Matriz funcional y bitácora de sprints
 
-**Última actualización:** 2026-09-10 (Sprint 3) · Documento vivo — se actualiza en cada avance real de
+**Última actualización:** 2026-09-11 (F05, retomado) · Documento vivo — se actualiza en cada avance real de
 código, no por fecha. Complementa el Plan de sprints (`04-plan-sprints.md`).
 
 ---
@@ -21,7 +21,7 @@ al sprint donde se construye y a su estado real.
 | F02 | Adaptador de protocolo DLMS/COSEM (Gurux) | 1 | 🟢 |
 | F03 | Lectura remota programada (polling) | 1 | 🟢 |
 | F04 | Lectura remota bajo demanda | 8 | 🟢 |
-| F05 | Recepción de eventos/alarmas del medidor | 1-2 | ⚪ (diferido a Sprint 2, ver bitácora) |
+| F05 | Recepción de eventos/alarmas del medidor | 1-2 | 🟢 (retomado 2026-09-11, ver bitácora) |
 | F06 | Mapeo OBIS configurable por marca/modelo (cacheado) | 2 | 🟢 |
 | F07 | Envío de comandos SCR al medidor | 7 | ⚪ |
 | F08 | Reintentos / cola ante caída de concentrador | 2 | 🟡 (reintentos sí, cola persistente no — ver bitácora) |
@@ -219,6 +219,30 @@ sin ella.
 
 *(Esta tabla se sigue completando a medida que avanza el Sprint 2 real.)*
 
+### F05 — Recepción de eventos/alarmas del medidor: retomado (2026-09-11)
+
+**Objetivo:** cerrar el gap explícito de Sprint 1 (`04-plan-sprints.md` §4, F05 diferido). **Estado:**
+🟢 verificado real end-to-end, por TCP real y contra Postgres real.
+
+Nuevos módulos en `services/hes-adapter-dlms/`: `event_notification.py` (codificación/decodificación
+del mensaje) + `event_listener.py` (servidor TCP + persistencia en `meter_event`).
+
+| Fecha | Avance | Función(es) | Evidencia |
+|---|---|---|---|
+| 2026-09-11 | **Decisión de diseño explícita, y un 5° bug real en `gurux-dlms==1.0.203`**: el mecanismo semánticamente "correcto" del Blue Book de DLMS para un evento/alarma espontáneo es `EVENT_NOTIFICATION` — pero `GXDLMS.getData` lo reconoce del lado de recepción con un `elif cmd == Command.EVENT_NOTIFICATION: pass` (no-op): el valor nunca se decodifica, aunque `GXDLMSNotify.generateReport` sí sabe generarlo. Se usó **`DATA_NOTIFICATION`** en su lugar, que sí está completo en ambas direcciones (`generateDataNotificationMessages` + `handleDataNotification`/`getValueFromData`) — verificado primero con un prototipo aislado (encode→bytes reales→decode) antes de construir nada encima | F05 | Docstring de `event_notification.py` |
+| 2026-09-11 | **Estructura del cuerpo, elección propia (el Blue Book no fija una para Data-Notification)**: `STRUCTURE(meter_server_address uint16, event_code uint16, severity_code uint8)`. La identidad del medidor viaja **dentro del payload**, no se infiere de la dirección de origen del encabezado WRAPPER — un concentrador móvil/GPRS puede tener IP dinámica | F05 | `event_notification.py` |
+| 2026-09-11 | **Verificado por TCP real, con reensamblado de fragmentos**: un prototipo aislado confirmó el mecanismo completo (proceso único, luego dos procesos por socket real con la escritura partida a la mitad para forzar que `EventNotificationDecoder` reensamble) antes de escribir el listener final | F05 | Prototipo corrido dos veces, `RESULT: {'value': [1001, 42, 2]}` |
+| 2026-09-11 | **`event_listener.py` construido**: corre por tenant (mismo criterio que `poller.py`/`on_demand_reader.py` — nunca cruza tenants dentro de un mismo proceso), resuelve el medidor real por `server_address` dentro del tenant, y **descarta sin tumbar el listener** un evento de un `server_address` no registrado (fail-safe, mismo principio que "un medidor caído no tumba el ciclo del poller") | F05 | `services/hes-adapter-dlms/event_listener.py` |
+| 2026-09-11 | **6 pruebas unitarias puras nuevas** (ida-y-vuelta con la librería Gurux real, no un mock del protocolo: completo en un solo `feed`, fragmentado en dos mitades, mapeo de severidad, severidad desconocida cae a `warning` nunca a `info`, dos mensajes independientes no comparten estado, cuerpo con forma inesperada lanza en vez de adivinar) — **24/24 en `hes-adapter-dlms`, 74/74 en total en los 5 servicios** | F05 | `python -m unittest discover -s tests -v` → OK en los 5 servicios |
+| 2026-09-11 | **`verify_event_notification_end_to_end.py` — corrida real, exitosa, 2 verificaciones en una pasada**: (1) medidor real registrado, listener real levantado en un puerto TCP real, push real recibido — confirma exactamente 1 fila `meter_event` (`type='meter_alarm'`, `severity='critical'`, `detail={'event_code':77,'severity_code':2}`) con el `meter_id` correcto; (2) un segundo push con `server_address` no registrado en este tenant se descarta, **el listener sigue vivo y acepta la siguiente conexión**, y no se crea ninguna fila para ese evento | F05 | `python verify_event_notification_end_to_end.py "postgresql://...@localhost:5455/renfygrid"` → **"F05 OK"**, exit code 0 |
+
+**F05 pasa a 🟢**: no es una simulación del mecanismo de push — es el protocolo DATA_NOTIFICATION real
+de Gurux, con bytes reales viajando por un socket TCP real y reensamblados de un stream fragmentado,
+resueltos contra un medidor real en Postgres con RLS activo. **Con esto, de los 4 gaps que quedaban en
+Track A (ver cierre de Sprint 9), solo quedan F07 y F25 (parcial) — y F07 sigue sin ser un gap de
+código: depende de confirmar que un medidor piloto real soporte corte/reconexión remoto, algo que no se
+puede fabricar sin ese piloto (mismo criterio que Sprint 10, F12/F25 de retención/facturación).**
+
 ### Sprint 3 — Motor VEE: Validación
 
 **Objetivo:** lecturas fuera de rango quedan marcadas, con regla trazable (`04-plan-sprints.md`
@@ -386,6 +410,11 @@ tener un piloto real corriendo, no a más código genérico. Queda únicamente *
 real con el tenant, ajuste de reglas VEE con datos de producción. Track B (Balance de Red,
 Modelado, Gemelo Digital, Mantenimiento — 11 funciones) sigue sin iniciar, tal como estaba
 planeado (corre en paralelo cuando haya una oportunidad comercial concreta, no por fecha fija).
+
+**Actualización 2026-09-11**: F05 y F12/F25 ya se cerraron desde entonces (ver sus secciones
+propias más abajo) — de los 4 pendientes de este cierre, solo **F07** sigue abierto, y sigue
+sin ser código pendiente: no se puede construir más sin un medidor piloto real que confirme
+soporte de corte/reconexión remoto.
 
 *(Esta tabla se sigue completando a medida que avanza el Sprint 9 real.)*
 
