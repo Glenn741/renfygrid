@@ -698,3 +698,17 @@ frontend, sin importar que el backend ya soportara los otros 2 desde Sprint C11)
 | 2026-09-11 | Regresión: 8/8 unit tests + `verify_stage_screens_end_to_end.py`/`verify_detail_actions_end_to_end.py` (ya usaban `/vee/invalid-readings`) siguen en verde con el campo `rule_type` nuevo | — | — |
 | 2026-09-11 | **Frontend**: `Vee.tsx` rediseñada — 4 tarjetas de resumen (inválidas/estimadas 24h/editadas 24h/reglas activas), filtro por tipo de regla en la cola de excepciones (con badge de tipo por fila), sección nueva "Lecturas estimadas" con el método usado por fila. `Configuration.tsx`: `VeeRulesSection` ahora soporta crear reglas `channel_consistency` (canal de referencia + ratio min/max) y elegir el método de estimación real (antes fijo a `linear_interpolation`) | `services/portal-web/src/pages/Vee.tsx`, `Configuration.tsx`, `api.ts` |
 | 2026-09-11 | `tsc -b && vite build` limpio, bundle sin rutas mangled, contiene "vee/summary"/"vee/estimated-readings"/"channel_consistency". Desplegado: backend (Nuitka) a `essmarplapp02`, `systemctl restart renfygrid-portal-api` → activo; frontend a `essmarplpxy03`. Verificado en vivo: bundle servido coincide con el build, `/api/vee/summary` responde 401 (gateado por auth, no 404/500) | `curl https://renfygrid.rensoftlabs.com/...` |
+
+### Fuera de sprint — login rellenaba con password generado por el navegador (2026-09-11)
+
+**Motivo:** el usuario reportó "Email, contraseña o tenant incorrectos" con un password
+visiblemente distinto al real (`RenfyGrid-Demo-2026`) — un string tipo `VMm_RwpY_v18iIjc`,
+patrón clásico de contraseña autogenerada por Chrome. Confirmado por HTTP directo que las
+credenciales reales seguían funcionando (200, JWT válido) — el bug era del formulario, no de
+la cuenta: sin `autoComplete`/`name` en los inputs, el navegador no reconocía el formulario
+como un login real y ofrecía generar una contraseña nueva en vez de usar la guardada.
+
+| Fecha | Avance | Evidencia |
+|---|---|---|
+| 2026-09-11 | `Login.tsx`: `autoComplete="username"`/`"current-password"` + `name` en los 3 campos — el navegador ahora reconoce el formulario como login, no como registro | `services/portal-web/src/pages/Login.tsx` |
+| 2026-09-11 | `tsc -b && vite build` limpio, desplegado a `essmarplpxy03`, verificado en vivo que el HTML servido referencia el bundle nuevo | `curl https://renfygrid.rensoftlabs.com/` |

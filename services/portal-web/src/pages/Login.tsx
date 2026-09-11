@@ -40,6 +40,8 @@ export function LoginPage() {
 
         <label className="block text-sm font-medium text-slate-700 mb-1">Tenant</label>
         <input
+          name="tenant_id"
+          autoComplete="off"
           className="w-full rounded-lg border border-slate-300 px-3 py-2 mb-4 text-sm"
           value={tenantId}
           onChange={(e) => setTenantId(e.target.value)}
@@ -50,6 +52,8 @@ export function LoginPage() {
         <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
         <input
           type="email"
+          name="username"
+          autoComplete="username"
           className="w-full rounded-lg border border-slate-300 px-3 py-2 mb-4 text-sm"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
@@ -59,6 +63,8 @@ export function LoginPage() {
         <label className="block text-sm font-medium text-slate-700 mb-1">Contraseña</label>
         <input
           type="password"
+          name="password"
+          autoComplete="current-password"
           className="w-full rounded-lg border border-slate-300 px-3 py-2 mb-6 text-sm"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
