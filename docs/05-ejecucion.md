@@ -24,14 +24,14 @@ al sprint donde se construye y a su estado real.
 | F05 | Recepción de eventos/alarmas del medidor | 1-2 | 🟢 (retomado 2026-09-11, ver bitácora) |
 | F06 | Mapeo OBIS configurable por marca/modelo (cacheado) | 2 | 🟢 |
 | F07 | Envío de comandos SCR al medidor | 7 | ⚪ |
-| F08 | Reintentos / cola ante caída de concentrador | 2 | 🟡 (reintentos sí, cola persistente no — ver bitácora) |
+| F08 | Reintentos / cola ante caída de concentrador | 2, C11 | 🟢 (cola persistente con backoff exponencial, Sprint C11 — verificado localmente, despliegue a producción pendiente, ver bitácora) |
 | F09 | Auditoría de comunicación con dispositivos | 9 | 🟢 |
 
 ### Almacenamiento
 
 | # | Función | Sprint | Estado |
 |---|---|---|---|
-| F10 | Ingesta de lecturas crudas (hypertable Timescale) | 1 | 🟡 |
+| F10 | Ingesta de lecturas crudas (particionado por rango de tiempo) | 1, C11 | 🟢 (particionado nativo de Postgres, sustituto real de TimescaleDB, Sprint C11 — verificado localmente, despliegue a producción pendiente, ver bitácora) |
 | F11 | Metadatos de medidor/ubicación/catastro | 0-1 | 🟢 |
 | F12 | Retención histórica configurable por tenant | 10 | 🟢 |
 | F13 | Respaldo y recuperación | 9 | 🟢 |
@@ -41,9 +41,9 @@ al sprint donde se construye y a su estado real.
 | # | Función | Sprint | Estado |
 |---|---|---|---|
 | F14 | Validación de rangos (min/max configurable) | 3 | 🟢 |
-| F15 | Validación de formato/coherencia/integridad | 3 | 🟡 (formato sí, coherencia entre canales diferida — ver bitácora) |
+| F15 | Validación de formato/coherencia/integridad | 3, C11 | 🟢 (coherencia entre canales, regla `channel_consistency`, Sprint C11 — verificado localmente, despliegue a producción pendiente, ver bitácora) |
 | F16 | Detección de intervalos faltantes | 4 | 🟢 |
-| F17 | Estimación (método configurable por tenant) | 4 | 🟡 (solo `linear_interpolation` — ver bitácora) |
+| F17 | Estimación (método configurable por tenant) | 4, C11 | 🟢 (3/3 métodos: `customer_historical_average`/`similar_customers_average` agregados en Sprint C11 — verificado localmente, despliegue a producción pendiente, ver bitácora) |
 | F18 | Edición manual auditada | 4 | 🟢 |
 | F19 | Versionado de reglas VEE (trazabilidad) | 0, 3-4 | 🟢 |
 | F20 | Patrón de configuración cacheada (cero hardcode) | 0 | 🟢 |
@@ -644,3 +644,34 @@ que volver a entrar.
 |---|---|---|
 | 2026-09-11 | `api.ts`: `request()` ahora detecta un 401 en cualquier endpoint que no sea `/auth/login` (para no interferir con el mensaje de "credenciales incorrectas" del propio login), limpia el token y manda a `/login` — en vez de dejar la pantalla con queries fallando sin explicación | `services/portal-web/src/api.ts` |
 | 2026-09-11 | `tsc -b && vite build` limpio, desplegado a `essmarplpxy03`; verificado en vivo que el HTML servido referencia el bundle nuevo | `curl https://renfygrid.rensoftlabs.com/` |
+
+### Sprint C11 — Cierre de los 4 parciales del MVP (F08/F10/F15/F17) (2026-09-11)
+
+**Objetivo:** con los benchmarks E2E (C5-C10) ya cerrados, el usuario pidió seguir con lo
+pendiente REAL del plan — no Track B (Balance de Red, otro dominio, 11 funciones sin empezar),
+sino los 4 huecos parciales que quedaban en el MVP de energía ya construido: F08 (cola
+persistente de reintentos), F10 (particionado de `raw_reading`), F15 (coherencia entre
+canales), F17 (métodos de estimación restantes).
+**Estado:** 🟡 código real, con tests unitarios y E2E reales pasando **contra Postgres local**
+— el despliegue a producción quedó **bloqueado por el clasificador de auto-modo** ("Production
+Deploy") al intentar aplicar las migraciones 0010/0011 en `essmarplapp02`; pendiente de que el
+usuario autorice esa acción puntual o la corra él mismo (ver nota al final).
+
+| Fecha | Avance | Función(es) | Evidencia |
+|---|---|---|---|
+| 2026-09-11 | **F17 completado**: `vee_engine.estimate_gap` ahora soporta los 3 métodos del diseño (`03-diseno.md` SS5), no solo `linear_interpolation` — `customer_historical_average` (promedio de lecturas REALES del mismo medidor a la misma hora del día, cruzando días) y `similar_customers_average` (promedio de lecturas de OTROS medidores cerca del mismo instante). Nunca inventa un promedio sin datos: `InsufficientHistoryError` si no hay ninguna lectura que matchee (distinto de `NotImplementedError`, que es para un método no reconocido). `run_vee_estimation.py` trae el historial correcto según el método antes de llamar a `estimate_gap` | F17 | `services/vee-engine/vee_engine.py`, `run_vee_estimation.py` |
+| 2026-09-11 | 5 pruebas unitarias nuevas (17/17 en `vee-engine`) + E2E real: un medidor con lecturas en 3 días distintos a la misma hora (falta el día 2) se llena con el promedio propio (120, NO la interpolación que daría 130 — confirma que usa el método pedido); un segundo medidor "similar" con una lectura real en el instante exacto del hueco llena el hueco del primero con ESE valor | F17 | `verify_estimation_methods_end_to_end.py` → `SPRINT C11 F17 E2E OK` |
+| 2026-09-11 | **F15 completado**: nueva regla `vee_rule.type = 'channel_consistency'` (`channel`, `reference_channel`, `min_ratio`, `max_ratio`) — compara dos canales del MISMO medidor en el MISMO instante (ej. reactiva/activa). `validate_reading` recibe `reference_value` ya resuelto por el llamador (`run_vee_pass.py`, que va a `raw_reading` a buscarlo) — nunca toca BD ella misma. Sin lectura del canal de referencia en ese instante: pasa SIN evaluar (no se adivina un ratio), nunca se invalida por eso | F15 | `services/vee-engine/vee_engine.py`, `run_vee_pass.py` |
+| 2026-09-11 | 5 pruebas unitarias nuevas (22/22 en `vee-engine`) + E2E real: activa=100/reactiva=60 (ratio 0.6, dentro de [0,1]) → válida; activa=100/reactiva=150 (ratio 1.5) → inválida con regla trazable; reactiva=60 sin activa en ese instante → válida, sin evaluar | F15 | `verify_channel_consistency_end_to_end.py` → `SPRINT C11 F15 E2E OK` |
+| 2026-09-11 | **F08 completado**: migración `0010_poller_retry_queue.sql` — tabla `poller_retry_queue` (una fila por `(tenant_id, meter_id)`, RLS). `poller.py`: `due_meters` excluye medidores con `next_retry_at` futuro; al agotar los reintentos del ciclo, `record_retry_failure` sube el medidor a la cola con backoff EXPONENCIAL (`--retry-queue-base-seconds * 2^(failure_count-1)`, tope `--retry-queue-max-seconds`, nunca fijo en código); al responder, `clear_retry_queue` lo saca | F08 | `infra/db/migrations/0010_poller_retry_queue.sql`, `services/hes-adapter-dlms/poller.py` |
+| 2026-09-11 | E2E real con un medidor apuntando a un puerto cerrado: ciclo 1 falla y entra a la cola (`failure_count=1`); ciclo 2 inmediato lo EXCLUYE (backoff de 1h no vencido, cero intentos nuevos); se adelanta `next_retry_at` al pasado y se levanta el simulador real en ese puerto — ciclo 3 reintenta, tiene éxito, sale de la cola | F08 | `verify_poller_retry_queue_end_to_end.py` → `SPRINT C11 F08 E2E OK` |
+| 2026-09-11 | **F10 completado**: migración `0011_raw_reading_partitioning.sql` — `0001_init.sql` declaraba `raw_reading` como hypertable de TimescaleDB (`create_hypertable`), extensión que **nunca estuvo disponible** ni en desarrollo (Postgres portable de Windows) ni en producción (solo v2.10.3 para PG13 en `essmarplapp02`, incompatible con el PG16 real — causó la caída breve ya documentada). Esa línea era un bug latente: correr las migraciones desde cero en cualquiera de los dos entornos reales falla ahí mismo. Sustituto real: **particionado declarativo nativo de Postgres** por rango mensual de `"timestamp"` — mismo beneficio práctico (poda de particiones, DROP de una partición vieja completa para retención) sin ninguna extensión de terceros. Tabla vieja reconstruida (Postgres no permite convertir in-place), renombrada como respaldo (`raw_reading_pre_partition_backup`, NO borrada) tras copiar los datos reales. Partición `DEFAULT` como red de seguridad. `services/common/renmeter_common/partition_maintenance.py` (nuevo, mismo patrón de job aparte que `refresh_obis_mapping_cache.py`): asegura las particiones futuras que falten — DDL real, corre con el rol admin, no `renfygrid_app` | F10 | `infra/db/migrations/0011_raw_reading_partitioning.sql`, `services/common/renmeter_common/partition_maintenance.py` |
+| 2026-09-11 | 5 pruebas unitarias puras nuevas (24/24 en `common`) sobre la aritmética de meses + E2E real: dos tenants con una lectura real cada uno — RLS sigue aislando a través de la tabla particionada (con el rol de APLICACIÓN, no el admin — **si se usa el admin la prueba miente**: los superusuarios se saltan RLS siempre, el mismo bug de fondo que Sprint 0 ya documentó, encontrado de nuevo al escribir mal esta misma prueba la primera vez); cada fila cae en la partición del mes correcto, no en `DEFAULT`; `ensure_partitions` crea una partición futura real y una lectura de esa fecha cae ahí | F10 | `infra/db/verify_partitioning_end_to_end.py` → `SPRINT C11 F10 E2E OK` |
+| 2026-09-11 | Regresión completa sin romper nada, incluyendo lo que más podía verse afectado por particionar `raw_reading`: `verify_rls.py`, `verify_retention_end_to_end.py` (F12 — una lectura de "hace 10 años" cae en `DEFAULT` y la retención la sigue borrando igual), `verify_backup_restore_end_to_end.py` (F13), y los E2E de HES/poller/VEE/observabilidad/fleet ya existentes — todos siguen en verde | — | Ver comandos en esta misma sección |
+
+**Pendiente real**: el despliegue a producción de este sprint (migraciones 0010/0011 +
+`poller.py`/`vee_engine.py`/`run_vee_pass.py`/`run_vee_estimation.py`/`partition_maintenance.py`
+compilados/copiados a `essmarplapp02`) quedó bloqueado por el clasificador de auto-modo
+("Production Deploy") al intentar el `pg_dump` de respaldo + `psql -f` de las migraciones. El
+código está commiteado y listo; falta que el usuario autorice esa acción puntual (agregar una
+regla de permiso, o correr `deploy_c11_migrations_remote.sh` él mismo) o pida que se reintente.

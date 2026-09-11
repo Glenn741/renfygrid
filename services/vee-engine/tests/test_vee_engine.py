@@ -12,10 +12,16 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from vee_engine import Gap, detect_gaps, estimate_gap, validate_reading
+from vee_engine import Gap, InsufficientHistoryError, detect_gaps, estimate_gap, validate_reading
 
 
 RANGE_RULE = {"id": "rule-1", "type": "range", "params": {"channel": "active_energy", "min": 0, "max": 10000}, "priority": 100}
+CONSISTENCY_RULE = {
+    "id": "rule-consistency",
+    "type": "channel_consistency",
+    "params": {"channel": "reactive_energy", "reference_channel": "active_energy", "min_ratio": 0.0, "max_ratio": 1.0},
+    "priority": 100,
+}
 
 
 class ValidateReadingTests(unittest.TestCase):
@@ -58,6 +64,37 @@ class ValidateReadingTests(unittest.TestCase):
 
         self.assertFalse(result.is_valid)
         self.assertEqual(result.vee_rule_id, "rule-strict")
+
+    def test_channel_consistency_within_ratio_is_valid_and_traces_the_rule(self):
+        result = validate_reading(60, "reactive_energy", [CONSISTENCY_RULE], reference_value=100)
+        self.assertTrue(result.is_valid)
+        self.assertEqual(result.vee_rule_id, "rule-consistency")
+
+    def test_channel_consistency_above_max_ratio_is_invalid(self):
+        result = validate_reading(150, "reactive_energy", [CONSISTENCY_RULE], reference_value=100)
+        self.assertFalse(result.is_valid)
+        self.assertEqual(result.vee_rule_id, "rule-consistency")
+        self.assertIn("fuera de", result.notes)
+
+    def test_channel_consistency_without_reference_value_passes_unevaluated(self):
+        # El canal de referencia no reporto en este instante -- no se
+        # adivina el ratio, pero tampoco se invalida por esto.
+        result = validate_reading(60, "reactive_energy", [CONSISTENCY_RULE], reference_value=None)
+        self.assertTrue(result.is_valid)
+        self.assertIn("no evaluada", result.notes)
+
+    def test_channel_consistency_with_zero_reference_passes_unevaluated(self):
+        result = validate_reading(60, "reactive_energy", [CONSISTENCY_RULE], reference_value=0)
+        self.assertTrue(result.is_valid)
+        self.assertIn("no evaluada", result.notes)
+
+    def test_channel_without_consistency_rule_ignores_reference_value(self):
+        # active_energy no tiene channel_consistency configurada (solo
+        # reactive_energy en CONSISTENCY_RULE) -- un reference_value de
+        # sobra no debe activar nada.
+        result = validate_reading(5000, "active_energy", [RANGE_RULE, CONSISTENCY_RULE], reference_value=1)
+        self.assertTrue(result.is_valid)
+        self.assertEqual(result.vee_rule_id, "rule-1")
 
 
 T0 = datetime(2026, 9, 10, 12, 0, 0, tzinfo=timezone.utc)
@@ -108,10 +145,51 @@ class EstimateGapTests(unittest.TestCase):
         self.assertAlmostEqual(points[1].value, 150.0)
         self.assertAlmostEqual(points[2].value, 175.0)
 
-    def test_unsupported_method_raises_instead_of_guessing(self):
+    def test_unrecognized_method_raises_instead_of_guessing(self):
         gap = Gap(after_timestamp=T0, before_timestamp=T0 + timedelta(minutes=60), after_value=100.0, before_value=200.0, missing_count=3)
         with self.assertRaises(NotImplementedError):
-            estimate_gap(gap, expected_interval_seconds=900, method="customer_historical_average")
+            estimate_gap(gap, expected_interval_seconds=900, method="made_up_method")
+
+    def test_customer_historical_average_uses_same_time_of_day_across_days(self):
+        # Hueco de 1 punto a las 08:00 de T0+1d. El propio historial del
+        # medidor tiene 08:00 en dos dias distintos (100, 120) y un valor a
+        # otra hora (999) que no deberia contar.
+        gap_day = T0.replace(hour=8, minute=0) + timedelta(days=1)
+        gap = Gap(after_timestamp=gap_day - timedelta(hours=1), before_timestamp=gap_day + timedelta(hours=1), after_value=0, before_value=0, missing_count=1)
+        historical = [
+            (T0.replace(hour=8, minute=0), 100.0),
+            (T0.replace(hour=8, minute=0) + timedelta(days=2), 120.0),
+            (T0.replace(hour=20, minute=0), 999.0),
+        ]
+
+        points = estimate_gap(gap, expected_interval_seconds=3600, method="customer_historical_average", historical_readings=historical, historical_tolerance_seconds=300)
+
+        self.assertEqual(len(points), 1)
+        self.assertAlmostEqual(points[0].value, 110.0)
+
+    def test_customer_historical_average_without_any_match_raises_instead_of_guessing(self):
+        gap = Gap(after_timestamp=T0, before_timestamp=T0 + timedelta(hours=2), after_value=0, before_value=0, missing_count=1)
+        with self.assertRaises(InsufficientHistoryError):
+            estimate_gap(gap, expected_interval_seconds=3600, method="customer_historical_average", historical_readings=[], historical_tolerance_seconds=60)
+
+    def test_similar_customers_average_uses_other_meters_near_the_same_instant(self):
+        gap = Gap(after_timestamp=T0, before_timestamp=T0 + timedelta(hours=2), after_value=0, before_value=0, missing_count=1)
+        target = T0 + timedelta(hours=1)
+        historical = [
+            (target, 200.0),
+            (target + timedelta(seconds=30), 220.0),
+            (target + timedelta(hours=5), 999.0),  # demasiado lejos, no cuenta
+        ]
+
+        points = estimate_gap(gap, expected_interval_seconds=3600, method="similar_customers_average", historical_readings=historical, historical_tolerance_seconds=60)
+
+        self.assertEqual(len(points), 1)
+        self.assertAlmostEqual(points[0].value, 210.0)
+
+    def test_similar_customers_average_without_any_match_raises_instead_of_guessing(self):
+        gap = Gap(after_timestamp=T0, before_timestamp=T0 + timedelta(hours=2), after_value=0, before_value=0, missing_count=1)
+        with self.assertRaises(InsufficientHistoryError):
+            estimate_gap(gap, expected_interval_seconds=3600, method="similar_customers_average", historical_readings=[], historical_tolerance_seconds=60)
 
 
 if __name__ == "__main__":

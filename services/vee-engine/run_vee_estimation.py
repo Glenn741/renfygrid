@@ -24,7 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "common"))
 import psycopg  # noqa: E402
 
 from renmeter_common.db import tenant_scope  # noqa: E402
-from vee_engine import detect_gaps, estimate_gap, missing_interval_rule_for  # noqa: E402
+from vee_engine import InsufficientHistoryError, detect_gaps, estimate_gap, missing_interval_rule_for  # noqa: E402
 from vee_rules_cache import ConfigCache  # noqa: E402
 
 
@@ -49,6 +49,23 @@ def ordered_readings(conn: psycopg.Connection, tenant_id: str, meter_id: str, ch
                     "SELECT \"timestamp\", value FROM validated_reading "
                     "WHERE meter_id = %s AND channel = %s ORDER BY \"timestamp\"",
                     (meter_id, channel),
+                )
+                return [(row[0], float(row[1])) for row in cur.fetchall()]
+
+
+def other_meters_readings(
+    conn: psycopg.Connection, tenant_id: str, channel: str, exclude_meter_id: str, start, end
+) -> list[tuple]:
+    """Lecturas validadas de OTROS medidores (mismo canal, ventana del hueco)
+    -- fuente real para `similar_customers_average` (F17, Sprint C11)."""
+    with conn.transaction():
+        with tenant_scope(conn, tenant_id):
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT \"timestamp\", value FROM validated_reading "
+                    "WHERE tenant_id = %s AND channel = %s AND meter_id != %s "
+                    "AND \"timestamp\" BETWEEN %s AND %s",
+                    (tenant_id, channel, exclude_meter_id, start, end),
                 )
                 return [(row[0], float(row[1])) for row in cur.fetchall()]
 
@@ -85,12 +102,31 @@ def run_once(dsn: str, tenant_id: str, rules_cache: ConfigCache) -> None:
                 expected_interval_seconds=rule["params"]["expected_interval_seconds"],
                 tolerance_seconds=rule["params"].get("tolerance_seconds", 0),
             )
+            method = rule["params"].get("estimation_method", "linear_interpolation")
             for gap in gaps:
-                points = estimate_gap(
-                    gap,
-                    expected_interval_seconds=rule["params"]["expected_interval_seconds"],
-                    method=rule["params"].get("estimation_method", "linear_interpolation"),
-                )
+                # `historical_readings` solo se calcula para los metodos que
+                # de verdad lo necesitan (F17, Sprint C11) -- linear_interpolation
+                # no toca la BD de mas.
+                historical_readings = None
+                if method == "customer_historical_average":
+                    historical_readings = readings
+                elif method == "similar_customers_average":
+                    historical_readings = other_meters_readings(
+                        conn, tenant_id, channel, meter_id, gap.after_timestamp, gap.before_timestamp
+                    )
+                try:
+                    points = estimate_gap(
+                        gap,
+                        expected_interval_seconds=rule["params"]["expected_interval_seconds"],
+                        method=method,
+                        historical_readings=historical_readings,
+                    )
+                except InsufficientHistoryError as exc:
+                    # Sin historial real para promediar: se deja el hueco sin
+                    # rellenar en este pase (se reintenta en el siguiente,
+                    # cuando haya mas lecturas) en vez de adivinar un valor.
+                    print(f"  meter_id={meter_id} channel={channel}: {exc}")
+                    continue
                 for point in points:
                     insert_estimated_reading(conn, tenant_id, meter_id, channel, point.timestamp, point.value, rule["id"])
                 total_estimated += len(points)

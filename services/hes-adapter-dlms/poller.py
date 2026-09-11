@@ -1,6 +1,6 @@
 """Lectura remota programada (F03, Sprint 1), ahora con mapeo OBIS
-configurable por marca/modelo (F06, Sprint 2) y reintentos ante caida de un
-concentrador (F08, Sprint 2).
+configurable por marca/modelo (F06, Sprint 2), reintentos ante caida de un
+concentrador (F08, Sprint 2) y cola persistente de reintentos (F08, Sprint C11).
 
 En un intervalo configurable (por argumento, nunca fijo en codigo), recorre
 los medidores activos y enlazados a un gateway (`meter.server_address` +
@@ -10,11 +10,20 @@ snapshot en disco, refrescado por separado con
 `refresh_obis_mapping_cache.py`, nunca leido de BD en este hot path) y lee
 cada canal mapeado, guardando cada uno en `raw_reading`.
 
-Alcance explicito de F08, no mas: reintentos acotados (`--read-retries`,
-`--retry-backoff-seconds`) DENTRO del mismo ciclo -- si un medidor sigue
-fallando despues de agotarlos, se registra el error y se sigue con el resto;
-no hay una cola persistente que reintente en un ciclo posterior (eso seria
-una pieza aparte, no construida todavia).
+F08, dos capas distintas:
+  1. Reintentos DENTRO del mismo ciclo (`--read-retries`, `--retry-backoff-seconds`,
+     Sprint 2): espera fija y corta, para una falla transitoria (un paquete
+     perdido) que se resuelve al toque.
+  2. **Cola persistente** (`poller_retry_queue`, migracion 0010, Sprint C11):
+     si un medidor agota los reintentos del punto 1, en vez de esperar al
+     proximo ciclo normal (mismo `--interval-seconds` que un medidor sano --
+     martillar un concentrador caido cada pocos segundos no tiene sentido),
+     entra a la cola con backoff EXPONENCIAL propio
+     (`--retry-queue-base-seconds * 2^(failure_count-1)`, tope
+     `--retry-queue-max-seconds`). Mientras este en la cola y su
+     `next_retry_at` no haya llegado, `due_meters` lo excluye del ciclo
+     normal. Si vuelve a fallar, `failure_count` sube y el backoff se
+     duplica; si por fin responde, sale de la cola.
 """
 
 from __future__ import annotations
@@ -42,7 +51,10 @@ from renmeter_common.db import tenant_scope  # noqa: E402
 
 
 def due_meters(conn: psycopg.Connection, tenant_id: str) -> list[dict]:
-    """Medidores activos, enlazados a un gateway, con direccion DLMS asignada."""
+    """Medidores activos, enlazados a un gateway, con direccion DLMS asignada
+    -- EXCLUYE los que estan en `poller_retry_queue` con `next_retry_at` en
+    el futuro (F08, Sprint C11): un medidor en backoff no se martilla en
+    cada ciclo normal, espera a que le toque su propio turno de reintento."""
     with conn.transaction():
         with tenant_scope(conn, tenant_id):
             with conn.cursor() as cur:
@@ -51,7 +63,11 @@ def due_meters(conn: psycopg.Connection, tenant_id: str) -> list[dict]:
                     "FROM meter m "
                     "JOIN meter_gateway mg ON mg.meter_id = m.id "
                     "JOIN gateway g ON g.id = mg.gateway_id "
-                    "WHERE m.status = 'active' AND m.server_address IS NOT NULL"
+                    "WHERE m.status = 'active' AND m.server_address IS NOT NULL "
+                    "AND NOT EXISTS ("
+                    "  SELECT 1 FROM poller_retry_queue q "
+                    "  WHERE q.meter_id = m.id AND q.next_retry_at > now()"
+                    ")"
                 )
                 return [
                     {
@@ -63,6 +79,38 @@ def due_meters(conn: psycopg.Connection, tenant_id: str) -> list[dict]:
                     }
                     for row in cur.fetchall()
                 ]
+
+
+def record_retry_failure(
+    conn: psycopg.Connection, tenant_id: str, meter_id: str, error: str, base_seconds: float, max_seconds: float
+) -> None:
+    """Sube (o crea) la fila de este medidor en la cola persistente, con
+    backoff exponencial (`base_seconds * 2^(failure_count-1)`, tope
+    `max_seconds`) -- nunca un valor fijo en codigo."""
+    with conn.transaction():
+        with tenant_scope(conn, tenant_id):
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO poller_retry_queue (tenant_id, meter_id, failure_count, next_retry_at, last_error) "
+                    "VALUES (%s, %s, 1, now() + (%s || ' seconds')::interval, %s) "
+                    "ON CONFLICT (tenant_id, meter_id) DO UPDATE SET "
+                    "  failure_count = poller_retry_queue.failure_count + 1, "
+                    "  next_retry_at = now() + (LEAST(%s * power(2, poller_retry_queue.failure_count), %s) || ' seconds')::interval, "
+                    "  last_error = EXCLUDED.last_error, "
+                    "  updated_at = now()",
+                    (tenant_id, meter_id, base_seconds, error, base_seconds, max_seconds),
+                )
+
+
+def clear_retry_queue(conn: psycopg.Connection, tenant_id: str, meter_id: str) -> None:
+    """El medidor por fin respondio -- sale de la cola (F08, Sprint C11)."""
+    with conn.transaction():
+        with tenant_scope(conn, tenant_id):
+            with conn.cursor() as cur:
+                cur.execute(
+                    "DELETE FROM poller_retry_queue WHERE tenant_id = %s AND meter_id = %s",
+                    (tenant_id, meter_id),
+                )
 
 
 def read_all_channels(
@@ -134,11 +182,13 @@ def run_once(
     mapping_cache: ConfigCache,
     read_retries: int,
     retry_backoff_seconds: float,
+    retry_queue_base_seconds: float,
+    retry_queue_max_seconds: float,
 ) -> None:
     mapping_cache.load()  # hot-reload: un refresh corrido aparte ya se refleja aca
     with psycopg.connect(dsn, autocommit=True) as conn:
         meters = due_meters(conn, tenant_id)
-        print(f"Ciclo de polling: {len(meters)} medidor(es) activo(s) para leer")
+        print(f"Ciclo de polling: {len(meters)} medidor(es) activo(s) para leer (excluye los en cola de reintento)")
         for meter in meters:
             channels = channels_for(mapping_cache, meter["brand"], meter["model"])
             if not channels:
@@ -148,9 +198,13 @@ def run_once(
                 read_one_meter_with_retries(
                     meter, channels, conn, tenant_id, read_retries, retry_backoff_seconds
                 )
+                clear_retry_queue(conn, tenant_id, meter["meter_id"])
                 print(f"  OK meter_id={meter['meter_id']} ({len(channels)} canal(es))")
             except Exception as exc:  # un medidor caido no debe tumbar el ciclo entero
-                print(f"  FALLA meter_id={meter['meter_id']} tras {read_retries} intento(s): {exc}")
+                record_retry_failure(
+                    conn, tenant_id, meter["meter_id"], str(exc), retry_queue_base_seconds, retry_queue_max_seconds
+                )
+                print(f"  FALLA meter_id={meter['meter_id']} tras {read_retries} intento(s), entra/sube en la cola de reintento: {exc}")
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -161,6 +215,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--interval-seconds", type=int, required=True)
     parser.add_argument("--read-retries", type=int, default=1)
     parser.add_argument("--retry-backoff-seconds", type=float, default=2.0)
+    parser.add_argument("--retry-queue-base-seconds", type=float, default=60.0)
+    parser.add_argument("--retry-queue-max-seconds", type=float, default=3600.0)
     parser.add_argument(
         "--iterations",
         type=int,
@@ -179,7 +235,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     count = 0
     while True:
-        run_once(args.dsn, args.tenant_id, mapping_cache, args.read_retries, args.retry_backoff_seconds)
+        run_once(
+            args.dsn, args.tenant_id, mapping_cache, args.read_retries, args.retry_backoff_seconds,
+            args.retry_queue_base_seconds, args.retry_queue_max_seconds,
+        )
         count += 1
         if args.iterations and count >= args.iterations:
             return 0

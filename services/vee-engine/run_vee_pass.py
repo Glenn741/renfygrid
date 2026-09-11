@@ -27,7 +27,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "common"))
 import psycopg  # noqa: E402
 
 from renmeter_common.db import tenant_scope  # noqa: E402
-from vee_engine import validate_reading  # noqa: E402
+from vee_engine import channel_consistency_rule_for, validate_reading  # noqa: E402
 from vee_rules_cache import ConfigCache  # noqa: E402
 
 
@@ -49,6 +49,25 @@ def unvalidated_readings(conn: psycopg.Connection, tenant_id: str) -> list[dict]
                     {"meter_id": str(row[0]), "channel": row[1], "timestamp": row[2], "value": row[3]}
                     for row in cur.fetchall()
                 ]
+
+
+def reference_channel_value(
+    conn: psycopg.Connection, tenant_id: str, meter_id: str, channel: str, timestamp
+) -> float | None:
+    """Lectura CRUDA (no necesita estar validada todavia) del canal de
+    referencia, mismo medidor, mismo instante -- fuente real para
+    `channel_consistency` (F15, Sprint C11). None si ese canal no reporto en
+    ese instante exacto (los canales no siempre se leen en el mismo ciclo)."""
+    with conn.transaction():
+        with tenant_scope(conn, tenant_id):
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT value FROM raw_reading "
+                    "WHERE tenant_id = %s AND meter_id = %s AND channel = %s AND \"timestamp\" = %s",
+                    (tenant_id, meter_id, channel, timestamp),
+                )
+                row = cur.fetchone()
+                return float(row[0]) if row else None
 
 
 def insert_validated_reading(
@@ -85,7 +104,13 @@ def run_once(dsn: str, tenant_id: str, rules_cache: ConfigCache) -> None:
         valid_count = 0
         invalid_count = 0
         for reading in readings:
-            result = validate_reading(reading["value"], reading["channel"], rules)
+            reference_value = None
+            consistency_rule = channel_consistency_rule_for(rules, reading["channel"])
+            if consistency_rule is not None:
+                reference_value = reference_channel_value(
+                    conn, tenant_id, reading["meter_id"], consistency_rule["params"]["reference_channel"], reading["timestamp"]
+                )
+            result = validate_reading(reading["value"], reading["channel"], rules, reference_value=reference_value)
             insert_validated_reading(conn, tenant_id, reading, result)
             if result.is_valid:
                 valid_count += 1
