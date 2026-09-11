@@ -631,3 +631,16 @@ tocar `poller.py`.
 
 Con esto se cierran **todos** los sprints C5-C10 planificados en `04-plan-sprints.md` §9 tras el
 benchmark E2E — no queda ningún ítem pendiente de ese plan.
+
+### Fuera de sprint — redirect automático a login en sesión vencida (2026-09-11)
+
+**Motivo:** el usuario reportó en vivo una tanda de `401 (Unauthorized)` en la consola del
+navegador (dashboard/overview, fleet-summary, gateways, observability/ingestion) — el JWT dura
+1h (`renmeter_common/auth.py`) y ya había vencido desde que se generaron las credenciales demo;
+el Portal se quedaba en la pantalla con las llamadas fallando en silencio, sin avisar que había
+que volver a entrar.
+
+| Fecha | Avance | Evidencia |
+|---|---|---|
+| 2026-09-11 | `api.ts`: `request()` ahora detecta un 401 en cualquier endpoint que no sea `/auth/login` (para no interferir con el mensaje de "credenciales incorrectas" del propio login), limpia el token y manda a `/login` — en vez de dejar la pantalla con queries fallando sin explicación | `services/portal-web/src/api.ts` |
+| 2026-09-11 | `tsc -b && vite build` limpio, desplegado a `essmarplpxy03`; verificado en vivo que el HTML servido referencia el bundle nuevo | `curl https://renfygrid.rensoftlabs.com/` |

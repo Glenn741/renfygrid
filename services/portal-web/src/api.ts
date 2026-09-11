@@ -35,6 +35,15 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
   const response = await fetch(`${API_BASE}${path}`, { ...options, headers });
   if (!response.ok) {
+    // Un 401 en cualquier endpoint que NO sea el login mismo significa
+    // sesion vencida (el JWT dura 1h, ver renmeter_common/auth.py) -- antes
+    // se quedaba en la pantalla con las llamadas fallando en silencio
+    // (visto en vivo: 401 repetido en consola sin que el usuario supiera
+    // por que). Limpiar el token y mandar a /login en vez de dejarlo ahi.
+    if (response.status === 401 && path !== "/auth/login" && !window.location.pathname.startsWith("/login")) {
+      clearToken();
+      window.location.href = "/login";
+    }
     const body = await response.json().catch(() => ({}));
     throw new ApiError(response.status, body.detail ?? `Error ${response.status}`);
   }
