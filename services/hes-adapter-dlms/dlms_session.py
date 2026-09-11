@@ -52,6 +52,11 @@ class TimeoutError_(RuntimeError):
     """El peer no respondio dentro de los reintentos permitidos."""
 
 
+class ActionError(RuntimeError):
+    """El medidor/simulador respondio con un codigo de error a una accion
+    (ej. GET_WRITE_DENIED al intentar un remoteDisconnect/remoteReconnect)."""
+
+
 @dataclass
 class DlmsSession:
     """Una sesion DLMS/COSEM: un GXDLMSClient + un medio de transporte ya abierto.
@@ -135,6 +140,19 @@ class DlmsSession:
         self._read_data_block(self.client.read(dlms_object, attribute_index), reply)
         self.client.updateValue(dlms_object, attribute_index, reply.value)
         return dlms_object.value
+
+    def invoke_action(self, action_request) -> None:
+        """Envia un pedido de accion/metodo COSEM (ej. `remoteDisconnect`/
+        `remoteReconnect` de un `GXDLMSDisconnectControl`, ver
+        control_executor.py) -- `action_request` es lo que devuelve el metodo
+        del objeto cliente (`obj.remoteDisconnect(self.client)`), no algo que
+        se arme aca. Lanza `ActionError` si el METHOD_RESPONSE trae un
+        codigo de error -- no basta con "no hubo excepcion de red" para dar
+        una accion de control por exitosa."""
+        reply = GXReplyData()
+        self._read_data_block(action_request, reply)
+        if reply.error:
+            raise ActionError(f"El medidor/simulador rechazo la accion (error DLMS {reply.error})")
 
     def disconnect(self) -> None:
         reply = GXReplyData()

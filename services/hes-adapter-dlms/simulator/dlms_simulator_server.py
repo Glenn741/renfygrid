@@ -36,10 +36,19 @@ version futura:
    es exactamente lo que hace `meter_reader.py`) pero no existe ningun
    default en `GXDLMSServer` -- cada subclase debe definirlo. Se define aqui
    como no-op.
+4. (Sprint 7) `GXDLMSLNCommandHandler` llama a `server.onPreAction(list(e))`
+   para CUALQUIER accion/metodo COSEM (ej. remoteDisconnect/remoteReconnect
+   de un `GXDLMSDisconnectControl`) -- pero `list(e)` intenta ITERAR el
+   `ValueEventArgs e`, que no implementa `__iter__`. Sin parche, cualquier
+   accion revienta con `TypeError` antes de que nuestro propio `onPreAction`
+   llegue a ejecutarse. Parche: agregar `__iter__` a `ValueEventArgs` (devuelve
+   `[self]`, que es lo que el resto de los call sites de Gurux ya hacen a mano
+   en otros puntos del mismo archivo, ej. `server.onPreRead([arg])`).
 
-Los tres se verificaron reproduciendo un handshake completo (AARQ/AARE + GET)
-en proceso antes de escribir este servidor real -- ver docs/05-ejecucion.md
-Sprint 1 para el detalle completo. Este archivo es un DOBLE DE PRUEBA, no
+Los cuatro se verificaron reproduciendo un handshake completo (AARQ/AARE + GET
+o accion) en proceso antes de escribir este servidor real -- ver
+docs/05-ejecucion.md Sprint 1 y Sprint 7 para el detalle completo. Este
+archivo es un DOBLE DE PRUEBA, no
 tiene ninguna intencion de ser un medidor DLMS conforme a todos los casos de
 uso del estandar (ej. `isTarget`/`onValidateAuthentication` aceptan cualquier
 conexion, sin las verificaciones de seguridad que si tiene el resto de
@@ -52,30 +61,63 @@ import argparse
 import socket
 import threading
 
-from gurux_dlms import GXByteBuffer, GXDLMSServer, GXServerReply
+from gurux_dlms import GXByteBuffer, GXDLMSServer, GXServerReply, ValueEventArgs
 from gurux_dlms.enums import (
     AccessMode,
+    ErrorCode,
     InterfaceType,
     MethodAccessMode,
     SourceDiagnostic,
 )
-from gurux_dlms.objects import GXDLMSAssociationLogicalName, GXDLMSRegister
+from gurux_dlms.objects import (
+    GXDLMSAssociationLogicalName,
+    GXDLMSDisconnectControl,
+    GXDLMSRegister,
+)
 
 if not hasattr(GXServerReply, "setReply"):
     GXServerReply.setReply = lambda self, value: setattr(self, "reply", value)
 if not hasattr(GXServerReply, "getConnectionInfo"):
     GXServerReply.getConnectionInfo = lambda self: self.connectionInfo
+if not hasattr(ValueEventArgs, "__iter__"):
+    ValueEventArgs.__iter__ = lambda self: iter([self])
+
+
+class _SimulatedDisconnectControl(GXDLMSDisconnectControl):
+    """`remoteDisconnect`/`remoteReconnect` (metodos 1/2, ver Gurux) llegan
+    aca via `invoke()` -- el punto de extension real que Gurux deja para que
+    cada dispositivo defina que hace (la implementacion de la libreria en si
+    solo lanza `ValueError`, es responsabilidad del firmware/simulador)."""
+
+    def __init__(self, ln: str):
+        super().__init__(ln)
+        self.is_connected = True
+
+    def invoke(self, settings, e):
+        if e.index == 1:
+            self.is_connected = False
+        elif e.index == 2:
+            self.is_connected = True
+        else:
+            e.error = ErrorCode.READ_WRITE_DENIED
+        return None
 
 
 class SimulatedMeterServer(GXDLMSServer):
-    """Un medidor DLMS/COSEM de prueba con un unico `Register` (OBIS/valor
-    configurables) -- alcanza para que un cliente real se asocie y lea."""
+    """Un medidor DLMS/COSEM de prueba con un `Register` (OBIS/valor
+    configurables) y, opcionalmente, un `DisconnectControl` (Sprint 7, F29 --
+    suspension/reconexion real via DLMS) -- alcanza para que un cliente real
+    se asocie, lea, y ejecute un comando de control."""
 
-    def __init__(self, obis_code: str, initial_value: int):
+    def __init__(self, obis_code: str, initial_value: int, control_obis_code: str | None = None):
         super().__init__(True, InterfaceType.WRAPPER)
         register = GXDLMSRegister(obis_code)
         register.value = initial_value
         self.items.append(register)
+        self.control: _SimulatedDisconnectControl | None = None
+        if control_obis_code:
+            self.control = _SimulatedDisconnectControl(control_obis_code)
+            self.items.append(self.control)
         association = GXDLMSAssociationLogicalName()
         association.objectList.extend(self.items)
         self.items.append(association)
@@ -145,10 +187,21 @@ def _serve_one_connection(server: SimulatedMeterServer, conn: socket.socket) -> 
                 conn.sendall(bytes(bytearray(sr.reply)))
 
 
-def serve(host: str, port: int, obis_code: str, initial_value: int) -> None:
+def serve(
+    host: str,
+    port: int,
+    obis_code: str,
+    initial_value: int,
+    control_obis_code: str | None = None,
+    server: SimulatedMeterServer | None = None,
+) -> None:
     """Corre indefinidamente, aceptando una conexion de cliente a la vez
-    (alcanza para pruebas -- no es un simulador multi-cliente concurrente)."""
-    server = SimulatedMeterServer(obis_code, initial_value)
+    (alcanza para pruebas -- no es un simulador multi-cliente concurrente).
+    `server` ya construido es para cuando el llamador necesita inspeccionar
+    su estado despues (ej. `server.control.is_connected`, ver
+    `serve_in_background` y `verify_control_execution_end_to_end.py`)."""
+    if server is None:
+        server = SimulatedMeterServer(obis_code, initial_value, control_obis_code)
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
         listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         listener.bind((host, port))
@@ -161,15 +214,20 @@ def serve(host: str, port: int, obis_code: str, initial_value: int) -> None:
             print(f"Conexion cerrada: {addr}")
 
 
-def serve_in_background(host: str, port: int, obis_code: str, initial_value: int) -> threading.Thread:
+def serve_in_background(
+    host: str, port: int, obis_code: str, initial_value: int, control_obis_code: str | None = None
+) -> tuple[threading.Thread, SimulatedMeterServer]:
     """Para pruebas automatizadas: corre `serve()` en un hilo daemon y
-    devuelve el hilo ya iniciado (usar junto con un `time.sleep` corto o un
-    retry-connect en el llamador, no hay senal explicita de 'listo')."""
+    devuelve `(hilo, instancia del servidor)` -- la instancia sirve para
+    inspeccionar estado despues (ej. `server.control.is_connected`). Usar
+    junto con un `time.sleep` corto o un retry-connect en el llamador, no
+    hay senal explicita de 'listo'."""
+    server = SimulatedMeterServer(obis_code, initial_value, control_obis_code)
     thread = threading.Thread(
-        target=serve, args=(host, port, obis_code, initial_value), daemon=True
+        target=serve, args=(host, port, obis_code, initial_value, control_obis_code), kwargs={"server": server}, daemon=True
     )
     thread.start()
-    return thread
+    return thread, server
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -178,9 +236,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--port", type=int, required=True)
     parser.add_argument("--obis-code", required=True)
     parser.add_argument("--value", type=int, required=True)
+    parser.add_argument("--control-obis-code", default=None)
     return parser.parse_args(argv)
 
 
 if __name__ == "__main__":
     args = parse_args()
-    serve(args.host, args.port, args.obis_code, args.value)
+    serve(args.host, args.port, args.obis_code, args.value, args.control_obis_code)

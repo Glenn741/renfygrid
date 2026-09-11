@@ -63,9 +63,9 @@ código, no por fecha. Complementa el Plan de sprints (`04-plan-sprints.md`).
 |---|---|---|---|
 | F26 | Solicitud de orden de control | 6 | 🟢 |
 | F27 | Flujo de aprobación configurable por tenant/tipo | 6 | 🟢 |
-| F28 | Firma y validación de orden antes de ejecución | 6-7 | 🟡 (validación de estado sí, firma criptográfica es Sprint 7) |
-| F29 | Ejecución vía adaptador HES | 7 | ⚪ |
-| F30 | Confirmación de estado y auditoría inmutable | 7 | 🟡 (inmutabilidad de la auditoría ya verificada, confirmación post-ejecución sigue en Sprint 7) |
+| F28 | Firma y validación de orden antes de ejecución | 6-7 | 🟢 |
+| F29 | Ejecución vía adaptador HES | 7 | 🟢 |
+| F30 | Confirmación de estado y auditoría inmutable | 7 | 🟢 |
 
 ### Transversal
 
@@ -304,3 +304,27 @@ adaptador HES (F28) y la confirmación de estado real post-ejecución (F30) — 
 (ejecución vía adaptador HES), que es Sprint 7, tal como estaba planeado.
 
 *(Esta tabla se sigue completando a medida que avanza el Sprint 6 real.)*
+
+### Sprint 7 — Módulo SCR: ejecución real y confirmación
+
+**Objetivo:** suspensión/reconexión real (o en simulador) vía adaptador HES + confirmación
+(`04-plan-sprints.md` §4). **Estado:** 🟢 objetivo cumplido con evidencia real end-to-end —
+iniciado y cerrado 2026-09-10.
+
+| Fecha | Avance | Función(es) | Evidencia |
+|---|---|---|---|
+| 2026-09-10 | **Simulador ampliado con un objeto de control real**: `simulator/dlms_simulator_server.py` agrega un `GXDLMSDisconnectControl` (IC 70, el objeto DLMS real para suspensión/reconexión remota) opcional. **4to bug real encontrado en `gurux-dlms==1.0.203`**: `GXDLMSLNCommandHandler` llama a `server.onPreAction(list(e))` para cualquier acción/método COSEM, pero `list(e)` intenta *iterar* el `ValueEventArgs e`, que no implementa `__iter__` — cualquier acción revienta con `TypeError` antes de que el código propio llegue a ejecutarse. Parche: agregar `__iter__` a `ValueEventArgs` (devuelve `[self]`, igual que otros call sites ya hacen a mano en el mismo archivo de Gurux) | F29 | `simulator/dlms_simulator_server.py` (docstring, bug 4) |
+| 2026-09-10 | **`dlms_session.py` ampliado**: `invoke_action` (envía un pedido de acción/método COSEM ya armado por el cliente, ej. `remoteDisconnect`/`remoteReconnect`) — lanza `ActionError` si el `METHOD_RESPONSE` trae un código de error, no basta con "no hubo excepción de red" para dar una acción de control por exitosa | F28, F29 | `services/hes-adapter-dlms/dlms_session.py` |
+| 2026-09-10 | **`control_executor.py` construido** (en `hes-adapter-dlms`, no en `services/control` — el módulo SCR "únicamente habla con los adaptadores HES", `02-arquitectura-general.md` §6 punto 4): `execute_control_order` (mapea `suspension`/`disconnection`→`remoteDisconnect`, `reconnection`→`remoteReconnect`) + `dispatch_control_order` (ciclo de vida completo: abre, asocia, ejecuta, cierra — el punto de entrada de alto nivel que SCR llama, sin conocer `GXNet`/`DlmsSession`) | F29 | `services/hes-adapter-dlms/control_executor.py` |
+| 2026-09-10 | **`order_signing.py` construido** (F28, la firma que faltaba de Sprint 6): HMAC-SHA256 con librería estándar sobre `(order_id, meter_id, order_type)` — mismo enfoque que `renmeter_common/auth.py`. 4 pruebas puras: firma válida verifica, tipo de orden alterado invalida la firma, secreto incorrecto invalida, y la firma de una orden no sirve para otra (repetición en el bus) | F28 | `services/control/order_signing.py`, `tests/test_order_signing.py` |
+| 2026-09-10 | **`control_service.py::send_and_execute_order`**: firma la orden, transiciona `approved→sent`, ejecuta el comando DLMS real vía `dispatch_control_order`, y transiciona a `confirmed` o `failed` según el resultado — nunca deja una orden en `sent` sin resolver. El OBIS del objeto de control y la conexión del gateway se resuelven igual que en Sprint 5 (`meter_protocol.obis_mapping`, ahora con una entrada `"control"`) | F28, F29, F30 | `services/control/control_service.py` |
+| 2026-09-10 | **11/11 pruebas unitarias puras** en `services/control` (4 nuevas de `order_signing`) + **16/16 en `hes-adapter-dlms`** (2 nuevas: acción exitosa no lanza, respuesta de error lanza `ActionError`; 4 nuevas de `control_executor` con mocks) | F28, F29 | `python -m unittest discover -s tests -v` en ambos servicios → OK |
+| 2026-09-10 | **`verify_control_execution_end_to_end.py` — corrida real, exitosa, dos caminos completos**: (1) registra medidor+gateway apuntando al simulador con un `DisconnectControl` real, pide y aprueba una `suspension`, `send_and_execute_order` la firma y ejecuta un `remoteDisconnect` **DLMS real** contra el simulador — termina `confirmed`, con las **5 transiciones completas** en la auditoría (`requested→pending_approval→approved→sent→confirmed`), y **el simulador queda realmente "desconectado"** (`server.control.is_connected == False`, efecto real de la acción, no un resultado fabricado); (2) una segunda orden apuntando a un puerto cerrado (concentrador caído) termina `failed`, con la razón real del error de conexión en la auditoría | F28, F29, F30 | `python verify_control_execution_end_to_end.py "postgresql://renfygrid_app:...@localhost:5455/renfygrid"` → **ambos caminos "OK"**, exit code 0 |
+
+**F28/F29/F30 pasan a 🟢**: no es una simulación de la ejecución — es el mismo protocolo DLMS
+real (`GXDLMSDisconnectControl`) que usaría un medidor físico con soporte de corte/reconexión
+remoto, contra un simulador que también reusa el protocolo servidor real de Gurux (mismo
+principio que Sprint 1). Con esto, **Track A completo hasta Sprint 7 de 10** — quedan Sprint 8
+(Portal/API con RLS end-to-end), 9 (hardening/observabilidad) y 10 (piloto real).
+
+*(Esta tabla se sigue completando a medida que avanza el Sprint 7 real.)*

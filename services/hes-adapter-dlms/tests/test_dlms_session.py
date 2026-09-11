@@ -19,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "common"))
 
 from gurux_dlms.enums import Authentication, InterfaceType
 
-from dlms_session import DlmsSession, TimeoutError_
+from dlms_session import ActionError, DlmsSession, TimeoutError_
 
 
 def make_session(**client_overrides) -> tuple[DlmsSession, mock.MagicMock, mock.MagicMock]:
@@ -129,6 +129,26 @@ class ReadAttributeTests(unittest.TestCase):
         client.read.assert_called_once_with(dlms_object, 2)
         client.updateValue.assert_called_once()
         self.assertEqual(result, 4781999)
+
+
+class InvokeActionTests(unittest.TestCase):
+    def test_successful_action_does_not_raise(self):
+        session, client, media = make_session()
+        client.getData.return_value = True
+
+        session.invoke_action(b"\x01\x02")  # no debe lanzar
+
+    def test_error_response_raises_action_error(self):
+        session, client, media = make_session()
+
+        def fake_get_data(rd, reply, notify):
+            reply.error = 3  # cualquier codigo de error DLMS != 0
+            return True
+
+        client.getData.side_effect = fake_get_data
+
+        with self.assertRaises(ActionError):
+            session.invoke_action(b"\x01\x02")
 
 
 if __name__ == "__main__":
