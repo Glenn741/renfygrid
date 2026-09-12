@@ -202,9 +202,36 @@ def run(dsn: str) -> int:
                 and summary["avg_nrw_pct"] is not None
             )
 
+            # 7. (Modulo de georreferenciacion) Solo aparecen en el mapa las zonas CON centroide.
+            zone_geo = client.post(
+                "/network-zones", headers=headers,
+                json={
+                    "name": "DMA georreferenciada", "type": "dma", "data_source": "external",
+                    "nrw_threshold_pct": 30.0, "centroid_lat": 4.6520, "centroid_lon": -74.0610,
+                },
+            ).json()["zone_id"]
+            client.post(
+                f"/network-zones/{zone_geo}/balance", headers=headers,
+                json={
+                    "period_start": "2026-08-01", "period_end": "2026-09-01", "method": "top_down",
+                    "system_input_volume": 10000, "billed_metered_consumption": 6000,
+                    "apparent_losses": 1000, "real_losses": 3000,
+                },
+            )
+            zones_geo = client.get("/network-zones/geojson", headers=headers).json()
+            print(f"GET /network-zones/geojson: {zones_geo}")
+            geo_feature = next((f for f in zones_geo["features"] if f["properties"]["name"] == "DMA georreferenciada"), None)
+            ok_geojson = (
+                len(zones_geo["features"]) == 1  # las otras 4 zonas no tienen centroide -> no aparecen
+                and geo_feature is not None
+                and geo_feature["geometry"]["coordinates"] == [-74.0610, 4.6520]
+                and geo_feature["properties"]["nrw_pct"] == 40.0
+                and geo_feature["properties"]["exceeds_threshold"] is True
+            )
+
             ok = (
                 ok_no_infra and ok_with_infra and ok_version and ok_latest_only and ok_missing_zone
-                and ok_over_threshold and ok_inconsistent and ok_zones_list and ok_summary
+                and ok_over_threshold and ok_inconsistent and ok_zones_list and ok_summary and ok_geojson
             )
             print("SPRINT B1/B1-2 NETWORK BALANCE E2E OK" if ok else "SPRINT B1/B1-2 NETWORK BALANCE E2E FALLA")
             return 0 if ok else 1

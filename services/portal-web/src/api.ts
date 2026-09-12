@@ -564,6 +564,8 @@ export interface NetworkZone {
   avg_pressure_mca: number | null;
   avg_service_connection_length_km: number | null;
   nrw_threshold_pct: number | null;
+  centroid_lat: number | null;
+  centroid_lon: number | null;
 }
 
 export function getNetworkZones(): Promise<NetworkZone[]> {
@@ -580,6 +582,8 @@ export function createNetworkZone(body: {
   avg_pressure_mca?: number | null;
   avg_service_connection_length_km?: number | null;
   nrw_threshold_pct?: number | null;
+  centroid_lat?: number | null;
+  centroid_lon?: number | null;
 }): Promise<{ zone_id: string }> {
   return request("/network-zones", { method: "POST", body: JSON.stringify(body) });
 }
@@ -688,6 +692,16 @@ export function simulateNetworkModel(modelId: string, scenario: string): Promise
 
 export function getNetworkModelSimulations(modelId: string): Promise<SimulationResult[]> {
   return request(`/network-models/${modelId}/simulations`);
+}
+
+// --- Modulo de georreferenciacion (docs/07-track-b-alcance-funcional.md SS7) ---
+
+export function getNetworkModelGeojson(modelId: string): Promise<GeoJSON.FeatureCollection> {
+  return request(`/network-models/${modelId}/geojson`);
+}
+
+export function getNetworkZonesGeojson(): Promise<GeoJSON.FeatureCollection> {
+  return request("/network-zones/geojson");
 }
 
 export { ApiError };

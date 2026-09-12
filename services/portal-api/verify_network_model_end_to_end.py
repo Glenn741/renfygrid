@@ -109,6 +109,17 @@ def run(dsn: str) -> int:
             print(f"GET /network-models/{{id}}/simulations: {len(sims)} corrida(s)")
             ok_sims_saved = len(sims) == 1 and sims[0]["scenario"] == "base"
 
+            # 4b. (Modulo de georreferenciacion) GeoJSON real, enriquecido con la ultima simulacion.
+            geojson = client.get(f"/network-models/{model_id_v2}/geojson", headers=headers).json()
+            points = [f for f in geojson["features"] if f["geometry"]["type"] == "Point"]
+            lines = [f for f in geojson["features"] if f["geometry"]["type"] == "LineString"]
+            j1 = next((f for f in points if f["properties"]["id"] == "J1"), None)
+            print(f"GET /network-models/{{id}}/geojson: {len(points)} puntos, {len(lines)} lineas")
+            ok_geojson = (
+                len(points) == 4 and len(lines) == 3
+                and j1 is not None and "max_pressure" in j1["properties"]  # enriquecido con la corrida guardada
+            )
+
             # 5. Un .inp invalido nunca se guarda.
             invalid_resp = client.post(
                 "/network-models", headers=headers,
@@ -126,7 +137,7 @@ def run(dsn: str) -> int:
 
             ok = (
                 ok_create and ok_resubmit and ok_latest_only and ok_simulate
-                and ok_sims_saved and ok_invalid_rejected and ok_missing_model
+                and ok_sims_saved and ok_geojson and ok_invalid_rejected and ok_missing_model
             )
             print("SPRINT B3 NETWORK MODEL E2E OK" if ok else "SPRINT B3 NETWORK MODEL E2E FALLA")
             return 0 if ok else 1

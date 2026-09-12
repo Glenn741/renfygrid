@@ -151,7 +151,7 @@ proyecto todavía no existía; la real, verificada en producción, es la del mon
   por diseño (`method`/unidades como parámetro), pero el primer caso de uso real y el que tiene
   marco regulatorio confirmado (§2) es agua.
 
-## 7. Pendiente real: módulo de georreferenciación (transversal a B1/B3/B5)
+## 7. Módulo de georreferenciación — 🟢 versión 1 construida (2026-09-12, sobre B1/B3)
 
 **Hallazgo de esta ronda** (2026-09-12, al pedir muestras `.inp` de ciudades colombianas para
 mostrar): tanto Balance de Red (zonas/DMA) como Modelado Hidráulico (nudos/tuberías de un
@@ -181,14 +181,20 @@ la referencia a seguir, no reinventar:
   en la tabla de `NetworkBalance.tsx` actual.
 - **Selección por polígono + mini-dashboard** (RenFlow) tiene un paralelo directo: seleccionar
   una sub-zona de la red simulada y ver sus KPIs agregados sin salir del mapa.
-- Diferencia real a resolver, no presente en RenFlow: Track B necesita dibujar **líneas**
-  (tuberías) además de puntos, y layout de grafo cuando un modelo no trae `[COORDINATES]` reales
-  (`network_model_engine` tendría que exponer también la topología nudo↔tubería, no solo las
-  estadísticas agregadas actuales).
+- Diferencia real resuelta, no presente en RenFlow: Track B necesita dibujar **líneas**
+  (tuberías) además de puntos — `network_model_engine.model_topology_geojson()` expone la
+  topología nudo↔tubería completa (no solo las estadísticas agregadas), usando el
+  `[COORDINATES]` real del `.inp`.
 
-**No iniciado** — pendiente de confirmación con el usuario antes de construirlo (alcance
-propio: ¿un componente de mapa compartido entre Balance de Red/Modelado Hidráulico/futuro
-Gemelo Digital, o uno por pantalla?).
+**Construido** (el usuario confirmó ir por la v1 sobre B1+B3, dejando B5 para cuando el Gemelo
+Digital exista): un solo componente de mapa compartido (`NetworkMap.tsx`), no uno por pantalla
+— usado tanto en Modelado Hidráulico (nudos/tuberías coloreados por presión/caudal reales) como
+en Balance de Red (zonas coloreadas por NRW%/tope regulatorio). Backend: `GET
+/network-models/{id}/geojson` (motor puro, enriquecido con la última simulación guardada si
+existe) y `GET /network-zones/geojson` (solo zonas con `centroid_lat`/`centroid_lon` cargado —
+nunca un centroide inventado para las que no lo tienen). Selección por polígono y capas
+temáticas tipo choropleth (paralelo directo de RenFlow) quedan fuera de esta v1 — anotado como
+siguiente iteración si el uso real lo pide.
 
 **Modelos de demostración georreferenciados creados en esta ronda** (para tener algo real que
 mostrar mientras este módulo no existe): dos redes `.inp` **ilustrativas** (no un levantamiento

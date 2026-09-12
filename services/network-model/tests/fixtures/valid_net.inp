@@ -88,10 +88,10 @@ Red de prueba minima (2 nudos + deposito + tanque)
 
 [COORDINATES]
 ;Node            X-Coord         Y-Coord
- J1               0               0
- J2               100             0
- R1               -100            0
- T1               200             0
+ J1               10              0
+ J2               110             0
+ R1               -90             0
+ T1               210             0
 
 [VERTICES]
 

@@ -85,11 +85,13 @@ from balance_service import (  # noqa: E402
     list_zones,
     register_zone,
     submit_balance,
+    zones_geojson,
 )
 from model_service import (  # noqa: E402
     ModelNotFoundError,
     list_models,
     list_simulation_results,
+    model_geojson,
     register_model,
     run_and_store_simulation,
 )
@@ -614,6 +616,8 @@ class NetworkZoneRequest(BaseModel):
     avg_pressure_mca: float | None = None
     avg_service_connection_length_km: float | None = None
     nrw_threshold_pct: float | None = None
+    centroid_lat: float | None = None
+    centroid_lon: float | None = None
 
 
 @app.post("/network-zones", status_code=201)
@@ -623,6 +627,7 @@ def create_network_zone_endpoint(body: NetworkZoneRequest, tenant_id: str = Depe
             conn, tenant_id, body.name, body.type, body.data_source, body.parent_zone_id,
             body.network_length_km, body.num_connections, body.avg_pressure_mca,
             body.avg_service_connection_length_km, body.nrw_threshold_pct,
+            body.centroid_lat, body.centroid_lon,
         )
         return {"zone_id": zone_id}
 
@@ -631,6 +636,14 @@ def create_network_zone_endpoint(body: NetworkZoneRequest, tenant_id: str = Depe
 def network_balance_summary_endpoint(tenant_id: str = Depends(get_tenant_id)) -> dict:
     with db_conn() as conn:
         return balance_summary(conn, tenant_id)
+
+
+@app.get("/network-zones/geojson")
+def network_zones_geojson_endpoint(tenant_id: str = Depends(get_tenant_id)) -> dict:
+    """GeoJSON real de las zonas -- Track B, modulo de georreferenciacion
+    (`docs/07-track-b-alcance-funcional.md` SS7)."""
+    with db_conn() as conn:
+        return zones_geojson(conn, tenant_id)
 
 
 @app.get("/network-zones")
@@ -723,3 +736,17 @@ def simulate_network_model_endpoint(
 def list_network_model_simulations_endpoint(model_id: str, tenant_id: str = Depends(get_tenant_id)) -> list[dict]:
     with db_conn() as conn:
         return list_simulation_results(conn, tenant_id, model_id)
+
+
+@app.get("/network-models/{model_id}/geojson")
+def network_model_geojson_endpoint(model_id: str, tenant_id: str = Depends(get_tenant_id)) -> dict:
+    """GeoJSON real del modelo -- Track B, modulo de georreferenciacion
+    (`docs/07-track-b-alcance-funcional.md` SS7), mismo patron de "backend
+    expone GeoJSON" que `Mapa de Deuda` de RenFlow."""
+    with db_conn() as conn:
+        try:
+            return model_geojson(conn, tenant_id, model_id)
+        except ModelNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except InvalidModelError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc

@@ -136,3 +136,78 @@ def run_simulation(inp_path: str) -> SimulationSummary:
             for link_id in flowrate.columns
         },
     )
+
+
+def _has_real_coordinates(coords: tuple[float, float] | list[float]) -> bool:
+    """WNTR devuelve exactamente `(0, 0)` para un nudo sin `[COORDINATES]`
+    real en el `.inp` -- nunca se pinta un marcador ahi (seria "null
+    island", no un dato real)."""
+    x, y = coords
+    return not (x == 0 and y == 0)
+
+
+def model_topology_geojson(inp_path: str, simulation: SimulationSummary | None = None) -> dict:
+    """GeoJSON real del modelo (Track B, modulo de georreferenciacion,
+    `docs/07-track-b-alcance-funcional.md` SS7) -- nudos como `Point`,
+    tuberias como `LineString`, tomados de `[COORDINATES]` del `.inp` (no
+    un layout de grafo inventado). Si se pasa una simulacion ya corrida,
+    cada feature trae sus estadisticas reales de presion/caudal en
+    `properties` -- si no, esas propiedades quedan ausentes, nunca en 0 o
+    inventadas. Nudos/enlaces sin coordenadas reales se omiten (ver
+    `_has_real_coordinates`) en vez de dibujarse en `(0, 0)`."""
+    wn = load_model(inp_path)
+    features: list[dict] = []
+
+    for name in wn.node_name_list:
+        node = wn.get_node(name)
+        coords = node.coordinates
+        if not _has_real_coordinates(coords):
+            continue
+        props: dict = {
+            "id": name,
+            "node_type": node.node_type,
+            "elevation": float(getattr(node, "elevation", 0.0) or 0.0),
+        }
+        if simulation is not None and name in simulation.nodes:
+            s = simulation.nodes[name]
+            props["min_pressure"] = s.min_pressure
+            props["max_pressure"] = s.max_pressure
+            props["avg_pressure"] = s.avg_pressure
+        features.append({
+            "type": "Feature",
+            "geometry": {"type": "Point", "coordinates": [coords[0], coords[1]]},
+            "properties": props,
+        })
+
+    for name in wn.link_name_list:
+        link = wn.get_link(name)
+        start = wn.get_node(link.start_node_name)
+        end = wn.get_node(link.end_node_name)
+        if not (_has_real_coordinates(start.coordinates) and _has_real_coordinates(end.coordinates)):
+            continue
+        props = {
+            "id": name,
+            "link_type": link.link_type,
+            "start_node": link.start_node_name,
+            "end_node": link.end_node_name,
+            "diameter": float(getattr(link, "diameter", 0.0) or 0.0) or None,
+            "length": float(getattr(link, "length", 0.0) or 0.0) or None,
+        }
+        if simulation is not None and name in simulation.links:
+            s = simulation.links[name]
+            props["min_flowrate"] = s.min_flowrate
+            props["max_flowrate"] = s.max_flowrate
+            props["avg_flowrate"] = s.avg_flowrate
+        features.append({
+            "type": "Feature",
+            "geometry": {
+                "type": "LineString",
+                "coordinates": [
+                    [start.coordinates[0], start.coordinates[1]],
+                    [end.coordinates[0], end.coordinates[1]],
+                ],
+            },
+            "properties": props,
+        })
+
+    return {"type": "FeatureCollection", "features": features}

@@ -11,7 +11,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from network_model_engine import InvalidModelError, SimulationSummary, load_model, run_simulation  # noqa: E402
+from network_model_engine import (  # noqa: E402
+    InvalidModelError,
+    SimulationSummary,
+    load_model,
+    model_topology_geojson,
+    run_simulation,
+)
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 VALID_INP = str(FIXTURES / "valid_net.inp")
@@ -70,6 +76,51 @@ class RunSimulationTests(unittest.TestCase):
     def test_raises_invalid_model_error_on_garbage_before_simulating(self):
         with self.assertRaises(InvalidModelError):
             run_simulation(INVALID_INP)
+
+
+class ModelTopologyGeojsonTests(unittest.TestCase):
+    """Track B, modulo de georreferenciacion (docs/07-track-b-alcance-funcional.md SS7)."""
+
+    def test_returns_a_point_per_node_and_a_linestring_per_pipe(self):
+        geojson = model_topology_geojson(VALID_INP)
+        self.assertEqual(geojson["type"], "FeatureCollection")
+        points = [f for f in geojson["features"] if f["geometry"]["type"] == "Point"]
+        lines = [f for f in geojson["features"] if f["geometry"]["type"] == "LineString"]
+        self.assertEqual({f["properties"]["id"] for f in points}, {"J1", "J2", "R1", "T1"})
+        self.assertEqual({f["properties"]["id"] for f in lines}, {"P1", "P2", "P3"})
+
+    def test_linestring_uses_real_endpoint_coordinates(self):
+        geojson = model_topology_geojson(VALID_INP)
+        p2 = next(f for f in geojson["features"] if f["properties"].get("id") == "P2")
+        # P2 conecta J1(10,0) -> J2(110,0) en el fixture.
+        self.assertEqual(p2["geometry"]["coordinates"], [[10.0, 0.0], [110.0, 0.0]])
+
+    def test_without_simulation_no_pressure_or_flow_properties(self):
+        geojson = model_topology_geojson(VALID_INP)
+        j1 = next(f for f in geojson["features"] if f["properties"].get("id") == "J1")
+        self.assertNotIn("max_pressure", j1["properties"])
+
+    def test_with_simulation_includes_real_pressure_and_flow(self):
+        summary = run_simulation(VALID_INP)
+        geojson = model_topology_geojson(VALID_INP, summary)
+        j1 = next(f for f in geojson["features"] if f["properties"].get("id") == "J1")
+        p2 = next(f for f in geojson["features"] if f["properties"].get("id") == "P2")
+        self.assertEqual(j1["properties"]["max_pressure"], summary.nodes["J1"].max_pressure)
+        self.assertEqual(p2["properties"]["max_flowrate"], summary.links["P2"].max_flowrate)
+
+    def test_node_without_real_coordinates_is_omitted_not_plotted_at_origin(self):
+        # Un nudo agregado sin [COORDINATES] cae en (0,0) por defecto en WNTR
+        # -- nunca debe aparecer como si fuera un dato real.
+        import wntr
+        wn = load_model(VALID_INP)
+        wn.add_junction("J_SIN_COORD", base_demand=0, elevation=0)
+        import tempfile
+        with tempfile.NamedTemporaryFile(suffix=".inp", delete=False, mode="w") as f:
+            wntr.network.write_inpfile(wn, f.name)
+            path = f.name
+        geojson = model_topology_geojson(path)
+        ids = {f["properties"]["id"] for f in geojson["features"] if f["geometry"]["type"] == "Point"}
+        self.assertNotIn("J_SIN_COORD", ids)
 
 
 if __name__ == "__main__":

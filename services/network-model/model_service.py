@@ -24,7 +24,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "common"))
 import psycopg  # noqa: E402
 from psycopg.types.json import Json  # noqa: E402
 
-from network_model_engine import InvalidModelError, SimulationSummary, load_model, run_simulation  # noqa: E402
+from network_model_engine import (  # noqa: E402
+    InvalidModelError,
+    LinkStats,
+    NodeStats,
+    SimulationSummary,
+    load_model,
+    model_topology_geojson,
+    run_simulation,
+)
 from renmeter_common.db import tenant_scope  # noqa: E402
 
 
@@ -151,3 +159,37 @@ def list_simulation_results(conn: psycopg.Connection, tenant_id: str, model_id: 
         {"simulation_id": str(row[0]), "scenario": row[1], "calculated_at": row[3].isoformat(), **row[2]}
         for row in rows
     ]
+
+
+def _latest_simulation_summary(conn: psycopg.Connection, tenant_id: str, model_id: str) -> SimulationSummary | None:
+    """Reconstruye el `SimulationSummary` desde el `jsonb` guardado de la
+    ULTIMA corrida -- `None` si el modelo nunca se simulo (el mapa se
+    muestra igual, sin colorear por presion/caudal)."""
+    with conn.transaction():
+        with tenant_scope(conn, tenant_id):
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT results FROM simulation_result WHERE tenant_id = %s AND network_model_id = %s "
+                    "ORDER BY calculated_at DESC LIMIT 1",
+                    (tenant_id, model_id),
+                )
+                row = cur.fetchone()
+    if row is None:
+        return None
+    results = row[0]
+    return SimulationSummary(
+        duration_hours=results["duration_hours"],
+        num_nodes=results["num_nodes"],
+        num_links=results["num_links"],
+        nodes={k: NodeStats(**v) for k, v in results["nodes"].items()},
+        links={k: LinkStats(**v) for k, v in results["links"].items()},
+    )
+
+
+def model_geojson(conn: psycopg.Connection, tenant_id: str, model_id: str) -> dict:
+    """GeoJSON real del modelo (Track B, modulo de georreferenciacion,
+    `docs/07-track-b-alcance-funcional.md` SS7) -- enriquecido con las
+    estadisticas de la ULTIMA simulacion guardada si existe."""
+    file_ref = _model_file_ref(conn, tenant_id, model_id)
+    latest = _latest_simulation_summary(conn, tenant_id, model_id)
+    return model_topology_geojson(file_ref, latest)

@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ApiError,
   createNetworkModel,
+  getNetworkModelGeojson,
   getNetworkModelSimulations,
   getNetworkModels,
   simulateNetworkModel,
@@ -10,6 +11,7 @@ import {
   type SimulationResult,
 } from "../api";
 import { StagePage, EmptyState } from "../components/StagePage";
+import { NetworkMap, pressureColor, flowColorScale } from "../components/NetworkMap";
 
 // Modelado Hidraulico -- Track B, Sprint B3 (docs/07-track-b-alcance-funcional.md
 // SS5): carga y versionado de un modelo EPANET real (.inp) + simulacion via
@@ -171,11 +173,62 @@ function SimulationRow({ sim }: { sim: SimulationResult }) {
   );
 }
 
+function ModelMap({ modelId }: { modelId: string }) {
+  const { data: geojson, isLoading } = useQuery({
+    queryKey: ["network-model-geojson", modelId],
+    queryFn: () => getNetworkModelGeojson(modelId),
+  });
+
+  const flows = (geojson?.features ?? [])
+    .map((f) => (f.properties as Record<string, unknown> | null)?.max_flowrate)
+    .filter((v): v is number => typeof v === "number")
+    .map(Math.abs);
+  const maxFlow = flows.length ? Math.max(...flows) : 0;
+
+  return (
+    <div className="pl-2">
+      {isLoading && <p className="text-sm text-slate-500 mb-2">Cargando mapa...</p>}
+      <NetworkMap
+        geojson={geojson}
+        height={360}
+        emptyMessage="Este modelo no tiene coordenadas reales cargadas ([COORDINATES] del .inp) -- nada que georreferenciar."
+        pointColor={(p) => pressureColor(typeof p.max_pressure === "number" ? p.max_pressure : null)}
+        pointRadius={(p) => (p.node_type === "Reservoir" || p.node_type === "Tank" ? 10 : 6)}
+        lineColor={(p) => flowColorScale(typeof p.max_flowrate === "number" ? p.max_flowrate : 0, maxFlow)}
+        lineWeight={(p) => Math.max(2, Math.min(8, ((typeof p.diameter === "number" ? p.diameter : 100) / 40)))}
+        popupHtml={(p, geomType) => {
+          if (geomType === "Point") {
+            return `<div style="font-size:12px"><strong>${p.id}</strong> (${p.node_type})<br/>` +
+              `Elevación: ${p.elevation ?? "—"} m<br/>` +
+              (typeof p.max_pressure === "number"
+                ? `Presión: ${(p.min_pressure as number).toFixed(1)}–${(p.max_pressure as number).toFixed(1)} m.c.a.`
+                : "Sin simular todavía") +
+              `</div>`;
+          }
+          return `<div style="font-size:12px"><strong>${p.id}</strong> (${p.link_type})<br/>` +
+            `Ø ${p.diameter ?? "—"} mm, ${p.length ?? "—"} m<br/>` +
+            (typeof p.max_flowrate === "number"
+              ? `Caudal: ${(p.min_flowrate as number).toFixed(3)}–${(p.max_flowrate as number).toFixed(3)} m³/s`
+              : "Sin simular todavía") +
+            `</div>`;
+        }}
+      />
+      <div className="mt-2 flex flex-wrap gap-4 text-xs text-slate-500">
+        <span><span className="inline-block w-2.5 h-2.5 rounded-full mr-1" style={{ background: "#3b82f6" }} />Presión alta</span>
+        <span><span className="inline-block w-2.5 h-2.5 rounded-full mr-1" style={{ background: "#10b981" }} />Rango operativo</span>
+        <span><span className="inline-block w-2.5 h-2.5 rounded-full mr-1" style={{ background: "#f59e0b" }} />Baja</span>
+        <span><span className="inline-block w-2.5 h-2.5 rounded-full mr-1" style={{ background: "#ef4444" }} />Crítica (&lt;10 m.c.a.)</span>
+      </div>
+    </div>
+  );
+}
+
 function ModelRow({ model }: { model: NetworkModel }) {
   const queryClient = useQueryClient();
   const [scenario, setScenario] = useState("base");
   const [error, setError] = useState<string | null>(null);
   const [showSims, setShowSims] = useState(false);
+  const [showMap, setShowMap] = useState(false);
 
   const { data: sims } = useQuery({
     queryKey: ["network-model-simulations", model.model_id],
@@ -217,10 +270,20 @@ function ModelRow({ model }: { model: NetworkModel }) {
             <button onClick={() => setShowSims((v) => !v)} className="text-xs text-indigo-600 hover:text-indigo-700">
               {showSims ? "Ocultar corridas" : "Ver corridas"}
             </button>
+            <button onClick={() => setShowMap((v) => !v)} className="text-xs text-indigo-600 hover:text-indigo-700">
+              {showMap ? "Ocultar mapa" : "Ver mapa"}
+            </button>
           </div>
           {error && <p className="text-xs text-red-600 mt-1">{error}</p>}
         </td>
       </tr>
+      {showMap && (
+        <tr>
+          <td colSpan={4} className="px-4 pb-3">
+            <ModelMap modelId={model.model_id} />
+          </td>
+        </tr>
+      )}
       {showSims && (
         <tr>
           <td colSpan={4} className="px-4 pb-3">

@@ -55,6 +55,8 @@ def register_zone(
     avg_pressure_mca: float | None = None,
     avg_service_connection_length_km: float | None = None,
     nrw_threshold_pct: float | None = None,
+    centroid_lat: float | None = None,
+    centroid_lon: float | None = None,
 ) -> str:
     with conn.transaction():
         with tenant_scope(conn, tenant_id):
@@ -62,12 +64,13 @@ def register_zone(
                 cur.execute(
                     "INSERT INTO network_zone "
                     "(tenant_id, name, type, data_source, parent_zone_id, network_length_km, "
-                    " num_connections, avg_pressure_mca, avg_service_connection_length_km, nrw_threshold_pct) "
-                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
+                    " num_connections, avg_pressure_mca, avg_service_connection_length_km, nrw_threshold_pct, "
+                    " centroid_lat, centroid_lon) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
                     (
                         tenant_id, name, zone_type, data_source, parent_zone_id,
                         network_length_km, num_connections, avg_pressure_mca, avg_service_connection_length_km,
-                        nrw_threshold_pct,
+                        nrw_threshold_pct, centroid_lat, centroid_lon,
                     ),
                 )
                 (zone_id,) = cur.fetchone()
@@ -80,7 +83,8 @@ def list_zones(conn: psycopg.Connection, tenant_id: str) -> list[dict]:
             with conn.cursor() as cur:
                 cur.execute(
                     "SELECT id, name, type, data_source, parent_zone_id, network_length_km, "
-                    "       num_connections, avg_pressure_mca, avg_service_connection_length_km, nrw_threshold_pct "
+                    "       num_connections, avg_pressure_mca, avg_service_connection_length_km, nrw_threshold_pct, "
+                    "       centroid_lat, centroid_lon "
                     "FROM network_zone WHERE tenant_id = %s ORDER BY name",
                     (tenant_id,),
                 )
@@ -94,6 +98,8 @@ def list_zones(conn: psycopg.Connection, tenant_id: str) -> list[dict]:
             "avg_pressure_mca": float(row[7]) if row[7] is not None else None,
             "avg_service_connection_length_km": float(row[8]) if row[8] is not None else None,
             "nrw_threshold_pct": float(row[9]) if row[9] is not None else None,
+            "centroid_lat": float(row[10]) if row[10] is not None else None,
+            "centroid_lon": float(row[11]) if row[11] is not None else None,
         }
         for row in rows
     ]
@@ -250,3 +256,34 @@ def balance_summary(conn: psycopg.Connection, tenant_id: str) -> dict:
         "worst_ili": round(max(ilis), 2) if ilis else None,
         "zones_exceeding_threshold": len(zones_over_threshold),
     }
+
+
+def zones_geojson(conn: psycopg.Connection, tenant_id: str) -> dict:
+    """GeoJSON real de las zonas (Track B, modulo de georreferenciacion,
+    `docs/07-track-b-alcance-funcional.md` SS7) -- un `Point` por zona QUE
+    TENGA `centroid_lat`/`centroid_lon` cargado (nunca un centroide
+    inventado para las que no lo tienen -- simplemente no aparecen en el
+    mapa). Cada feature trae el ultimo balance de esa zona si existe
+    (`nrw_pct`/`ili`/`exceeds_threshold`), `None` si la zona aun no tiene
+    ningun balance registrado."""
+    zones = list_zones(conn, tenant_id)
+    balances_by_zone = {b["zone_id"]: b for b in list_balances(conn, tenant_id)}
+
+    features = []
+    for zone in zones:
+        if zone["centroid_lat"] is None or zone["centroid_lon"] is None:
+            continue
+        balance = balances_by_zone.get(zone["zone_id"])
+        props = {
+            "id": zone["zone_id"], "name": zone["name"], "type": zone["type"],
+            "nrw_pct": balance["nrw_pct"] if balance else None,
+            "ili": balance["ili"] if balance else None,
+            "exceeds_threshold": balance["exceeds_threshold"] if balance else None,
+            "nrw_threshold_pct": zone["nrw_threshold_pct"],
+        }
+        features.append({
+            "type": "Feature",
+            "geometry": {"type": "Point", "coordinates": [zone["centroid_lon"], zone["centroid_lat"]]},
+            "properties": props,
+        })
+    return {"type": "FeatureCollection", "features": features}

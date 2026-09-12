@@ -6,11 +6,13 @@ import {
   getNetworkBalanceSummary,
   getNetworkBalances,
   getNetworkZones,
+  getNetworkZonesGeojson,
   submitNetworkBalance,
   type NetworkBalance,
   type NetworkZone,
 } from "../api";
 import { StagePage, EmptyState } from "../components/StagePage";
+import { NetworkMap, nrwColorForMap } from "../components/NetworkMap";
 
 // Balance de Red -- Track B, Sprint B1/B1-2 (docs/07-track-b-alcance-funcional.md):
 // matriz de Balance Hidrico IWA completa. Venta modular -- este panel no
@@ -54,6 +56,8 @@ function RegisterZoneForm() {
   const [numConnections, setNumConnections] = useState("");
   const [avgPressureMca, setAvgPressureMca] = useState("");
   const [nrwThresholdPct, setNrwThresholdPct] = useState("30");
+  const [centroidLat, setCentroidLat] = useState("");
+  const [centroidLon, setCentroidLon] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const mutation = useMutation({
@@ -66,6 +70,8 @@ function RegisterZoneForm() {
         num_connections: numConnections ? Number(numConnections) : null,
         avg_pressure_mca: avgPressureMca ? Number(avgPressureMca) : null,
         nrw_threshold_pct: nrwThresholdPct ? Number(nrwThresholdPct) : null,
+        centroid_lat: centroidLat ? Number(centroidLat) : null,
+        centroid_lon: centroidLon ? Number(centroidLon) : null,
       }),
     onSuccess: () => {
       setError(null);
@@ -166,9 +172,29 @@ function RegisterZoneForm() {
             placeholder="ej. 30 (CRA/IANC Colombia) -- según regulador"
           />
         </div>
+        <div>
+          <label className="block text-xs font-medium text-slate-500 mb-1">Latitud (centroide)</label>
+          <input
+            type="number"
+            className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm w-full"
+            value={centroidLat}
+            onChange={(e) => setCentroidLat(e.target.value)}
+            placeholder="opcional -- para el mapa"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-slate-500 mb-1">Longitud (centroide)</label>
+          <input
+            type="number"
+            className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm w-full"
+            value={centroidLon}
+            onChange={(e) => setCentroidLon(e.target.value)}
+            placeholder="opcional -- para el mapa"
+          />
+        </div>
       </div>
       <p className="text-xs text-slate-500 mt-2">
-        Longitud de red, conexiones y presión son opcionales, pero sin los tres el ILI de esta zona quedará sin calcular (nunca se inventa con un supuesto no declarado). El tope de NRW es configurable por zona -- cada regulador define el suyo.
+        Longitud de red, conexiones y presión son opcionales, pero sin los tres el ILI de esta zona quedará sin calcular (nunca se inventa con un supuesto no declarado). El tope de NRW es configurable por zona -- cada regulador define el suyo. Sin latitud/longitud, la zona no aparece en el mapa (abajo) pero funciona igual en el resto del panel.
       </p>
       {error && <p className="text-sm text-red-600 mt-2">{error}</p>}
       <div className="mt-3 flex gap-2">
@@ -334,6 +360,12 @@ export function NetworkBalancePage() {
     refetchInterval: 30_000,
   });
 
+  const { data: zonesGeo } = useQuery({
+    queryKey: ["network-zones-geojson"],
+    queryFn: getNetworkZonesGeojson,
+    refetchInterval: 30_000,
+  });
+
   return (
     <StagePage title="Balance de Red">
       {summary && (
@@ -364,6 +396,28 @@ export function NetworkBalancePage() {
           </div>
         </div>
       )}
+
+      <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-2">Mapa de zonas</h2>
+      <div className="mb-2">
+        <NetworkMap
+          geojson={zonesGeo}
+          height={340}
+          emptyMessage="Ninguna zona tiene latitud/longitud cargada todavía -- agrégalas al registrar una zona para verla aquí."
+          pointColor={(p) => nrwColorForMap(typeof p.nrw_pct === "number" ? p.nrw_pct : null, p.exceeds_threshold as boolean | null)}
+          pointRadius={() => 10}
+          popupHtml={(p) => `<div style="font-size:12px"><strong>${p.name}</strong><br/>` +
+            (typeof p.nrw_pct === "number" ? `NRW: ${(p.nrw_pct as number).toFixed(1)}%` : "Sin balance registrado") +
+            (p.exceeds_threshold === true ? ' <span style="color:#ef4444;font-weight:600">excede tope</span>' : "") +
+            (typeof p.ili === "number" ? `<br/>ILI: ${(p.ili as number).toFixed(2)}` : "") +
+            `</div>`}
+        />
+      </div>
+      <div className="mb-6 flex flex-wrap gap-4 text-xs text-slate-500">
+        <span><span className="inline-block w-2.5 h-2.5 rounded-full mr-1" style={{ background: "#10b981" }} />NRW baja</span>
+        <span><span className="inline-block w-2.5 h-2.5 rounded-full mr-1" style={{ background: "#f59e0b" }} />NRW ≥20%</span>
+        <span><span className="inline-block w-2.5 h-2.5 rounded-full mr-1" style={{ background: "#ef4444" }} />Excede tope regulatorio</span>
+        <span><span className="inline-block w-2.5 h-2.5 rounded-full mr-1" style={{ background: "#94a3b8" }} />Sin balance/tope</span>
+      </div>
 
       <div className="mb-2 flex items-center justify-between">
         <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide">Zonas de red (DMA)</h2>
