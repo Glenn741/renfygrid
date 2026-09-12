@@ -973,3 +973,23 @@ mismos resultados numéricos.
 `network_balance.real_losses` real) queda natural de construir sobre B1+B3 ya cerrados. Siguen
 **B5-B7** (Gemelo Digital, generación de modelo desde activos, Mantenimiento + BayForce) sin
 iniciar.
+
+### Modelos de demostración georreferenciados (Bogotá/Cali) + hallazgo de un módulo pendiente (2026-09-12)
+
+**Motivo:** el usuario pidió muestras reales de archivos EPANET `.inp` de ciudades colombianas
+para mostrar en el panel. Búsqueda real de mercado (no asumida): se encontraron fuentes reales
+citables (Cartago/Valle del Cauca vía Universidad Tecnológica de Pereira en Mendeley Data;
+Pamplona/Norte de Santander vía paper open access en *Water*, MDPI; red menor real de acueducto
+de Bogotá en Datos Abiertos Bogotá/EAAB) pero ninguna descargable de forma automatizada en esta
+sesión (Mendeley renderiza el listado de archivos con JavaScript, MDPI bloquea scraping). El
+usuario confirmó la alternativa: construir una red ilustrativa propia pero **georreferenciada
+sobre coordenadas reales** de Bogotá y Cali, e investigación completa en
+`docs/07-track-b-alcance-funcional.md` §7.
+
+| Fecha | Avance | Evidencia |
+|---|---|---|
+| 2026-09-12 | Dos modelos `.inp` reales (cargan y simulan con WNTR, no un mock) con `[COORDINATES]` reales: **Bogotá** ancla en Chapinero (lat 4.6454–4.6572, lon -74.0619 a -74.0464, elevación base 2643 msnm real); **Cali** ancla entre el Cerro de las Tres Cruces (lat 3.4673, lon -76.5469, tanque elevado) y el centro/San Fernando (lat 3.45, lon -76.5346). Documentados en el propio archivo como **ilustrativos**, no un levantamiento real de EAAB/EMCALI — nunca presentados como dato real de la utility | `services/network-model/demo/bogota_chapinero_dma.inp`, `.../cali_tres_cruces_dma.inp` |
+| 2026-09-12 | Simulación real confirmada en ambos: presiones positivas y plausibles (Bogotá 34.9–64.7 mca, Cali 14.9–34.5 mca), caudales reales por tubería — sin resultados fabricados | corrida manual vía `network_model_engine.run_simulation()` |
+| 2026-09-12 | `seed_demo_networks.py` (nuevo, mismo patrón que `hes-adapter-dlms/seed_demo_data.py`): registra ambos modelos en el tenant de demostración persistente vía `register_model()` real (no INSERT directo) — idempotente, todo por argumento (DSN/tenant/directorio), nunca fijo en código | `services/network-model/seed_demo_networks.py` |
+| 2026-09-12 | Sembrados en producción en el tenant "RenfyGrid Demo" (`6e89ad29-6484-4758-a1f6-7ee90c39ecd5`) y simulados una vez para que el panel de Modelado Hidráulico tenga resultados listos sin esperar acción del usuario | corrida real contra Postgres/venv de producción → 2 modelos, 2 corridas OK |
+| 2026-09-12 | **Hallazgo real**: ni Balance de Red ni Modelado Hidráulico tienen hoy un mapa — ambos son inherentemente espaciales (`[COORDINATES]` de un modelo, zonas/DMA de un balance) y el panel actual solo muestra tablas. Revisado el módulo "Mapa de Deuda" de RenFlow (`core/renflow/frontend/js/modules/map.js`) **antes** de proponer nada — Leaflet+`Leaflet.markercluster` sobre tiles de OpenStreetMap, backend que expone GeoJSON, color/tamaño por métrica real, capas temáticas tipo choropleth, selección por polígono con mini-dashboard — patrón directamente reusable, documentado como la referencia a seguir para un futuro módulo de georreferenciación transversal a B1/B3/B5, **no iniciado**, pendiente de confirmación con el usuario sobre su alcance | `docs/07-track-b-alcance-funcional.md` §7 |

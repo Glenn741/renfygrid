@@ -150,3 +150,67 @@ proyecto todavía no existía; la real, verificada en producción, es la del mon
 - Adaptador de balance para energía/gas en el primer piloto — el motor es agnóstico de utility
   por diseño (`method`/unidades como parámetro), pero el primer caso de uso real y el que tiene
   marco regulatorio confirmado (§2) es agua.
+
+## 7. Pendiente real: módulo de georreferenciación (transversal a B1/B3/B5)
+
+**Hallazgo de esta ronda** (2026-09-12, al pedir muestras `.inp` de ciudades colombianas para
+mostrar): tanto Balance de Red (zonas/DMA) como Modelado Hidráulico (nudos/tuberías de un
+modelo `.inp`) y, más adelante, el Gemelo Digital (`network_asset`/`asset_connectivity`, B5) son
+**inherentemente espaciales** — el panel actual de `NetworkModel.tsx` solo muestra tablas de
+presión/caudal por ID de nudo/tubería, sin mapa. Un modelo cargado con `[COORDINATES]` reales
+(como los dos modelos de demostración de este sprint, ver más abajo) no tiene hoy dónde
+mostrarse sobre cartografía real — hueco real, no cosmético, para un producto que vende
+"Balance de Red" y "Modelado Hidráulico" a utilities.
+
+**Patrón ya probado en el portafolio — revisado antes de proponer nada nuevo**: el módulo
+"Mapa de Deuda" de RenFlow (`core/renflow/frontend/js/modules/map.js`) resuelve exactamente este
+tipo de problema (miles de puntos geo-referenciados, filtros, capas temáticas, selección) y es
+la referencia a seguir, no reinventar:
+
+- **Leaflet + `Leaflet.markercluster`**, tiles de OpenStreetMap (`{s}.tile.openstreetmap.org`,
+  sin API key ni costo) — mismo stack, cero licencia nueva.
+- **Backend expone GeoJSON**, no HTML/SVG armado en el servidor — un endpoint tipo
+  `GET /network-models/{id}/geojson` (nudos como `Point`, tuberías como `LineString`, usando el
+  `[COORDINATES]` que WNTR ya expone via `wn.get_node(id).coordinates`) es el equivalente directo
+  de `/api/geo/heat-map` de RenFlow.
+- **Color/tamaño por métrica real** (RenFlow: deuda/mora por contrato — aquí: presión por nudo,
+  caudal por tubería, igual que ya se calcula en `network_model_engine.py`) — nunca un color fijo,
+  siempre derivado del resultado calculado.
+- **Capas temáticas tipo choropleth** (RenFlow: deuda/mora/densidad por zona vía círculos
+  coloreados) — el equivalente en Track B es NRW%/ILI por `network_zone` sobre el mapa, no solo
+  en la tabla de `NetworkBalance.tsx` actual.
+- **Selección por polígono + mini-dashboard** (RenFlow) tiene un paralelo directo: seleccionar
+  una sub-zona de la red simulada y ver sus KPIs agregados sin salir del mapa.
+- Diferencia real a resolver, no presente en RenFlow: Track B necesita dibujar **líneas**
+  (tuberías) además de puntos, y layout de grafo cuando un modelo no trae `[COORDINATES]` reales
+  (`network_model_engine` tendría que exponer también la topología nudo↔tubería, no solo las
+  estadísticas agregadas actuales).
+
+**No iniciado** — pendiente de confirmación con el usuario antes de construirlo (alcance
+propio: ¿un componente de mapa compartido entre Balance de Red/Modelado Hidráulico/futuro
+Gemelo Digital, o uno por pantalla?).
+
+**Modelos de demostración georreferenciados creados en esta ronda** (para tener algo real que
+mostrar mientras este módulo no existe): dos redes `.inp` **ilustrativas** (no un levantamiento
+real de EAAB/EMCALI — documentado así en el propio archivo, nunca presentado como dato real de
+la utility) pero con coordenadas geográficas reales:
+
+- `services/network-model/demo/bogota_chapinero_dma.inp` — ancla en Chapinero, Bogotá
+  (lat 4.6454–4.6572, lon -74.0619 a -74.0464, elevación base 2643 msnm real de la localidad).
+- `services/network-model/demo/cali_tres_cruces_dma.inp` — ancla entre el Cerro de las Tres
+  Cruces (lat 3.4673, lon -76.5469, tanque elevado) y el centro/San Fernando de Cali (lat 3.45,
+  lon -76.5346).
+
+Parámetros de tubería/caudal (diámetros 100–250 mm, Hazen-Williams C=140, demandas 0.5–1.9 L/s
+por nudo) inspirados en órdenes de magnitud reales de un DMA colombiano — el caso de Cartago,
+Valle del Cauca (Universidad Tecnológica de Pereira, Mendeley Data, CC BY 4.0,
+[data.mendeley.com/datasets/5h5rdkhyyz](https://data.mendeley.com/datasets/5h5rdkhyyz/1)), no
+medidos en campo. Ambos modelos cargan y simulan de verdad con WNTR (presiones 14.9–64.7 mca,
+caudales reales por tubería, sin fabricar nada) y quedan sembrados en el tenant de
+demostración persistente ("RenfyGrid Demo") vía `services/network-model/seed_demo_networks.py`.
+
+Otras fuentes reales de referencia encontradas (no usadas directamente por bloqueo de scraping
+automático, quedan anotadas para quien quiera profundizar): geometría real de la red menor de
+acueducto de Bogotá en [Datos Abiertos Bogotá (EAAB)](https://datosabiertos.bogota.gov.co/dataset/red-menor-acueducto)
+(Shapefile/GeoJSON/DXF/KMZ, requiere conversión a `.inp`); caso de digitalización de Pamplona,
+Norte de Santander, en *Water* (MDPI, open access, [doi.org/10.3390/w15213824](https://doi.org/10.3390/w15213824)).
