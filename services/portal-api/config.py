@@ -21,6 +21,7 @@ class Settings:
     jwt_secret: str
     order_signing_secret: str
     cors_origins: list[str]
+    network_model_storage_dir: str
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -44,4 +45,9 @@ class Settings:
             jwt_secret=os.environ["RENFYGRID_JWT_SECRET"],
             order_signing_secret=os.environ["RENFYGRID_ORDER_SIGNING_SECRET"],
             cors_origins=cors_origins,
+            # RENFYGRID_NETWORK_MODEL_STORAGE_DIR (Track B, Sprint B3): donde
+            # se guardan los `.inp` subidos -- no es un secreto, pero nunca
+            # una ruta fija en codigo; el default solo aplica a desarrollo
+            # local, produccion siempre lo fija explicito (systemd Environment=).
+            network_model_storage_dir=os.environ.get("RENFYGRID_NETWORK_MODEL_STORAGE_DIR", "./network_model_storage"),
         )

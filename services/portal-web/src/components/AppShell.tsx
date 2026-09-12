@@ -21,6 +21,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/consumption", label: "Consumo", icon: "\u{1F4C8}" },
   { to: "/control", label: "Control (SCR)", icon: "⚡" },
   { to: "/network-balance", label: "Balance de Red", icon: "\u{1F4A7}" },
+  { to: "/network-model", label: "Modelado Hidráulico", icon: "\u{1F30A}" },
   { to: "/integrations", label: "Integraciones (CIS)", icon: "\u{1F517}" },
   { to: "/observability", label: "Observabilidad", icon: "\u{1FA7A}" },
   { to: "/configuration", label: "Configuración", icon: "⚙" },

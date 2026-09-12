@@ -638,4 +638,56 @@ export function getNetworkBalanceSummary(): Promise<NetworkBalanceSummary> {
   return request("/network-balances/summary");
 }
 
+// --- Track B: Modelado Hidraulico (Sprint B3) -- carga/versionado de un
+// modelo EPANET (.inp) real y simulacion via WNTR (motor EPANET 2.2, el
+// mismo que usan Bentley WaterGEMS/Innovyze InfoWater por debajo).
+
+export interface NetworkModel {
+  model_id: string;
+  name: string;
+  format: string;
+  version: number;
+  valid_from: string;
+}
+
+export function getNetworkModels(): Promise<NetworkModel[]> {
+  return request("/network-models");
+}
+
+export function createNetworkModel(body: { name: string; inp_content: string }): Promise<NetworkModel> {
+  return request("/network-models", { method: "POST", body: JSON.stringify(body) });
+}
+
+export interface NodeSimStats {
+  min_pressure: number;
+  max_pressure: number;
+  avg_pressure: number;
+}
+
+export interface LinkSimStats {
+  min_flowrate: number;
+  max_flowrate: number;
+  avg_flowrate: number;
+}
+
+export interface SimulationResult {
+  simulation_id: string;
+  model_id: string;
+  scenario: string;
+  calculated_at: string;
+  duration_hours: number;
+  num_nodes: number;
+  num_links: number;
+  nodes: Record<string, NodeSimStats>;
+  links: Record<string, LinkSimStats>;
+}
+
+export function simulateNetworkModel(modelId: string, scenario: string): Promise<SimulationResult> {
+  return request(`/network-models/${modelId}/simulate`, { method: "POST", body: JSON.stringify({ scenario }) });
+}
+
+export function getNetworkModelSimulations(modelId: string): Promise<SimulationResult[]> {
+  return request(`/network-models/${modelId}/simulations`);
+}
+
 export { ApiError };

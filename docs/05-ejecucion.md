@@ -86,8 +86,8 @@ al sprint donde se construye y a su estado real.
 | F36 | Endpoint de ingesta externa (venta modular sin HES propio) | B1 | 🟢 |
 | F37 | Cálculo de balance Top-Down (IWA) | B2 | 🟡 (NRW/ILI se calculan igual sin importar el método — `method` es metadata trazable, no una fórmula distinta; ver bitácora Sprint B1) |
 | F38 | Cálculo de balance Bottom-Up (IWA) | B2 | 🟡 (mismo alcance que F37 — la estimación de componentes por flujo mínimo nocturno/frecuencia de fugas es trabajo especializado fuera de alcance, `07-track-b-alcance-funcional.md` §6) |
-| F39 | Carga y versionado de modelo hidráulico (`.inp`) | B3 | ⚪ |
-| F40 | Simulación vía WNTR | B3 | ⚪ |
+| F39 | Carga y versionado de modelo hidráulico (`.inp`) | B3 | 🟢 |
+| F40 | Simulación vía WNTR | B3 | 🟢 |
 | F41 | Calibración de modelo con datos de `network_balance` | B4 | ⚪ |
 | F42 | `network_asset`/`asset_connectivity` (Gemelo Digital) + ingesta externa desde SIG | B5 | ⚪ |
 | F43 | Derivar `network_model` desde el Gemelo Digital (export EPANET) | B6 | ⚪ |
@@ -931,3 +931,45 @@ cerrar esa brecha.
 
 **Estado de Track B tras esta ronda:** B1 🟢 completo (backend + frontend). Pendiente real:
 B3-B7 (modelado hidráulico WNTR, Gemelo Digital, Mantenimiento + BayForce) sin iniciar.
+
+### Track B, Sprint B3 — Modelado Hidráulico real (WNTR/EPANET) (2026-09-12)
+
+**Motivo:** el usuario confirmó continuar con B3-B7 ("Si, continuemos"). `network_model`/
+`simulation_result` ya existían desde `0001_init.sql` (Sprint 0, mismo hallazgo que B1) —
+**sin migración** en este sprint, el esquema ya encajaba con lo necesario.
+
+**Hallazgo real de compatibilidad, antes de escribir código**: WNTR (Water Network Tool for
+Resilience, USEPA, el motor EPANET 2.2 real que usan Bentley WaterGEMS/OpenFlows e Innovyze
+InfoWater por debajo) exige Python ≥3.10 desde su versión 1.3 — el toolchain de Nuitka de todo
+el portafolio está fijo en Python 3.9 (`feedback_no_source_on_server_nuitka`). Se fija
+`wntr==1.2.0` (última versión con wheel `manylinux` para cp39) — documentado en
+`requirements.txt` y aquí, no un detalle silencioso; subir esa versión implica subir Python en
+**todo** el toolchain primero, no un bump aislado de este servicio.
+
+**Segundo hallazgo real de entorno**: `wntr` no instala en el Python 3.14 nativo de Windows del
+resto del repo (falla el build de su extensión C++/SWIG por falta de Visual Studio Build
+Tools). Desarrollo/pruebas de este sprint se hicieron con un venv dedicado en Python 3.10 de
+Windows (`wntr` 1.5.0 más reciente ahí, misma API) para las pruebas E2E (HTTP+Postgres), y con
+un venv Python 3.9 en WSL2 (`wntr==1.2.0`, la versión real de producción) para verificar que el
+motor puro funciona igual en la versión que de verdad se despliega — ambos confirmados con los
+mismos resultados numéricos.
+
+| Fecha | Avance | Evidencia |
+|---|---|---|
+| 2026-09-12 | **`network_model_engine.py` (nuevo, lógica pura)**: `load_model()` (carga y valida un `.inp` real, `InvalidModelError` si no es un modelo EPANET válido); `run_simulation()` (corre `EpanetSimulator` real, resume presión/caudal min/max/promedio por nudo/tubería en toda la duración simulada — nunca la serie completa cruda). `SimulationFailedError` si la red no converge (`convergence_error=True`), nunca un resultado a medias | `services/network-model/network_model_engine.py` |
+| 2026-09-12 | Fixture real de prueba: `tests/fixtures/valid_net.inp` — red mínima pero real (depósito + 2 nudos + tanque, 3 tuberías) escrita a mano en formato EPANET estándar, resuelta de verdad por WNTR (no un mock) | `services/network-model/tests/fixtures/valid_net.inp` |
+| 2026-09-12 | 8/8 pruebas unitarias puras contra el fixture real — valores de presión/caudal verificados contra la corrida manual de WNTR (J1 = 78.39 m.c.a., J2 = 41.56 m.c.a. en el mínimo de la serie) | `python -m unittest tests.test_network_model_engine -v` → 8/8 OK (Windows py3.10/wntr 1.5.0 **y** WSL2 py3.9/wntr==1.2.0) |
+| 2026-09-12 | **Hallazgo real corregido en la misma ronda**: `EpanetSimulator.run_sim()` escribe archivos temporales (`.inp`/`.rpt`/`.bin`, prefijo `temp` por defecto) al directorio de trabajo actual — ensuciaba el working tree del repo en cada corrida. Se fuerza un `file_prefix` único bajo un directorio temporal propio (`tempfile.TemporaryDirectory`), borrado siempre al terminar | `network_model_engine.py::run_simulation` |
+| 2026-09-12 | **`model_service.py` (nuevo)**: `register_model()` (valida el `.inp` ANTES de insertar — un modelo inválido nunca queda registrado; versiona por `name`, mismo criterio que `network_balance`), `list_models()` (solo la última versión por nombre), `run_and_store_simulation()` (arma la ruta del archivo, llama al motor, guarda el resultado en `simulation_result.results` como `jsonb`), `list_simulation_results()`. Endpoints nuevos: `POST/GET /network-models`, `POST /network-models/{id}/simulate`, `GET /network-models/{id}/simulations` | `services/network-model/model_service.py`, `services/portal-api/main.py` |
+| 2026-09-12 | `config.py`: `RENFYGRID_NETWORK_MODEL_STORAGE_DIR` (dónde se guardan los `.inp` subidos) — por variable de entorno, nunca una ruta fija en código, mismo principio que el resto de `Settings` | `services/portal-api/config.py` |
+| 2026-09-12 | E2E real de punta a punta (`verify_network_model_end_to_end.py`): registrar un modelo real → v1; reenviar el mismo nombre → v2 (versionado real); `GET /network-models` solo trae la última versión; simular el modelo real → mismos números que el unit test, ahora vía HTTP+Postgres+WNTR; la corrida queda guardada; un `.inp` inválido → 422 (nunca se guarda); simular un modelo inexistente → 404 | `verify_network_model_end_to_end.py` → `SPRINT B3 NETWORK MODEL E2E OK` |
+| 2026-09-12 | Regresión completa: los 16 `verify_*_end_to_end.py` de `portal-api` en verde tras el cambio | `exit=0` en los 16 scripts |
+| 2026-09-12 | **`NetworkModel.tsx` (nuevo, frontend)**: carga de un `.inp` real (archivo o pegado), tabla de modelos con versión, botón "Simular" por modelo con campo de escenario libre, detalle de corrida expandible con presión por nudo y caudal por tubería (min/máx/prom) | `services/portal-web/src/pages/NetworkModel.tsx` |
+| 2026-09-12 | `api.ts`: `NetworkModel`/`SimulationResult` + `getNetworkModels`/`createNetworkModel`/`simulateNetworkModel`/`getNetworkModelSimulations`. Ruta `/network-model` + ítem de navegación "Modelado Hidráulico" | `services/portal-web/src/api.ts`, `App.tsx`, `AppShell.tsx` |
+| 2026-09-12 | `tsc -b && vite build` limpio, bundle sin rutas mangled, contiene "network-model"/"Modelado Hidráulico" | `dist/assets/*.js` |
+| 2026-09-12 | Nuitka: `wntr==1.2.0` instalado en el venv de compilación (`~/nuitka-env-renfygrid`) y en el venv de producción de `portal-api` en `essmarplapp02` — el paquete en sí NUNCA se compila (mismo trato que `psycopg`/`fastapi`, política de portafolio: solo código propio se compila). `network_model_engine.py`/`model_service.py` compilados sin fallos | `~/build-renfygrid.sh` (WSL) |
+
+**Pendiente real de Track B tras B3**: B4 (vínculo Modelo↔Balance, calibración con
+`network_balance.real_losses` real) queda natural de construir sobre B1+B3 ya cerrados. Siguen
+**B5-B7** (Gemelo Digital, generación de modelo desde activos, Mantenimiento + BayForce) sin
+iniciar.

@@ -31,6 +31,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "control"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "hes-adapter-dlms"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "vee-engine"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "network-balance"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "network-model"))
 
 import psycopg  # noqa: E402
 from fastapi import Depends, FastAPI, HTTPException  # noqa: E402
@@ -85,6 +86,14 @@ from balance_service import (  # noqa: E402
     register_zone,
     submit_balance,
 )
+from model_service import (  # noqa: E402
+    ModelNotFoundError,
+    list_models,
+    list_simulation_results,
+    register_model,
+    run_and_store_simulation,
+)
+from network_model_engine import InvalidModelError, SimulationFailedError  # noqa: E402
 from renmeter_common.auth import create_token  # noqa: E402
 from renmeter_common.db import tenant_scope  # noqa: E402
 from renmeter_common.user_service import InvalidCredentialsError, authenticate  # noqa: E402
@@ -663,3 +672,54 @@ def submit_network_balance_endpoint(
 def list_network_balances_endpoint(tenant_id: str = Depends(get_tenant_id), zone_id: str | None = None) -> list[dict]:
     with db_conn() as conn:
         return list_balances(conn, tenant_id, zone_id)
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# Track B, Sprint B3 -- Modelado Hidraulico (WNTR/EPANET real)
+# ══════════════════════════════════════════════════════════════════════════
+
+
+class NetworkModelRequest(BaseModel):
+    name: str
+    inp_content: str
+
+
+@app.post("/network-models", status_code=201)
+def create_network_model_endpoint(body: NetworkModelRequest, tenant_id: str = Depends(get_tenant_id)) -> dict:
+    with db_conn() as conn:
+        try:
+            return register_model(conn, tenant_id, body.name, body.inp_content, app.state.settings.network_model_storage_dir)
+        except InvalidModelError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/network-models")
+def list_network_models_endpoint(tenant_id: str = Depends(get_tenant_id)) -> list[dict]:
+    with db_conn() as conn:
+        return list_models(conn, tenant_id)
+
+
+class SimulateRequest(BaseModel):
+    scenario: str = "base"
+
+
+@app.post("/network-models/{model_id}/simulate", status_code=201)
+def simulate_network_model_endpoint(
+    model_id: str, body: SimulateRequest, tenant_id: str = Depends(get_tenant_id)
+) -> dict:
+    """Corre una simulacion EPANET real (WNTR) sobre el modelo cargado --
+    `404` si el modelo no existe, `422` si el `.inp` guardado no es valido
+    o la simulacion no converge (nunca un 200 con un resultado fabricado)."""
+    with db_conn() as conn:
+        try:
+            return run_and_store_simulation(conn, tenant_id, model_id, body.scenario)
+        except ModelNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except (InvalidModelError, SimulationFailedError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/network-models/{model_id}/simulations")
+def list_network_model_simulations_endpoint(model_id: str, tenant_id: str = Depends(get_tenant_id)) -> list[dict]:
+    with db_conn() as conn:
+        return list_simulation_results(conn, tenant_id, model_id)

@@ -1,0 +1,102 @@
+[TITLE]
+Red de prueba minima (2 nudos + deposito + tanque)
+
+[JUNCTIONS]
+;ID              Elev        Demand      Pattern
+ J1               10          0                    ;
+ J2               5           10                   ;
+
+[RESERVOIRS]
+;ID              Head        Pattern
+ R1               100                              ;
+
+[TANKS]
+;ID              Elevation   InitLevel   MinLevel    MaxLevel    Diameter    MinVol      VolCurve
+ T1               20          5           0           10          20          0                       ;
+
+[PIPES]
+;ID              Node1           Node2           Length      Diameter    Roughness   MinorLoss   Status
+ P1               R1              J1              1000        300         120         0           Open    ;
+ P2               J1              J2              500         200         120         0           Open    ;
+ P3               J2              T1              300         200         120         0           Open    ;
+
+[VALVES]
+
+[TAGS]
+
+[DEMANDS]
+
+[STATUS]
+
+[PATTERNS]
+;ID              Multipliers
+ 1                1.0
+
+[CURVES]
+
+[CONTROLS]
+
+[RULES]
+
+[ENERGY]
+ Global Efficiency  75
+ Global Price        0
+
+[EMITTERS]
+
+[QUALITY]
+
+[SOURCES]
+
+[REACTIONS]
+
+[MIXING]
+
+[TIMES]
+ Duration            24:00
+ Hydraulic Timestep  1:00
+ Quality Timestep    0:05
+ Pattern Timestep    1:00
+ Pattern Start       0:00
+ Report Timestep     1:00
+ Report Start        0:00
+ Start ClockTime     0:00
+ Statistic           None
+
+[REPORT]
+ Status              No
+ Summary             No
+ Page                0
+
+[OPTIONS]
+ Units               LPS
+ Headloss            H-W
+ Specific Gravity    1.0
+ Viscosity           1.0
+ Trials              40
+ Accuracy            0.001
+ CHECKFREQ           2
+ MAXCHECK            10
+ DAMPLIMIT           0
+ Unbalanced          Continue 10
+ Pattern             1
+ Demand Multiplier   1.0
+ Emitter Exponent    0.5
+ Quality             None mg/L
+ Diffusivity         1.0
+ Tolerance           0.01
+
+[COORDINATES]
+;Node            X-Coord         Y-Coord
+ J1               0               0
+ J2               100             0
+ R1               -100            0
+ T1               200             0
+
+[VERTICES]
+
+[LABELS]
+
+[BACKDROP]
+
+[END]
