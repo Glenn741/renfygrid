@@ -88,7 +88,7 @@ al sprint donde se construye y a su estado real.
 | F38 | Cálculo de balance Bottom-Up (IWA) | B2 | 🟡 (mismo alcance que F37 — la estimación de componentes por flujo mínimo nocturno/frecuencia de fugas es trabajo especializado fuera de alcance, `07-track-b-alcance-funcional.md` §6) |
 | F39 | Carga y versionado de modelo hidráulico (`.inp`) | B3 | 🟢 |
 | F40 | Simulación vía WNTR | B3 | 🟢 |
-| F41 | Calibración de modelo con datos de `network_balance` | B4 | ⚪ |
+| F41 | Calibración de modelo con datos de `network_balance` | B4 | 🟢 |
 | F42 | `network_asset`/`asset_connectivity` (Gemelo Digital) + ingesta externa desde SIG | B5 | ⚪ |
 | F43 | Derivar `network_model` desde el Gemelo Digital (export EPANET) | B6 | ⚪ |
 | F44 | Generación de `maintenance_order` desde anomalías (condición/simulación/balance) | B7 | ⚪ |
@@ -1021,3 +1021,37 @@ cual, sin reinventar.
 Red). Selección por polígono y capas temáticas tipo choropleth (paralelo directo de RenFlow)
 quedan para una siguiente iteración si el uso real lo pide. Se extenderá a Gemelo Digital (B5)
 cuando ese sprint exista, reusando el mismo `NetworkMap.tsx`.
+
+### Track B, Sprint B4 — vínculo Modelo↔Balance (2026-09-12)
+
+**Motivo:** con B1+B3 georreferenciados y estables, y B5 (Gemelo Digital) todavía sin ningún
+código encima del esquema, B4 era el siguiente paso natural: cerrar el ciclo entre las dos
+piezas ya construidas en vez de abrir un dominio nuevo completo. El usuario dejó la elección al
+criterio del asistente ("escoge tu").
+
+**Diseño real, no una comparación cosmética**: el criterio original ("el escenario de
+simulación usa `network_balance.real_losses` como insumo de calibración") se interpretó
+literalmente — `real_losses` se usa como INSUMO de la simulación (no solo se muestra al lado).
+Técnica: **emisores por presión** (`q = C·Pⁿ`, estándar EPANET/IWA para representar fugas
+distribuidas) — (1) corre una simulación base sin fugas para estimar la presión de cada nudo,
+(2) reparte el volumen real de pérdidas del balance proporcional a la demanda base de cada nudo
+(parejo si ninguno declara demanda), (3) calibra un emisor por nudo para que, a esa presión
+base, entregue su parte del caudal de fuga objetivo, (4) vuelve a simular CON los emisores
+calibrados — ese es el resultado final.
+
+| Fecha | Avance | Evidencia |
+|---|---|---|
+| 2026-09-12 | **`network_model_engine.calibrate_and_simulate()` (nuevo)**: `CalibrationInputError` si `real_losses_m3`/`period_days` no son positivos (nunca se inventa una fuga sin balance real detrás); nudos con presión base ≤0 se omiten (`skipped_nodes`), nunca se divide por cero | `services/network-model/network_model_engine.py` |
+| 2026-09-12 | **Hallazgo real corregido en la misma ronda**: WNTR guarda TODO internamente en SI (m³/s, metros) sin importar las unidades declaradas en el `.inp` (aquí LPS) — asignar `emitter_coefficient` directo en Python sin convertir de L/s a m³/s dejaba la fuga calibrada **1000× más grande** que la real (visto en vivo: la presión colapsaba a ~0 en vez de estabilizarse). Corregido con la conversión explícita, documentada en el código | `network_model_engine.py::calibrate_and_simulate` |
+| 2026-09-12 | 5 pruebas unitarias nuevas — incluye el caso real que confirma que el caudal calibrado sube en el orden de magnitud correcto (no explota) y que las presiones siguen siendo físicamente razonables. **18/18 pruebas puras del módulo en verde** | `python -m unittest tests.test_network_model_engine -v` → 18/18 OK |
+| 2026-09-12 | **Migración `0016_network_model_zone_link.sql`**: `network_model.zone_id` (FK opcional a `network_zone` — `NULL` = modelo sin vincular, sigue funcionando igual sin calibración) | `infra/db/migrations/0016_network_model_zone_link.sql` |
+| 2026-09-12 | `model_service.py`: `register_model()`/`list_models()` extendidos con `zone_id`; `run_and_store_simulation(..., calibrate=True)` (nuevo parámetro) busca el balance MÁS RECIENTE (por período, luego versión) de la zona vinculada — `ModelNotLinkedToZoneError` si el modelo no tiene zona, `NoBalanceForCalibrationError` si la zona todavía no tiene ningún balance (nunca calibra "a medias" con un número de ejemplo) | `services/network-model/model_service.py` |
+| 2026-09-12 | `main.py`: `NetworkModelRequest.zone_id`, `SimulateRequest.calibrate` (nuevo), endpoint traduce las excepciones de calibración a `422` | `services/portal-api/main.py` |
+| 2026-09-12 | E2E extendido: modelo vinculado a una zona CON balance real se calibra de verdad (`target_leak_lps≈10`, `node_leak_lps` presente); modelo sin vincular → `422`; modelo vinculado a una zona SIN balance → `422` | `verify_network_model_end_to_end.py` → OK |
+| 2026-09-12 | Regresión completa: los 16 `verify_*_end_to_end.py` de `portal-api` en verde tras el cambio | `exit=0` en los 16 scripts |
+| 2026-09-12 | Frontend: `UploadModelForm` permite vincular el modelo a una zona al cargarlo; `ModelRow` agrega un checkbox "Calibrar con balance real" (deshabilitado si el modelo no está vinculado, con motivo explicado); `SimulationRow` muestra el detalle real de la calibración (volumen/período/caudal objetivo, reparto por nudo, nudos omitidos si los hay) | `services/portal-web/src/pages/NetworkModel.tsx`, `services/portal-web/src/api.ts` |
+| 2026-09-12 | `tsc -b && vite build` limpio, bundle contiene "Calibrar con balance real"/"calibrated"/"target_leak_lps". Desplegado: migración 0016 con respaldo real primero, backend (Nuitka) + `main.py` a `essmarplapp02`, `systemctl restart renfygrid-portal-api` → activo; frontend a `essmarplpxy03`. **Verificado con un smoke test real contra producción**: el modelo de demostración de Bogotá vinculado a la zona demo real (que ya tenía un balance real sembrado, `real_losses=3300 m³/31 días`) se calibra correctamente (`target_leak_lps=1.2321`, coincide con el cálculo manual) | corrida real contra Postgres/venv de producción → `PROD SMOKE B4 OK` |
+
+**Estado de Track B tras esta ronda:** B1, B3 y B4 🟢 completos (backend + frontend +
+georreferenciación + calibración real). Pendiente: **B5-B7** (Gemelo Digital, generación de
+modelo desde activos, Mantenimiento + BayForce) sin iniciar.

@@ -6,8 +6,10 @@ import {
   getNetworkModelGeojson,
   getNetworkModelSimulations,
   getNetworkModels,
+  getNetworkZones,
   simulateNetworkModel,
   type NetworkModel,
+  type NetworkZone,
   type SimulationResult,
 } from "../api";
 import { StagePage, EmptyState } from "../components/StagePage";
@@ -26,15 +28,19 @@ function UploadModelForm() {
   const [name, setName] = useState("");
   const [inpContent, setInpContent] = useState("");
   const [fileName, setFileName] = useState<string | null>(null);
+  const [zoneId, setZoneId] = useState("");
   const [error, setError] = useState<string | null>(null);
 
+  const { data: zones } = useQuery({ queryKey: ["network-zones"], queryFn: getNetworkZones });
+
   const mutation = useMutation({
-    mutationFn: () => createNetworkModel({ name, inp_content: inpContent }),
+    mutationFn: () => createNetworkModel({ name, inp_content: inpContent, zone_id: zoneId || null }),
     onSuccess: () => {
       setError(null);
       setName("");
       setInpContent("");
       setFileName(null);
+      setZoneId("");
       setOpen(false);
       queryClient.invalidateQueries({ queryKey: ["network-models"] });
     },
@@ -85,9 +91,22 @@ function UploadModelForm() {
           />
           {fileName && <p className="text-xs text-slate-400 mt-1">{fileName} -- {inpContent.length} caracteres leídos</p>}
         </div>
+        <div>
+          <label className="block text-xs font-medium text-slate-500 mb-1">Vincular a zona de Balance de Red</label>
+          <select
+            className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm w-full bg-white"
+            value={zoneId}
+            onChange={(e) => setZoneId(e.target.value)}
+          >
+            <option value="">— Sin vincular —</option>
+            {(zones ?? []).map((zone: NetworkZone) => (
+              <option key={zone.zone_id} value={zone.zone_id}>{zone.name}</option>
+            ))}
+          </select>
+        </div>
       </div>
       <p className="text-xs text-slate-500 mb-2">
-        Si el nombre ya existe, esto registra una nueva versión (el historial completo se conserva). Un archivo que no sea un modelo EPANET válido se rechaza -- nunca se guarda un modelo roto.
+        Si el nombre ya existe, esto registra una nueva versión (el historial completo se conserva). Un archivo que no sea un modelo EPANET válido se rechaza -- nunca se guarda un modelo roto. Vincular a una zona permite calibrar la simulación con su balance real (pérdidas reales, no un número de ejemplo).
       </p>
       {error && <p className="text-sm text-red-600 mb-2">{error}</p>}
       <div className="flex gap-2">
@@ -114,7 +133,14 @@ function SimulationRow({ sim }: { sim: SimulationResult }) {
   return (
     <>
       <tr>
-        <td className="px-4 py-3 font-medium text-slate-900">{sim.scenario}</td>
+        <td className="px-4 py-3 font-medium text-slate-900">
+          {sim.scenario}
+          {sim.calibrated && (
+            <span className="ml-2 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700" title="Calibrado con perdidas reales del balance de la zona vinculada">
+              calibrado
+            </span>
+          )}
+        </td>
         <td className="px-4 py-3 text-slate-600">{sim.duration_hours}h</td>
         <td className="px-4 py-3 text-slate-600">{sim.num_nodes}</td>
         <td className="px-4 py-3 text-slate-600">{sim.num_links}</td>
@@ -128,6 +154,23 @@ function SimulationRow({ sim }: { sim: SimulationResult }) {
       {expanded && (
         <tr className="bg-slate-50">
           <td colSpan={6} className="px-4 py-3">
+            {sim.calibrated && (
+              <div className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50/60 p-3 text-xs">
+                <div className="font-semibold text-emerald-800 mb-1">
+                  Calibrado con pérdidas reales del balance ({sim.real_losses_m3} m³ en {sim.period_days} día(s) → {sim.target_leak_lps} L/s objetivo)
+                </div>
+                {sim.node_leak_lps && Object.keys(sim.node_leak_lps).length > 0 && (
+                  <div className="text-slate-600">
+                    Repartido por nudo: {Object.entries(sim.node_leak_lps).map(([id, lps]) => `${id}: ${lps} L/s`).join(", ")}
+                  </div>
+                )}
+                {sim.skipped_nodes && sim.skipped_nodes.length > 0 && (
+                  <div className="text-amber-700 mt-1">
+                    Sin calibrar (presión base no positiva): {sim.skipped_nodes.join(", ")}
+                  </div>
+                )}
+              </div>
+            )}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               <div>
                 <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Presión por nudo (m.c.a.)</div>
@@ -226,6 +269,7 @@ function ModelMap({ modelId }: { modelId: string }) {
 function ModelRow({ model }: { model: NetworkModel }) {
   const queryClient = useQueryClient();
   const [scenario, setScenario] = useState("base");
+  const [calibrate, setCalibrate] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showSims, setShowSims] = useState(false);
   const [showMap, setShowMap] = useState(false);
@@ -237,7 +281,7 @@ function ModelRow({ model }: { model: NetworkModel }) {
   });
 
   const mutation = useMutation({
-    mutationFn: () => simulateNetworkModel(model.model_id, scenario),
+    mutationFn: () => simulateNetworkModel(model.model_id, scenario, calibrate),
     onSuccess: () => {
       setError(null);
       setShowSims(true);
@@ -249,17 +293,36 @@ function ModelRow({ model }: { model: NetworkModel }) {
   return (
     <>
       <tr>
-        <td className="px-4 py-3 font-medium text-slate-900">{model.name}</td>
+        <td className="px-4 py-3 font-medium text-slate-900">
+          {model.name}
+          {model.zone_id && (
+            <span className="ml-2 rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700" title="Vinculado a una zona de Balance de Red -- puede calibrarse con su balance real">
+              vinculado
+            </span>
+          )}
+        </td>
         <td className="px-4 py-3 text-slate-500">v{model.version}</td>
         <td className="px-4 py-3 text-slate-500">{new Date(model.valid_from).toLocaleString()}</td>
         <td className="px-4 py-3">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <input
               className="rounded-lg border border-slate-300 px-2 py-1 text-xs w-28"
               value={scenario}
               onChange={(e) => setScenario(e.target.value)}
               placeholder="escenario"
             />
+            <label
+              className={`flex items-center gap-1 text-xs ${model.zone_id ? "text-slate-600" : "text-slate-300"}`}
+              title={model.zone_id ? "Usa network_balance.real_losses de la zona vinculada como insumo real de calibración" : "Vincula el modelo a una zona con balance para poder calibrar"}
+            >
+              <input
+                type="checkbox"
+                checked={calibrate}
+                disabled={!model.zone_id}
+                onChange={(e) => setCalibrate(e.target.checked)}
+              />
+              Calibrar con balance real
+            </label>
             <button
               onClick={() => mutation.mutate()}
               disabled={mutation.isPending}

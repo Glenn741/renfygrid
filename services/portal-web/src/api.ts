@@ -652,13 +652,14 @@ export interface NetworkModel {
   format: string;
   version: number;
   valid_from: string;
+  zone_id: string | null;
 }
 
 export function getNetworkModels(): Promise<NetworkModel[]> {
   return request("/network-models");
 }
 
-export function createNetworkModel(body: { name: string; inp_content: string }): Promise<NetworkModel> {
+export function createNetworkModel(body: { name: string; inp_content: string; zone_id?: string | null }): Promise<NetworkModel> {
   return request("/network-models", { method: "POST", body: JSON.stringify(body) });
 }
 
@@ -684,10 +685,16 @@ export interface SimulationResult {
   num_links: number;
   nodes: Record<string, NodeSimStats>;
   links: Record<string, LinkSimStats>;
+  calibrated?: boolean;
+  target_leak_lps?: number;
+  node_leak_lps?: Record<string, number>;
+  skipped_nodes?: string[];
+  real_losses_m3?: number;
+  period_days?: number;
 }
 
-export function simulateNetworkModel(modelId: string, scenario: string): Promise<SimulationResult> {
-  return request(`/network-models/${modelId}/simulate`, { method: "POST", body: JSON.stringify({ scenario }) });
+export function simulateNetworkModel(modelId: string, scenario: string, calibrate = false): Promise<SimulationResult> {
+  return request(`/network-models/${modelId}/simulate`, { method: "POST", body: JSON.stringify({ scenario, calibrate }) });
 }
 
 export function getNetworkModelSimulations(modelId: string): Promise<SimulationResult[]> {

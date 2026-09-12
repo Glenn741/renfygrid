@@ -86,20 +86,17 @@ def load_model(inp_path: str) -> wntr.network.WaterNetworkModel:
         raise InvalidModelError(f"No se pudo interpretar el archivo .inp: {exc}") from exc
 
 
-def run_simulation(inp_path: str) -> SimulationSummary:
-    """Corre una simulacion hidraulica real (EpanetSimulator, motor EPANET
-    2.2) y resume presion (nodos) y caudal (enlaces) min/max/promedio en
-    toda la duracion simulada -- nunca la serie completa cruda (evita un
-    `jsonb` gigante por corrida; suficiente para un panel de KPIs). Lanza
-    `SimulationFailedError` si la red no converge, nunca un resultado a
-    medias silencioso.
+def _simulate_wn(wn: wntr.network.WaterNetworkModel) -> SimulationSummary:
+    """Corre `EpanetSimulator` sobre un `WaterNetworkModel` YA CARGADO (y
+    opcionalmente modificado en memoria -- ver `calibrate_and_simulate`) y
+    resume presion/caudal min/max/promedio. Lanza `SimulationFailedError`
+    si la red no converge, nunca un resultado a medias silencioso.
 
     `EpanetSimulator.run_sim()` escribe archivos temporales (`.inp`/`.rpt`/
     `.bin`) al directorio de trabajo actual con el prefijo `temp` por
     defecto (hallazgo real de esta ronda -- ensuciaba el working tree del
     repo en las pruebas E2E) -- se fuerza un `file_prefix` unico bajo un
     directorio temporal propio, borrado siempre al terminar."""
-    wn = load_model(inp_path)
     with tempfile.TemporaryDirectory(prefix="renfygrid_epanet_") as tmp_dir:
         file_prefix = str(Path(tmp_dir) / f"sim_{uuid.uuid4().hex}")
         try:
@@ -135,6 +132,124 @@ def run_simulation(inp_path: str) -> SimulationSummary:
             )
             for link_id in flowrate.columns
         },
+    )
+
+
+def run_simulation(inp_path: str) -> SimulationSummary:
+    """Carga el `.inp` y corre una simulacion hidraulica real (sin
+    calibrar) -- ver `_simulate_wn` para el detalle de la corrida."""
+    wn = load_model(inp_path)
+    return _simulate_wn(wn)
+
+
+class CalibrationInputError(ValueError):
+    """`real_losses_m3`/`period_days` invalidos para calibrar -- nunca se
+    inventa una fuga sin un balance real detras."""
+
+
+@dataclass
+class CalibrationResult:
+    """Resultado de calibrar el modelo con perdidas reales de un balance
+    (`network_balance.real_losses`, Track B Sprint B4,
+    `docs/07-track-b-alcance-funcional.md` SS5) -- tecnica de emisores por
+    presion (estandar IWA/EPANET para representar fugas distribuidas): el
+    volumen real de perdidas del periodo se reparte entre los nudos
+    (proporcional a su demanda base, o parejo si ninguno tiene demanda
+    base) y se calibra un emisor `q = C * P^n` por nudo usando la presion
+    de una corrida SIN fugas como referencia -- despues se vuelve a
+    simular CON los emisores calibrados."""
+
+    real_losses_m3: float
+    period_days: float
+    target_leak_lps: float
+    node_leak_lps: dict[str, float]
+    skipped_nodes: list[str]
+    simulation: SimulationSummary
+
+    def to_dict(self) -> dict:
+        return {
+            "real_losses_m3": self.real_losses_m3,
+            "period_days": self.period_days,
+            "target_leak_lps": self.target_leak_lps,
+            "node_leak_lps": self.node_leak_lps,
+            "skipped_nodes": self.skipped_nodes,
+            **self.simulation.to_dict(),
+        }
+
+
+def calibrate_and_simulate(inp_path: str, real_losses_m3: float, period_days: float) -> CalibrationResult:
+    """B4: usa `network_balance.real_losses` como INSUMO real de
+    calibracion (no solo una comparacion cosmetica) -- nunca "datos de
+    ejemplo hardcodeados" en el escenario de simulacion.
+
+    1. Corre una simulacion base SIN fugas para estimar la presion de
+       cada nudo.
+    2. Reparte el volumen real de perdidas del periodo entre los nudos,
+       proporcional a su demanda base (si ningun nudo tiene demanda base
+       declarada, se reparte parejo -- nunca 0 fugas por falta de dato).
+    3. Calibra un emisor por nudo (`emitter_coefficient`) para que, a la
+       presion base estimada, produzca su parte del caudal de fuga
+       objetivo. Un nudo con presion base <= 0 (deposito/tanque, o un
+       nudo sin presion positiva) se omite -- nunca se divide por 0/negativo.
+    4. Vuelve a simular CON los emisores calibrados -- ese es el
+       resultado final."""
+    if real_losses_m3 <= 0 or period_days <= 0:
+        raise CalibrationInputError(
+            "real_losses_m3 y period_days deben ser positivos para calibrar -- "
+            "sin un balance real con perdidas > 0 no hay nada que calibrar"
+        )
+
+    wn = load_model(inp_path)
+    baseline = _simulate_wn(wn)
+
+    exponent = wn.options.hydraulic.emitter_exponent or 0.5
+    junction_names = wn.junction_name_list
+    if not junction_names:
+        raise CalibrationInputError("El modelo no tiene nudos de consumo (junctions) donde calibrar fugas")
+
+    base_demands = {
+        name: sum(ts.base_value for ts in wn.get_node(name).demand_timeseries_list)
+        for name in junction_names
+    }
+    total_base_demand = sum(base_demands.values())
+
+    target_leak_lps = (real_losses_m3 * 1000) / (period_days * 86400)
+
+    node_leak_lps: dict[str, float] = {}
+    skipped: list[str] = []
+    for name in junction_names:
+        share = (base_demands[name] / total_base_demand) if total_base_demand > 0 else (1.0 / len(junction_names))
+        leak_lps = target_leak_lps * share
+        pressure_stats = baseline.nodes.get(name)
+        if pressure_stats is None or pressure_stats.avg_pressure <= 0:
+            skipped.append(name)
+            continue
+        # WNTR guarda TODO internamente en SI (m3/s, metros) sin importar
+        # las unidades declaradas en el .inp (aqui LPS) -- `emitter_coefficient`
+        # asignado directo en Python (no via parseo de archivo) espera
+        # m3/s, no L/s. Sin esta conversion la fuga calibrada queda 1000x
+        # mas grande que la real (hallazgo real de esta ronda, visto en
+        # vivo: la presion colapsaba a ~0 en vez de estabilizarse).
+        leak_m3s = leak_lps / 1000.0
+        coefficient = leak_m3s / (pressure_stats.avg_pressure ** exponent)
+        wn.get_node(name).emitter_coefficient = coefficient
+        node_leak_lps[name] = round(leak_lps, 4)
+
+    # Reload fresco de nuevo: reusar el mismo `wn` ya simulado una vez con
+    # WNTR a veces deja estado residual del solver -- recargar y volver a
+    # aplicar los emisores calibrados es mas seguro que reusar el objeto.
+    wn2 = load_model(inp_path)
+    for name, coeff in ((n, wn.get_node(n).emitter_coefficient) for n in node_leak_lps):
+        wn2.get_node(name).emitter_coefficient = coeff
+    calibrated_summary = _simulate_wn(wn2)
+
+    return CalibrationResult(
+        real_losses_m3=real_losses_m3,
+        period_days=period_days,
+        target_leak_lps=round(target_leak_lps, 4),
+        node_leak_lps=node_leak_lps,
+        skipped_nodes=skipped,
+        simulation=calibrated_summary,
     )
 
 

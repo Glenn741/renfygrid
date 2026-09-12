@@ -89,13 +89,15 @@ from balance_service import (  # noqa: E402
 )
 from model_service import (  # noqa: E402
     ModelNotFoundError,
+    ModelNotLinkedToZoneError,
+    NoBalanceForCalibrationError,
     list_models,
     list_simulation_results,
     model_geojson,
     register_model,
     run_and_store_simulation,
 )
-from network_model_engine import InvalidModelError, SimulationFailedError  # noqa: E402
+from network_model_engine import CalibrationInputError, InvalidModelError, SimulationFailedError  # noqa: E402
 from renmeter_common.auth import create_token  # noqa: E402
 from renmeter_common.db import tenant_scope  # noqa: E402
 from renmeter_common.user_service import InvalidCredentialsError, authenticate  # noqa: E402
@@ -695,13 +697,17 @@ def list_network_balances_endpoint(tenant_id: str = Depends(get_tenant_id), zone
 class NetworkModelRequest(BaseModel):
     name: str
     inp_content: str
+    zone_id: str | None = None
 
 
 @app.post("/network-models", status_code=201)
 def create_network_model_endpoint(body: NetworkModelRequest, tenant_id: str = Depends(get_tenant_id)) -> dict:
     with db_conn() as conn:
         try:
-            return register_model(conn, tenant_id, body.name, body.inp_content, app.state.settings.network_model_storage_dir)
+            return register_model(
+                conn, tenant_id, body.name, body.inp_content,
+                app.state.settings.network_model_storage_dir, body.zone_id,
+            )
         except InvalidModelError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
@@ -714,6 +720,7 @@ def list_network_models_endpoint(tenant_id: str = Depends(get_tenant_id)) -> lis
 
 class SimulateRequest(BaseModel):
     scenario: str = "base"
+    calibrate: bool = False
 
 
 @app.post("/network-models/{model_id}/simulate", status_code=201)
@@ -722,13 +729,20 @@ def simulate_network_model_endpoint(
 ) -> dict:
     """Corre una simulacion EPANET real (WNTR) sobre el modelo cargado --
     `404` si el modelo no existe, `422` si el `.inp` guardado no es valido
-    o la simulacion no converge (nunca un 200 con un resultado fabricado)."""
+    o la simulacion no converge (nunca un 200 con un resultado fabricado).
+
+    `calibrate=true` (Sprint B4, vinculo Modelo<->Balance): usa
+    `network_balance.real_losses` real de la zona vinculada al modelo como
+    insumo de calibracion -- `422` si el modelo no esta vinculado a una
+    zona o esa zona todavia no tiene ningun balance (nunca se calibra con
+    un numero de ejemplo)."""
     with db_conn() as conn:
         try:
-            return run_and_store_simulation(conn, tenant_id, model_id, body.scenario)
+            return run_and_store_simulation(conn, tenant_id, model_id, body.scenario, body.calibrate)
         except ModelNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
-        except (InvalidModelError, SimulationFailedError) as exc:
+        except (InvalidModelError, SimulationFailedError, ModelNotLinkedToZoneError,
+                NoBalanceForCalibrationError, CalibrationInputError) as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 

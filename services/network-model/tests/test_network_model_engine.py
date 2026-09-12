@@ -12,8 +12,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from network_model_engine import (  # noqa: E402
+    CalibrationInputError,
     InvalidModelError,
     SimulationSummary,
+    calibrate_and_simulate,
     load_model,
     model_topology_geojson,
     run_simulation,
@@ -121,6 +123,51 @@ class ModelTopologyGeojsonTests(unittest.TestCase):
         geojson = model_topology_geojson(path)
         ids = {f["properties"]["id"] for f in geojson["features"] if f["geometry"]["type"] == "Point"}
         self.assertNotIn("J_SIN_COORD", ids)
+
+
+class CalibrateAndSimulateTests(unittest.TestCase):
+    """Track B, Sprint B4 -- vinculo Modelo<->Balance
+    (docs/07-track-b-alcance-funcional.md SS5): `network_balance.real_losses`
+    real como insumo de calibracion (emisores por presion), no una
+    comparacion cosmetica."""
+
+    def test_raises_on_non_positive_real_losses(self):
+        with self.assertRaises(CalibrationInputError):
+            calibrate_and_simulate(VALID_INP, real_losses_m3=0, period_days=1)
+
+    def test_raises_on_non_positive_period(self):
+        with self.assertRaises(CalibrationInputError):
+            calibrate_and_simulate(VALID_INP, real_losses_m3=100, period_days=0)
+
+    def test_distributes_leak_proportional_to_base_demand(self):
+        # J1 tiene demanda base 0, J2 tiene 10 LPS -- toda la fuga debe
+        # asignarse a J2, nada a J1 (0/10 = 0% de participacion).
+        result = calibrate_and_simulate(VALID_INP, real_losses_m3=864, period_days=1)
+        self.assertAlmostEqual(result.target_leak_lps, 10.0, places=2)
+        self.assertEqual(result.node_leak_lps["J1"], 0.0)
+        self.assertAlmostEqual(result.node_leak_lps["J2"], 10.0, places=2)
+        self.assertEqual(result.skipped_nodes, [])
+
+    def test_calibrated_flow_increases_over_baseline_by_about_the_leak(self):
+        baseline = run_simulation(VALID_INP)
+        result = calibrate_and_simulate(VALID_INP, real_losses_m3=864, period_days=1)
+        # El caudal promedio de P1 (tuberia troncal desde el deposito) debe
+        # subir en un orden de magnitud consistente con los 10 LPS de fuga
+        # agregados -- no explotar (bug real de esta ronda: sin convertir
+        # LPS -> m3/s al fijar `emitter_coefficient`, la presion colapsaba).
+        delta_m3s = result.simulation.links["P1"].avg_flowrate - baseline.links["P1"].avg_flowrate
+        self.assertGreater(delta_m3s, 0.005)   # > 5 LPS de aumento real
+        self.assertLess(delta_m3s, 0.015)      # pero no un orden de magnitud de mas
+        # Las presiones siguen siendo fisicamente razonables (no colapsan a ~0).
+        self.assertGreater(result.simulation.nodes["J2"].min_pressure, 10.0)
+
+    def test_returns_calibrated_summary_type_and_dict_shape(self):
+        result = calibrate_and_simulate(VALID_INP, real_losses_m3=864, period_days=1)
+        self.assertIsInstance(result.simulation, SimulationSummary)
+        as_dict = result.to_dict()
+        self.assertIn("target_leak_lps", as_dict)
+        self.assertIn("node_leak_lps", as_dict)
+        self.assertIn("nodes", as_dict)  # de SimulationSummary.to_dict() aplanado
 
 
 if __name__ == "__main__":
