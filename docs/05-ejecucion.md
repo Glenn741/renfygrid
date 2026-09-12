@@ -878,3 +878,42 @@ distinta); la estimación de componentes por flujo mínimo nocturno es trabajo e
 fuera de alcance (`07-track-b-alcance-funcional.md` §6). Siguen **B3-B7** (modelado hidráulico
 con WNTR, Gemelo Digital, Gestión de Mantenimiento + BayForce) — no iniciados, pendientes de
 continuar con el usuario.
+
+### Track B, Sprint B1-2 — Balance de Red: NRW%, tope regulatorio y resumen de portafolio (2026-09-11/12)
+
+**Motivo:** el usuario preguntó directamente "¿qué le falta al B1? hagámoslo" al revisar el
+sprint recién cerrado. Análisis honesto encontró 4 huecos reales, no cosméticos:
+1. `nrw` solo se guardaba como volumen bruto (m³) — no dice nada sin el tamaño del sistema; se
+   reporta y se compara siempre como **%** del System Input Volume (así lo exige la CRA en
+   Colombia, IANC ≤ 30%, Resolución 315/2005 — mismo hallazgo regulatorio del Track A/Control
+   con la CREG, `07-track-b-alcance-funcional.md` §2).
+2. El 30% de la CRA, encontrado en la propia investigación de mercado, nunca se **usaba** en
+   ningún lado del código — sin un tope configurable, la cifra regulatoria era solo un
+   comentario. Se agregó `network_zone.nrw_threshold_pct`, **configurable por zona, nunca
+   hardcodeado** (directiva del proyecto, `feedback_no_hardcoded_data`): otro país/regulador usa
+   otro número.
+3. No había chequeo de consistencia interna entre el System Input Volume declarado y la suma de
+   los 5 componentes enviados — un balance que no cierra señala datos de entrada incompletos,
+   nunca se ajustaba en silencio.
+4. No existía un resumen a nivel de portafolio de zonas — todos los demás módulos del producto
+   (VEE, HES, Consumo, Control) ya tienen un panel de KPIs agregados; Track B seguía siendo
+   solo listados fila por fila.
+
+**Estado:** 🟢 cerrado y desplegado a producción.
+
+| Fecha | Avance | Evidencia |
+|---|---|---|
+| 2026-09-11/12 | **`network_balance_engine.py`**: `non_revenue_water_pct()` (NRW como % del SIV, `None` si SIV≤0) y `balance_check_pct()` (qué tanto se aleja la suma de los 5 componentes del SIV declarado, `None` si SIV≤0) — lógica pura, mismo fail-safe `None` del resto del motor | `services/network-balance/network_balance_engine.py` |
+| 2026-09-11/12 | 6 pruebas unitarias nuevas (`NonRevenueWaterPctTests`, `BalanceCheckPctTests`) — **18/18 pruebas puras en verde** | `python -m unittest tests.test_network_balance_engine -v` → 18/18 OK |
+| 2026-09-11/12 | **Migración `0014_network_balance_pct.sql`**: `network_zone.nrw_threshold_pct` (tope configurable, `NULL` = sin tope); `network_balance.nrw_pct`/`balance_check_pct`/`exceeds_threshold` (`NULL` si la zona no tiene tope configurado — nunca `False` inventado) | `infra/db/migrations/0014_network_balance_pct.sql` |
+| 2026-09-11/12 | **`balance_service.py` reescrito**: `register_zone()`/`list_zones()` threadean `nrw_threshold_pct`; `_zone_row()` (renombrado de `_zone_infrastructure`) también devuelve el tope; `submit_balance()` calcula y persiste `nrw_pct`/`balance_check_pct`/`exceeds_threshold` al insertar (nunca recalculado en cada lectura); `list_balances()` los expone. **Nuevo** `balance_summary()`: total de zonas, zonas con balance, NRW% promedio, peor ILI, zonas que exceden su tope — con datos reales de la BD, mismo patrón de resumen que `vee_summary`/`consumption_summary`/`control_summary` | `services/network-balance/balance_service.py` |
+| 2026-09-11/12 | `main.py`: `NetworkZoneRequest` +`nrw_threshold_pct`; endpoint nuevo `GET /network-balances/summary` | `services/portal-api/main.py` |
+| 2026-09-11/12 | E2E extendido con 4 zonas reales: una con tope configurado que lo supera (`exceeds_threshold=True`), una con inconsistencia real en el balance que da exactamente el tope (`nrw_pct=30.0`, `exceeds_threshold=False`, no `True` — el operador `>` es estricto), dos sin tope (`exceeds_threshold=None`); `GET /network-balances/summary` agregando las 4 zonas reales | `verify_network_balance_end_to_end.py` → `SPRINT B1/B1-2 NETWORK BALANCE E2E OK` |
+| 2026-09-11/12 | Regresión completa: los 15 `verify_*_end_to_end.py` de `portal-api` (incluye VEE, HES, Consumo, Control, Balance de Red) en verde tras el cambio | `exit=0` en los 15 scripts |
+| 2026-09-11/12 | Desplegado a producción: respaldo real primero (`pg_dump` vía `sudo -u postgres`, sin RLS — `pg_dump` como rol de aplicación falla contra la política RLS de `app_user`, hallazgo nuevo de esta ronda), migración 0014 aplicada, backend (Nuitka: `network_balance_engine`/`balance_service`) + `main.py` a `essmarplapp02`, `systemctl restart renfygrid-portal-api` → activo. Verificado en vivo: `/api/network-balances/summary` y `/api/network-zones` responden 401 (gateado por auth, no 404/500) | `curl https://renfygrid.rensoftlabs.com/api/network-balances/summary` |
+
+**Pendiente real, identificado en esta misma ronda pero no iniciado**: no existe ningún panel de
+frontend para Balance de Red — Track B sigue siendo solo API, inconsistente con el resto del
+producto (todos los demás módulos ya tienen dashboard completo). Sigue pendiente de
+confirmación con el usuario antes de construirlo. B3-B7 (modelado hidráulico WNTR, Gemelo
+Digital, Mantenimiento + BayForce) sin iniciar.

@@ -12,8 +12,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from network_balance_engine import (
     WaterBalanceInputs,
     ZoneInfrastructure,
+    balance_check_pct,
     infrastructure_leakage_index,
     non_revenue_water,
+    non_revenue_water_pct,
     unavoidable_annual_real_losses_liters_per_day,
     water_losses,
 )
@@ -30,6 +32,37 @@ class NonRevenueWaterTests(unittest.TestCase):
         with_unbilled_authorized = WaterBalanceInputs(system_input_volume=1000, billed_metered_consumption=700, unbilled_authorized_consumption=100)
         without = WaterBalanceInputs(system_input_volume=1000, billed_metered_consumption=700)
         self.assertEqual(non_revenue_water(with_unbilled_authorized), non_revenue_water(without))
+
+
+class NonRevenueWaterPctTests(unittest.TestCase):
+    def test_pct_of_system_input_volume(self):
+        inputs = WaterBalanceInputs(system_input_volume=1000, billed_metered_consumption=750)
+        self.assertAlmostEqual(non_revenue_water_pct(inputs), 25.0)
+
+    def test_none_when_system_input_volume_is_zero(self):
+        inputs = WaterBalanceInputs(system_input_volume=0)
+        self.assertIsNone(non_revenue_water_pct(inputs))
+
+    def test_none_when_system_input_volume_is_negative(self):
+        inputs = WaterBalanceInputs(system_input_volume=-5)
+        self.assertIsNone(non_revenue_water_pct(inputs))
+
+
+class BalanceCheckPctTests(unittest.TestCase):
+    def test_zero_when_components_sum_to_system_input_volume(self):
+        inputs = WaterBalanceInputs(
+            system_input_volume=1000, billed_metered_consumption=700, billed_unbilled_consumption=50,
+            unbilled_authorized_consumption=20, apparent_losses=30, real_losses=200,
+        )
+        self.assertAlmostEqual(balance_check_pct(inputs), 0.0)
+
+    def test_positive_when_components_undercount_system_input_volume(self):
+        inputs = WaterBalanceInputs(system_input_volume=1000, billed_metered_consumption=700)
+        self.assertAlmostEqual(balance_check_pct(inputs), 30.0)
+
+    def test_none_when_system_input_volume_is_zero(self):
+        inputs = WaterBalanceInputs(system_input_volume=0)
+        self.assertIsNone(balance_check_pct(inputs))
 
 
 class WaterLossesTests(unittest.TestCase):

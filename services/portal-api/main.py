@@ -77,7 +77,14 @@ from observability import ingestion_metrics  # noqa: E402
 from on_demand_reader import MeterNotReadableError, read_meter_now  # noqa: E402
 from meter_ping import MeterNotReachableError, ping_meter  # noqa: E402
 from protocol_mapping_admin import create_protocol_mapping, list_protocol_mappings  # noqa: E402
-from balance_service import ZoneNotFoundError, list_balances, list_zones, register_zone, submit_balance  # noqa: E402
+from balance_service import (  # noqa: E402
+    ZoneNotFoundError,
+    balance_summary,
+    list_balances,
+    list_zones,
+    register_zone,
+    submit_balance,
+)
 from renmeter_common.auth import create_token  # noqa: E402
 from renmeter_common.db import tenant_scope  # noqa: E402
 from renmeter_common.user_service import InvalidCredentialsError, authenticate  # noqa: E402
@@ -597,6 +604,7 @@ class NetworkZoneRequest(BaseModel):
     num_connections: int | None = None
     avg_pressure_mca: float | None = None
     avg_service_connection_length_km: float | None = None
+    nrw_threshold_pct: float | None = None
 
 
 @app.post("/network-zones", status_code=201)
@@ -605,9 +613,15 @@ def create_network_zone_endpoint(body: NetworkZoneRequest, tenant_id: str = Depe
         zone_id = register_zone(
             conn, tenant_id, body.name, body.type, body.data_source, body.parent_zone_id,
             body.network_length_km, body.num_connections, body.avg_pressure_mca,
-            body.avg_service_connection_length_km,
+            body.avg_service_connection_length_km, body.nrw_threshold_pct,
         )
         return {"zone_id": zone_id}
+
+
+@app.get("/network-balances/summary")
+def network_balance_summary_endpoint(tenant_id: str = Depends(get_tenant_id)) -> dict:
+    with db_conn() as conn:
+        return balance_summary(conn, tenant_id)
 
 
 @app.get("/network-zones")

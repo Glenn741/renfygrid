@@ -1,4 +1,4 @@
-"""Verificacion end-to-end real de Track B, Sprint B1 (Balance de Red,
+"""Verificacion end-to-end real de Track B, Sprint B1/B1-2 (Balance de Red,
 `docs/07-track-b-alcance-funcional.md`) -- por HTTP real (FastAPI
 TestClient), Postgres real, sin ningun medidor RenfyGrid de por medio
 (venta modular, `01-planteamiento.md` SS3).
@@ -15,6 +15,14 @@ Que prueba, en espanol llano:
      historial queda en BD pero no duplica la vista.
   4. Enviar un balance a una zona que no existe -> 404, no un 500 ni un
      "exito" fabricado.
+  5. (Sprint B1-2) Una zona CON `nrw_threshold_pct` configurado y un
+     balance que lo supera -> `exceeds_threshold=True`; una zona SIN tope
+     configurado -> `exceeds_threshold=None` (nunca `False` inventado).
+     `nrw_pct` y `balance_check_pct` se calculan correcto en ambos casos.
+  6. (Sprint B1-2) `GET /network-balances/summary` agrega el portafolio de
+     zonas del tenant: total de zonas, zonas con balance, NRW% promedio,
+     peor ILI, y cuantas zonas exceden su tope -- con datos reales de las
+     zonas creadas arriba, no un mock.
 
 Uso:
     python verify_network_balance_end_to_end.py "postgresql://renfygrid_app:renfygrid_app_dev_only@localhost:5455/renfygrid"
@@ -77,6 +85,8 @@ def run(dsn: str) -> int:
                 balance_no_infra.status_code == 201
                 and balance_no_infra.json()["nrw"] == 2000.0
                 and balance_no_infra.json()["ili"] is None
+                and balance_no_infra.json()["nrw_pct"] == 20.0
+                and balance_no_infra.json()["exceeds_threshold"] is None  # sin nrw_threshold_pct configurado
             )
 
             # 2. Zona con insumos reales -- mismos numeros ya verificados por unit test.
@@ -101,6 +111,8 @@ def run(dsn: str) -> int:
                 balance_with_infra.status_code == 201
                 and balance_with_infra.json()["nrw"] == 7000.0
                 and abs(balance_with_infra.json()["ili"] - 1.0) < 0.01
+                and balance_with_infra.json()["nrw_pct"] == 70.0
+                and abs(balance_with_infra.json()["balance_check_pct"] - 0.4) < 0.01  # 3000+6960=9960 de 10000 -> 0.4% sin declarar
             )
 
             # 3. Reenviar el mismo periodo -> version 2, la lista solo trae la ultima.
@@ -126,12 +138,75 @@ def run(dsn: str) -> int:
             print(f"POST balance a zona inexistente: {missing_zone_resp.status_code}")
             ok_missing_zone = missing_zone_resp.status_code == 404
 
+            # 5. (B1-2) Zona CON tope regulatorio configurado -- balance que lo supera.
+            zone_with_threshold = client.post(
+                "/network-zones", headers=headers,
+                json={
+                    "name": "DMA con tope CRA", "type": "dma", "data_source": "external",
+                    "nrw_threshold_pct": 30.0,  # ej. CRA/IANC Colombia, pero configurable -- nunca hardcodeado en el motor
+                },
+            ).json()["zone_id"]
+
+            balance_over_threshold = client.post(
+                f"/network-zones/{zone_with_threshold}/balance", headers=headers,
+                json={
+                    "period_start": "2026-08-01", "period_end": "2026-09-01", "method": "top_down",
+                    "system_input_volume": 10000, "billed_metered_consumption": 6000,  # NRW% = 40% > 30%
+                    "apparent_losses": 1000, "real_losses": 3000,
+                },
+            )
+            print(f"POST balance (con tope, lo supera): {balance_over_threshold.status_code}, {balance_over_threshold.json()}")
+            ok_over_threshold = (
+                balance_over_threshold.status_code == 201
+                and balance_over_threshold.json()["nrw_pct"] == 40.0
+                and balance_over_threshold.json()["exceeds_threshold"] is True
+                and balance_over_threshold.json()["balance_check_pct"] == 0.0
+            )
+
+            # Balance que consume menos del SIV declarado (inconsistencia real, no un balance perfecto).
+            zone_inconsistent = client.post(
+                "/network-zones", headers=headers,
+                json={"name": "DMA con inconsistencia", "type": "dma", "data_source": "external", "nrw_threshold_pct": 30.0},
+            ).json()["zone_id"]
+            balance_inconsistent = client.post(
+                f"/network-zones/{zone_inconsistent}/balance", headers=headers,
+                json={
+                    "period_start": "2026-08-01", "period_end": "2026-09-01", "method": "top_down",
+                    "system_input_volume": 10000, "billed_metered_consumption": 7000,  # componentes suman 7000 de 10000 -> 30% sin declarar
+                },
+            )
+            print(f"POST balance (inconsistente): {balance_inconsistent.status_code}, {balance_inconsistent.json()}")
+            # NRW% aqui es exactamente 30.0 (== tope, no lo supera en estricto ">") -> exceeds_threshold es False.
+            ok_inconsistent = (
+                balance_inconsistent.status_code == 201
+                and balance_inconsistent.json()["balance_check_pct"] == 30.0
+                and balance_inconsistent.json()["nrw_pct"] == 30.0
+                and balance_inconsistent.json()["exceeds_threshold"] is False
+            )
+
             zones = client.get("/network-zones", headers=headers).json()
             print(f"GET /network-zones: {[z['name'] for z in zones]}")
-            ok_zones_list = len(zones) == 2
+            ok_zones_list = len(zones) == 4
 
-            ok = ok_no_infra and ok_with_infra and ok_version and ok_latest_only and ok_missing_zone and ok_zones_list
-            print("SPRINT B1 NETWORK BALANCE E2E OK" if ok else "SPRINT B1 NETWORK BALANCE E2E FALLA")
+            # 6. (B1-2) Resumen de portafolio -- numeros reales derivados de las 4 zonas de arriba.
+            summary = client.get("/network-balances/summary", headers=headers).json()
+            print(f"GET /network-balances/summary: {summary}")
+            # zones_with_balance: sin-infra, con-infra (v2, unica version contada), con-tope, inconsistente = 4
+            # zones_exceeding_threshold: solo "con tope CRA" (True) -- "inconsistente" da exactamente 30% (False), "sin tope"/"con infra" no tienen tope -> None
+            ok_summary = (
+                summary["total_zones"] == 4
+                and summary["zones_with_balance"] == 4
+                and summary["zones_exceeding_threshold"] == 1
+                # unica zona con insumos de infraestructura, version 2 (real_losses=6900/30 dias): ILI ~= 0.99
+                and abs(summary["worst_ili"] - 0.99) < 0.01
+                and summary["avg_nrw_pct"] is not None
+            )
+
+            ok = (
+                ok_no_infra and ok_with_infra and ok_version and ok_latest_only and ok_missing_zone
+                and ok_over_threshold and ok_inconsistent and ok_zones_list and ok_summary
+            )
+            print("SPRINT B1/B1-2 NETWORK BALANCE E2E OK" if ok else "SPRINT B1/B1-2 NETWORK BALANCE E2E FALLA")
             return 0 if ok else 1
         finally:
             with conn.transaction():

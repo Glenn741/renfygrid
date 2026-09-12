@@ -60,6 +60,33 @@ def non_revenue_water(inputs: WaterBalanceInputs) -> float:
     return inputs.system_input_volume - inputs.billed_metered_consumption - inputs.billed_unbilled_consumption
 
 
+def non_revenue_water_pct(inputs: WaterBalanceInputs) -> float | None:
+    """NRW como % del System Input Volume -- la forma en la que de verdad
+    se reporta y se compara contra un tope regulatorio (IANC/CRA en
+    Colombia: <= 30%, Resolucion 315/2005) -- el volumen bruto solo no
+    dice nada sin el tamano del sistema. `None` si `system_input_volume`
+    es 0 o negativo (division indefinida, no un 0% falso)."""
+    if inputs.system_input_volume <= 0:
+        return None
+    return (non_revenue_water(inputs) / inputs.system_input_volume) * 100
+
+
+def balance_check_pct(inputs: WaterBalanceInputs) -> float | None:
+    """Cuanto se aleja la suma de los 5 componentes del System Input Volume
+    declarado, como % del SIV -- un balance que no cierra (por encima de
+    unos pocos puntos porcentuales, normal por redondeo/estimacion) senala
+    datos de entrada incompletos o inconsistentes, no un error del motor:
+    los 5 componentes se toman tal cual se los pasan, nunca se ajustan
+    para que "cuadren" solos. `None` si SIV es 0 o negativo."""
+    if inputs.system_input_volume <= 0:
+        return None
+    declared_total = (
+        inputs.billed_metered_consumption + inputs.billed_unbilled_consumption
+        + inputs.unbilled_authorized_consumption + inputs.apparent_losses + inputs.real_losses
+    )
+    return ((inputs.system_input_volume - declared_total) / inputs.system_input_volume) * 100
+
+
 def water_losses(inputs: WaterBalanceInputs) -> float:
     """Water Losses = Apparent + Real -- la suma de los dos componentes que
     el llamador ya trae medidos/estimados por separado (este modulo no los
