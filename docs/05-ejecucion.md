@@ -912,8 +912,22 @@ sprint recién cerrado. Análisis honesto encontró 4 huecos reales, no cosméti
 | 2026-09-11/12 | Regresión completa: los 15 `verify_*_end_to_end.py` de `portal-api` (incluye VEE, HES, Consumo, Control, Balance de Red) en verde tras el cambio | `exit=0` en los 15 scripts |
 | 2026-09-11/12 | Desplegado a producción: respaldo real primero (`pg_dump` vía `sudo -u postgres`, sin RLS — `pg_dump` como rol de aplicación falla contra la política RLS de `app_user`, hallazgo nuevo de esta ronda), migración 0014 aplicada, backend (Nuitka: `network_balance_engine`/`balance_service`) + `main.py` a `essmarplapp02`, `systemctl restart renfygrid-portal-api` → activo. Verificado en vivo: `/api/network-balances/summary` y `/api/network-zones` responden 401 (gateado por auth, no 404/500) | `curl https://renfygrid.rensoftlabs.com/api/network-balances/summary` |
 
-**Pendiente real, identificado en esta misma ronda pero no iniciado**: no existe ningún panel de
-frontend para Balance de Red — Track B sigue siendo solo API, inconsistente con el resto del
-producto (todos los demás módulos ya tienen dashboard completo). Sigue pendiente de
-confirmación con el usuario antes de construirlo. B3-B7 (modelado hidráulico WNTR, Gemelo
-Digital, Mantenimiento + BayForce) sin iniciar.
+**Pendiente real, identificado en esta misma ronda**: no existía ningún panel de frontend para
+Balance de Red — Track B era solo API, inconsistente con el resto del producto. El usuario
+confirmó construirlo ("Si, adelante") — ver siguiente entrada.
+
+### Track B, Sprint B1-2: panel de frontend "Balance de Red" (2026-09-12)
+
+**Motivo:** Track B era el único módulo del producto sin pantalla — todos los demás (VEE, HES,
+Consumo, Control) ya tenían dashboard completo con KPIs, tablas y acciones. El usuario confirmó
+cerrar esa brecha.
+
+| Fecha | Avance | Evidencia |
+|---|---|---|
+| 2026-09-12 | **`NetworkBalance.tsx` (nuevo)**: 4 KPIs de resumen (NRW% promedio, zonas sobre su tope, peor ILI, zonas con balance/total — todos del `balance_summary()` real, ninguno inventado en el navegador); formulario de registro de zona (`RegisterZoneForm`, campos de infraestructura opcionales + tope de NRW configurable); tabla de zonas con badge "calcula ILI"/"sin insumos ILI" según si la zona tiene Lm/Nc/P; formulario de ingesta de balance por zona (`SubmitBalanceForm`, los 5 componentes de la matriz IWA); tabla de balances con `nrw_pct`/`ili` coloreados por banda (verde/ámbar/rojo, banda IWA estándar para ILI: 1-4 bueno, 4-8 aceptable, >8 pobre) y badge "excede tope" | `services/portal-web/src/pages/NetworkBalance.tsx` |
+| 2026-09-12 | `api.ts`: `NetworkZone`/`NetworkBalance`/`NetworkBalanceSummary` + `getNetworkZones`/`createNetworkZone`/`getNetworkBalances`/`submitNetworkBalance`/`getNetworkBalanceSummary` — mismo patrón de cliente que el resto del portal | `services/portal-web/src/api.ts` |
+| 2026-09-12 | Ruta `/network-balance` + ítem de navegación "Balance de Red" en el panel lateral (`AppShell.tsx`), entre Control y Configuración | `services/portal-web/src/App.tsx`, `services/portal-web/src/components/AppShell.tsx` |
+| 2026-09-12 | `tsc -b && vite build` limpio, bundle sin rutas mangled, contiene "network-balance"/"Balance de Red". Desplegado a `essmarplpxy03` (`/var/www/renfygrid`), sin cambios de backend en este sprint. Verificado en vivo: HTML servido referencia el bundle nuevo, el bundle en producción contiene el contenido esperado | `curl https://renfygrid.rensoftlabs.com/` |
+
+**Estado de Track B tras esta ronda:** B1 🟢 completo (backend + frontend). Pendiente real:
+B3-B7 (modelado hidráulico WNTR, Gemelo Digital, Mantenimiento + BayForce) sin iniciar.

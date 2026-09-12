@@ -549,4 +549,93 @@ export function getControlOrderDetail(orderId: string): Promise<ControlOrderDeta
   return request(`/control-orders/${orderId}`);
 }
 
+// --- Track B: Balance de Red (Sprint B1/B1-2) -- matriz de Balance Hidrico
+// IWA completa (docs/07-track-b-alcance-funcional.md SS1); NRW/ILI se
+// calculan en el backend al ingestar, nunca en el navegador.
+
+export interface NetworkZone {
+  zone_id: string;
+  name: string;
+  type: string;
+  data_source: string;
+  parent_zone_id: string | null;
+  network_length_km: number | null;
+  num_connections: number | null;
+  avg_pressure_mca: number | null;
+  avg_service_connection_length_km: number | null;
+  nrw_threshold_pct: number | null;
+}
+
+export function getNetworkZones(): Promise<NetworkZone[]> {
+  return request("/network-zones");
+}
+
+export function createNetworkZone(body: {
+  name: string;
+  type: string;
+  data_source?: string;
+  parent_zone_id?: string | null;
+  network_length_km?: number | null;
+  num_connections?: number | null;
+  avg_pressure_mca?: number | null;
+  avg_service_connection_length_km?: number | null;
+  nrw_threshold_pct?: number | null;
+}): Promise<{ zone_id: string }> {
+  return request("/network-zones", { method: "POST", body: JSON.stringify(body) });
+}
+
+export interface NetworkBalance {
+  balance_id: string;
+  zone_id: string;
+  zone_name: string;
+  period: string;
+  method: string;
+  system_input_volume: number;
+  billed_metered_consumption: number;
+  billed_unbilled_consumption: number;
+  unbilled_authorized_consumption: number;
+  apparent_losses: number;
+  real_losses: number;
+  nrw: number | null;
+  nrw_pct: number | null;
+  ili: number | null;
+  balance_check_pct: number | null;
+  exceeds_threshold: boolean | null;
+  version: number;
+  calculated_at: string;
+}
+
+export function getNetworkBalances(zoneId?: string): Promise<NetworkBalance[]> {
+  return request(`/network-balances${zoneId ? `?zone_id=${zoneId}` : ""}`);
+}
+
+export function submitNetworkBalance(
+  zoneId: string,
+  body: {
+    period_start: string;
+    period_end: string;
+    method: string;
+    system_input_volume: number;
+    billed_metered_consumption?: number;
+    billed_unbilled_consumption?: number;
+    unbilled_authorized_consumption?: number;
+    apparent_losses?: number;
+    real_losses?: number;
+  },
+): Promise<NetworkBalance> {
+  return request(`/network-zones/${zoneId}/balance`, { method: "POST", body: JSON.stringify(body) });
+}
+
+export interface NetworkBalanceSummary {
+  total_zones: number;
+  zones_with_balance: number;
+  avg_nrw_pct: number | null;
+  worst_ili: number | null;
+  zones_exceeding_threshold: number;
+}
+
+export function getNetworkBalanceSummary(): Promise<NetworkBalanceSummary> {
+  return request("/network-balances/summary");
+}
+
 export { ApiError };
