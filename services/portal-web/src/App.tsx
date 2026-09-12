@@ -8,6 +8,7 @@ import { ConsumptionPage } from "./pages/Consumption";
 import { ControlPage } from "./pages/Control";
 import { NetworkBalancePage } from "./pages/NetworkBalance";
 import { NetworkModelPage } from "./pages/NetworkModel";
+import { DigitalTwinPage } from "./pages/DigitalTwin";
 import { ObservabilityPage } from "./pages/Observability";
 import { IntegrationsPage } from "./pages/Integrations";
 import { ConfigurationPage } from "./pages/Configuration";
@@ -31,6 +32,7 @@ function AppRoutes() {
       <Route path="/control/:orderId" element={<RequireAuth><ControlOrderDetailPage /></RequireAuth>} />
       <Route path="/network-balance" element={<RequireAuth><NetworkBalancePage /></RequireAuth>} />
       <Route path="/network-model" element={<RequireAuth><NetworkModelPage /></RequireAuth>} />
+      <Route path="/digital-twin" element={<RequireAuth><DigitalTwinPage /></RequireAuth>} />
       <Route path="/observability" element={<RequireAuth><ObservabilityPage /></RequireAuth>} />
       <Route path="/integrations" element={<RequireAuth><IntegrationsPage /></RequireAuth>} />
       <Route path="/configuration" element={<RequireAuth><ConfigurationPage /></RequireAuth>} />

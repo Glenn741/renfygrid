@@ -711,4 +711,65 @@ export function getNetworkZonesGeojson(): Promise<GeoJSON.FeatureCollection> {
   return request("/network-zones/geojson");
 }
 
+// --- Track B, Sprint B5: Gemelo Digital (inventario de activos + conectividad) ---
+
+export interface NetworkAssetConnection {
+  source_asset_id: string;
+  target_asset_id: string;
+  connection_type: string;
+}
+
+export interface NetworkAsset {
+  asset_id: string;
+  zone_id: string | null;
+  type: string;
+  attributes: Record<string, unknown>;
+  geometry: { type: string; coordinates: number[] } | null;
+  status: string;
+  version: number;
+  valid_from: string;
+}
+
+export interface NetworkAssetDetail extends NetworkAsset {
+  connectivity: NetworkAssetConnection[];
+}
+
+export function getNetworkAssets(params?: { zone_id?: string; asset_type?: string }): Promise<NetworkAsset[]> {
+  const q = new URLSearchParams();
+  if (params?.zone_id) q.set("zone_id", params.zone_id);
+  if (params?.asset_type) q.set("asset_type", params.asset_type);
+  const qs = q.toString();
+  return request(`/network-assets${qs ? `?${qs}` : ""}`);
+}
+
+export function getNetworkAssetDetail(assetId: string): Promise<NetworkAssetDetail> {
+  return request(`/network-assets/${assetId}`);
+}
+
+export function createNetworkAsset(body: {
+  type: string;
+  zone_id?: string | null;
+  attributes?: Record<string, unknown>;
+  geometry?: { type: string; coordinates: number[] } | null;
+  status?: string;
+}): Promise<{ asset_id: string }> {
+  return request("/network-assets", { method: "POST", body: JSON.stringify(body) });
+}
+
+export function updateNetworkAssetStatus(assetId: string, status: string): Promise<{ asset_id: string; status: string; version: number }> {
+  return request(`/network-assets/${assetId}/status`, { method: "PATCH", body: JSON.stringify({ status }) });
+}
+
+export function connectNetworkAssets(body: {
+  source_asset_id: string;
+  target_asset_id: string;
+  connection_type: string;
+}): Promise<NetworkAssetConnection> {
+  return request("/asset-connectivity", { method: "POST", body: JSON.stringify(body) });
+}
+
+export function getNetworkAssetsGeojson(): Promise<GeoJSON.FeatureCollection> {
+  return request("/network-assets/geojson");
+}
+
 export { ApiError };

@@ -89,7 +89,7 @@ al sprint donde se construye y a su estado real.
 | F39 | Carga y versionado de modelo hidráulico (`.inp`) | B3 | 🟢 |
 | F40 | Simulación vía WNTR | B3 | 🟢 |
 | F41 | Calibración de modelo con datos de `network_balance` | B4 | 🟢 |
-| F42 | `network_asset`/`asset_connectivity` (Gemelo Digital) + ingesta externa desde SIG | B5 | ⚪ |
+| F42 | `network_asset`/`asset_connectivity` (Gemelo Digital) + ingesta externa desde SIG | B5 | 🟢 |
 | F43 | Derivar `network_model` desde el Gemelo Digital (export EPANET) | B6 | ⚪ |
 | F44 | Generación de `maintenance_order` desde anomalías (condición/simulación/balance) | B7 | ⚪ |
 | F45 | Integración con BayForce (envío de orden + webhook de cierre) | B7 | ⚪ |
@@ -1055,3 +1055,32 @@ calibrados — ese es el resultado final.
 **Estado de Track B tras esta ronda:** B1, B3 y B4 🟢 completos (backend + frontend +
 georreferenciación + calibración real). Pendiente: **B5-B7** (Gemelo Digital, generación de
 modelo desde activos, Mantenimiento + BayForce) sin iniciar.
+
+### Track B, Sprint B5 — Gemelo Digital (inventario de activos + conectividad) (2026-09-12)
+
+**Motivo:** el usuario dijo "sigue" tras cerrar B4 — siguiente paso natural del plan de Track B.
+Esquema (`network_asset`/`asset_connectivity`) ya existía desde `0001_init.sql` (Sprint 0,
+mismo hallazgo que B1/B3) — **sin migración** en este sprint.
+
+**Hallazgo real de seguridad, documentado ANTES de escribir código**: `asset_connectivity` no
+tiene `tenant_id` propio ni política RLS — el comentario del propio `0001_init.sql` dice
+"inherits isolation from network_asset via join". Esto significa que la única protección real
+contra vincular activos de tenants distintos es una verificación EXPLÍCITA en la capa de
+servicio (nunca confiar en que la base de datos lo bloquee sola). Implementado así y **probado
+en el E2E con un tenant B real intentando conectar contra un activo de un tenant A** — confirma
+`404`, no una fuga silenciosa.
+
+| Fecha | Avance | Evidencia |
+|---|---|---|
+| 2026-09-12 | **`asset_service.py` (nuevo)**: `register_asset()` (valida `type` contra los 6 tipos reales del catastro — `pipe`/`valve`/`tank`/`pump`/`meter`/`sensor`, `status` contra los 3 estados reales; nunca acepta un valor libre); `list_assets()`; `get_asset_detail()` (activo + su conectividad real); `update_asset_status()` (sube `version`, mismo criterio de historial ligero que el resto del proyecto); `connect_assets()` (verifica EXPLÍCITAMENTE que ambos activos pertenecen al tenant vía `network_asset` — que sí tiene RLS — antes de escribir en `asset_connectivity`); `asset_connectivity()`; `assets_geojson()` (módulo de georreferenciación: solo activos CON geometría real, más sus conexiones como `LineString` cuando ambos extremos tienen geometría) | `services/digital-twin/asset_service.py` |
+| 2026-09-12 | Endpoints nuevos: `POST/GET /network-assets`, `GET /network-assets/{id}` (con conectividad), `PATCH /network-assets/{id}/status`, `POST /asset-connectivity`, `GET /network-assets/geojson` | `services/portal-api/main.py` |
+| 2026-09-12 | E2E real (`verify_digital_twin_end_to_end.py`): registrar un activo real; tipo inválido → `422`; listar y ver detalle con conectividad; cambiar estado sube versión; conectar dos activos reales se refleja en ambos; conectar contra un activo inexistente → `404`; **conectar contra un activo de OTRO tenant → `404`** (prueba de seguridad real, no cosmética); GeoJSON con 2 activos georreferenciados conectados → 2 puntos + 1 línea, activos sin geometría no aparecen | `verify_digital_twin_end_to_end.py` → `SPRINT B5 DIGITAL TWIN E2E OK` |
+| 2026-09-12 | Regresión completa: los 17 `verify_*_end_to_end.py` de `portal-api` (con el nuevo de B5) en verde | `exit=0` en los 17 scripts |
+| 2026-09-12 | Frontend: **`DigitalTwin.tsx`** (nuevo) — KPIs (total, operativos, fuera de servicio, por tipo), mapa de activos (reusa `NetworkMap.tsx`, coloreado por estado), formulario de registro (tipo, zona opcional, notas, lat/lon opcional), formulario de conexión entre activos, tabla con cambio de estado inline y conectividad expandible por fila | `services/portal-web/src/pages/DigitalTwin.tsx` |
+| 2026-09-12 | Ruta `/digital-twin` + ítem de navegación "Gemelo Digital"; `api.ts` extendido con `NetworkAsset`/`NetworkAssetDetail` + funciones de cliente | `services/portal-web/src/App.tsx`, `AppShell.tsx`, `api.ts` |
+| 2026-09-12 | `tsc -b && vite build` limpio, bundle contiene "Gemelo Digital"/"network-assets". Desplegado: backend (Nuitka, servicio `digital-twin` nuevo) + `main.py` a `essmarplapp02`, `systemctl restart renfygrid-portal-api` → activo; frontend a `essmarplpxy03`. Verificado en vivo: bundle coincide exacto, `/api/network-assets` responde `401` (gateado, no 404/500) | `curl https://renfygrid.rensoftlabs.com/...` |
+| 2026-09-12 | `seed_demo_assets.py` (nuevo, mismo patrón que `seed_demo_networks.py`): 3 activos reales (tanque/tubería/válvula) conectados entre sí, georreferenciados sobre las MISMAS coordenadas del modelo hidráulico de demostración de Chapinero (Sprint B3) y vinculados a la MISMA zona demo de Balance de Red (Sprint B1) — coherencia visual entre los 3 módulos de demostración. Sembrado en producción | `services/digital-twin/seed_demo_assets.py`, corrida real contra Postgres de producción |
+
+**Estado de Track B tras esta ronda:** B1, B3, B4 y B5 🟢 completos. Pendiente: **B6-B7**
+(generación de modelo `.inp` desde el Gemelo Digital, Mantenimiento + integración BayForce) sin
+iniciar.

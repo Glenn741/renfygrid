@@ -32,6 +32,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "hes-adapter-dlms")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "vee-engine"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "network-balance"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "network-model"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "digital-twin"))
 
 import psycopg  # noqa: E402
 from fastapi import Depends, FastAPI, HTTPException  # noqa: E402
@@ -98,6 +99,17 @@ from model_service import (  # noqa: E402
     run_and_store_simulation,
 )
 from network_model_engine import CalibrationInputError, InvalidModelError, SimulationFailedError  # noqa: E402
+from asset_service import (  # noqa: E402
+    AssetNotFoundError,
+    InvalidAssetStatusError,
+    InvalidAssetTypeError,
+    assets_geojson,
+    connect_assets,
+    get_asset_detail,
+    list_assets,
+    register_asset,
+    update_asset_status,
+)
 from renmeter_common.auth import create_token  # noqa: E402
 from renmeter_common.db import tenant_scope  # noqa: E402
 from renmeter_common.user_service import InvalidCredentialsError, authenticate  # noqa: E402
@@ -764,3 +776,87 @@ def network_model_geojson_endpoint(model_id: str, tenant_id: str = Depends(get_t
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except InvalidModelError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# Track B, Sprint B5 -- Gemelo Digital (inventario de activos + conectividad)
+# ══════════════════════════════════════════════════════════════════════════
+
+
+class NetworkAssetRequest(BaseModel):
+    type: str
+    zone_id: str | None = None
+    attributes: dict = {}
+    geometry: dict | None = None
+    status: str = "operational"
+
+
+@app.post("/network-assets", status_code=201)
+def create_network_asset_endpoint(body: NetworkAssetRequest, tenant_id: str = Depends(get_tenant_id)) -> dict:
+    with db_conn() as conn:
+        try:
+            return register_asset(conn, tenant_id, body.type, body.zone_id, body.attributes, body.geometry, body.status)
+        except (InvalidAssetTypeError, InvalidAssetStatusError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/network-assets/geojson")
+def network_assets_geojson_endpoint(tenant_id: str = Depends(get_tenant_id)) -> dict:
+    """GeoJSON real de los activos -- Track B, modulo de georreferenciacion
+    (`docs/07-track-b-alcance-funcional.md` SS7)."""
+    with db_conn() as conn:
+        return assets_geojson(conn, tenant_id)
+
+
+@app.get("/network-assets")
+def list_network_assets_endpoint(
+    tenant_id: str = Depends(get_tenant_id), zone_id: str | None = None, asset_type: str | None = None
+) -> list[dict]:
+    with db_conn() as conn:
+        return list_assets(conn, tenant_id, zone_id, asset_type)
+
+
+@app.get("/network-assets/{asset_id}")
+def get_network_asset_endpoint(asset_id: str, tenant_id: str = Depends(get_tenant_id)) -> dict:
+    """El activo + su conectividad real (Sprint B5: "Un activo cargado via
+    API queda visible con su conectividad")."""
+    with db_conn() as conn:
+        try:
+            return get_asset_detail(conn, tenant_id, asset_id)
+        except AssetNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+class AssetStatusRequest(BaseModel):
+    status: str
+
+
+@app.patch("/network-assets/{asset_id}/status")
+def update_network_asset_status_endpoint(
+    asset_id: str, body: AssetStatusRequest, tenant_id: str = Depends(get_tenant_id)
+) -> dict:
+    with db_conn() as conn:
+        try:
+            return update_asset_status(conn, tenant_id, asset_id, body.status)
+        except AssetNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except InvalidAssetStatusError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+class AssetConnectivityRequest(BaseModel):
+    source_asset_id: str
+    target_asset_id: str
+    connection_type: str
+
+
+@app.post("/asset-connectivity", status_code=201)
+def create_asset_connectivity_endpoint(body: AssetConnectivityRequest, tenant_id: str = Depends(get_tenant_id)) -> dict:
+    """Conecta dos activos reales -- `404` si alguno no existe PARA ESTE
+    TENANT (verificacion explicita vía `network_asset`, `asset_connectivity`
+    no tiene RLS propio -- ver `asset_service.py`)."""
+    with db_conn() as conn:
+        try:
+            return connect_assets(conn, tenant_id, body.source_asset_id, body.target_asset_id, body.connection_type)
+        except AssetNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
