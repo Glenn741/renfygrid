@@ -1472,3 +1472,43 @@ timer real (hoy es un botón manual en el Portal, mismo patrón que ya se resolv
 `partition_maintenance.py` — se puede replicar el mismo timer systemd cuando haya planes PM
 reales que lo necesiten). El motor de despacho/ruteo y la integración BayForce en vivo siguen
 explícitamente fuera de alcance, tal como se decidió.
+
+### Datos de demostración: segunda zona en Cali + CMMS con historial real (2026-09-14)
+
+**Motivo:** el usuario pidió datos de muestra reales para que la funcionalidad se viera
+completa, simulados sobre Cali y/o Bogotá — el tenant demo tenía Mantenimiento completamente
+vacío (0 órdenes) tras cerrar la Fase 1 del CMMS, y toda la georreferenciación existente era
+solo de Bogotá (Chapinero) pese a que ya había un modelo hidráulico demo de Cali sin zona ni
+activos propios.
+
+**`services/maintenance/seed_demo_cali_and_maintenance.py`** (nuevo, mismo patrón que
+`seed_demo_assets.py`/`seed_demo_networks.py` — kept-as-source, todo por argumento DSN/tenant,
+nunca fijo en código, deja los datos persistentes con etiqueta "ilustrativo"):
+
+- **Segunda zona real en Cali** ("DMA Tres Cruces - San Fernando, ilustrativo") con las mismas
+  coordenadas/`head_m` del modelo EPANET demo de Cali (para que "Generar modelo" también
+  funcione ahí) — tanque+tubería+válvula conectados, y un balance real con NRW (17.1%) menor al
+  de Bogotá (25%), para que el mapa muestre variedad real de colores, no un solo punto.
+- **Un 4to activo real** (bomba de refuerzo en Bogotá, `out_of_service` a propósito) como
+  disparador real de `asset_condition`.
+- **Catálogos de Mantenimiento reales**: SLA por prioridad (72h/24h/8h/2h), 6 códigos de falla,
+  3 cuadrillas.
+- **6 órdenes reales en distintos estados** (usando los servicios reales para las validaciones,
+  con timestamps ajustados después para dar antigüedad realista): 2 completadas con MTTR real
+  (5.5h y 2h), 1 vencida de SLA real (emergencia sin atender hace 3 días), 1 en progreso, 1
+  recién generada (para que el usuario pruebe el flujo completo en vivo desde cero).
+- **2 planes de mantenimiento preventivo**: uno ya con una corrida completada (para que %
+  cumplimiento PM tenga algo real que mostrar), otro TODAVÍA vencido a propósito, para que el
+  usuario pueda darle clic a "Generar órdenes vencidas" en el Portal y ver una orden real
+  aparecer en vivo.
+
+**Corrido primero contra Postgres local** (validación completa, cero errores en la segunda
+corrida — dos bugs reales encontrados y corregidos: `submit_balance` exige `date`, no texto; un
+`UPDATE` con un placeholder de más), **luego contra producción real** (subido temporalmente a
+`/opt/renfygrid/maintenance/` para que los imports relativos resolvieran contra los `.so` ya
+desplegados, borrado inmediatamente después — política de portafolio, nunca fuente en el
+servidor). **Verificado con un smoke test real contra producción** (login real del tenant demo):
+`GET /maintenance/kpis` → 6 órdenes, MTTR 11.2h, backlog 3, 1 vencida, cumplimiento PM 100%;
+`GET /dashboard/overview` → refleja el activo fuera de servicio y las 2 órdenes pendientes;
+`GET /network-zones/geojson` → 2 zonas reales (Bogotá + Cali) en el mapa;
+`GET /network-balances/summary` → NRW promedio 21%, ninguna zona excede su tope.
