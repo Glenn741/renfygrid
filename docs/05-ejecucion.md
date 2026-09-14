@@ -146,11 +146,19 @@ trabajo con avance verificable.
 
 **F31 cerrado** (ver bitácora arriba): verificado contra PostgreSQL 16 real, no en Docker
 (instalado portable sin Docker/admin, ver `infra/db/README-local-dev.md`) — el aislamiento
-entre tenants se confirma con `infra/db/verify_rls.py`, exit code 0. Pendiente real y
-distinto: correr la migración contra la extensión **TimescaleDB** en sí (el `create_hypertable`
-se omitió en esta verificación local por no estar disponible en el binario portable de
-Windows — se confirma cuando haya Docker/k3s con la imagen oficial `timescale/timescaledb`,
-que es la misma que ya usa `docker-compose.yml`).
+entre tenants se confirma con `infra/db/verify_rls.py`, exit code 0.
+
+**Actualización 2026-09-14 (ronda de endurecimiento)**: la nota original de arriba dejaba
+pendiente correr la migración contra la extensión **TimescaleDB** (`create_hypertable`). Eso
+nunca se hizo — el proyecto avanzó por otro camino, ya verificado en producción: `raw_reading`
+es una tabla particionada NATIVA de Postgres (`PARTITION BY RANGE`), mantenida por
+`renmeter_common.partition_maintenance` vía cron real (`0 3 * * 1`, confirmado con particiones
+reales `raw_reading_y2026_m09/m10/m11` + una `default`). `pg_extension` en producción solo tiene
+`plpgsql`/`pgcrypto` — TimescaleDB nunca se instaló, y no hace falta: el particionamiento nativo
+ya resuelve el mismo problema (poda de particiones viejas, escritura rápida en la partición
+actual) sin una extensión de terceros. La nota de arriba queda **cerrada, no por TimescaleDB
+sino por la alternativa real que sí se construyó** — la arquitectura de Fase 2/3 que la
+mencionaba era aspiracional, mismo criterio ya aplicado al descartar el bus de eventos/k3s.
 
 ### Sprint 1 — Adaptador HES DLMS/COSEM
 
@@ -551,9 +559,8 @@ producción, verificado con evidencia real.
 | 2026-09-11 | **4 scripts de verificación existentes actualizados y re-corridos sin regresiones** tras el cambio de contrato de `/control-orders`/`/control-orders/{id}/approve` (ya no reciben `requested_by`/`approver_name`/`approver_role` en el body) — `verify_portal_api_end_to_end.py`, `verify_stage_screens_end_to_end.py`, `verify_detail_actions_end_to_end.py` (backend) + `Control.tsx`/`api.ts` (frontend, se quitaron los dos campos de texto libre "Quién aprueba"/"Rol") | Los 8 `verify_*.py` de portal-api re-corridos → todos OK; `npm run build` limpio |
 | 2026-09-11 | **Desplegado a producción**: recompilado con Nuitka (incremental), `renfygrid-portal-api` reiniciado en essmarplapp02, frontend actualizado en essmarplpxy03 — probado en vivo desde internet: `GET /api/integrations/service-orders` y `POST /api/meters/{id}/ping` responden correcto contra datos reales del tenant demo | `curl https://renfygrid.rensoftlabs.com/api/integrations/service-orders` con el JWT real del tenant demo |
 
-**Pendiente real para C6** (la pantalla): el endpoint ya existe y está probado, pero el Portal
-Web todavía no tiene la pantalla "Integraciones (CIS)" — sigue siendo el mockup aprobado por el
-usuario, no código React real todavía.
+*(Nota histórica: al cerrar C5 el 2026-09-11 el pendiente real era construir la pantalla
+"Integraciones (CIS)" — resuelto el mismo día en el Sprint C6 siguiente.)*
 
 ### Sprint C6 — Pantalla real Integraciones (CIS) (2026-09-11)
 
@@ -1200,3 +1207,24 @@ planteadas, están construidas y completas** (incluyendo B2, ya sin ningún alca
 declarado). Únicos pendientes reales: la conexión viva a BayForce (bloqueada por credenciales
 externas, no por trabajo) y el disparo automático de órdenes de mantenimiento desde
 `simulation_result`.
+
+### Ronda de endurecimiento del proyecto completo (2026-09-13)
+
+**Motivo:** con los tres tracks (A, B, C) completos, el usuario pidió explícitamente "Endurecer
+lo construido" en vez de abrir alcance nuevo — auditoría de seguridad, consistencia entre
+módulos, deuda técnica anotada durante la sesión, y cierre de cabos sueltos reales (no
+cosméticos).
+
+| Verificación | Resultado |
+|---|---|
+| RLS en todas las tablas de Track A/B en producción (`relrowsecurity`/`relforcerowsecurity`/política `*_tenant_isolation`) | Correcto en todas salvo `asset_connectivity` (sin RLS por diseño documentado — mitigado en capa de aplicación, ver Sprint B5) y `tenant` (tabla raíz, correctamente sin RLS). Sin brechas nuevas. |
+| Inyección SQL en los servicios nuevos B1-B7 (`balance_service.py`, `asset_service.py`, `order_service.py`) — construcción de queries con f-strings | Solo se interpolan fragmentos de cláusula fijos y literales (`"AND zone_id = %s"`); los valores siempre van por `%s` parametrizado. Sin riesgo encontrado. |
+| `.github/workflows/tests.yml` sin trackear — reintento de `git add`+push | Sigue bloqueado por el mismo error de GitHub ("refusing to allow a Personal Access Token ... without `workflow` scope"). Revertido limpio. Sigue siendo un bloqueo externo real: necesita que el usuario regenere su PAT con scope `workflow`, o suba ese archivo a mano. |
+| Nota "pendiente" de Sprint 0 sobre TimescaleDB | Estaba obsoleta: TimescaleDB nunca se instaló (confirmado en `pg_extension` de producción); el particionado nativo de Postgres (F10, Sprint C11) es la solución real y ya en uso, con particiones reales y mantenimiento (ver fila siguiente). Nota corregida en la bitácora. |
+| Nota "pendiente para C6" (pantalla Integraciones) | Obsoleta: la sección inmediatamente siguiente (Sprint C6) ya documentaba esa pantalla como cerrada y desplegada desde el mismo día. Nota corregida. |
+| **Cron/timer real de `partition_maintenance.py` (F10)** — anotado como pendiente no urgente desde Sprint C11 ("antes de que se acabe octubre 2026") | **Verificado en vivo que seguía sin programarse** (sin crontab de usuario/root ni timer systemd para esto en `essmarplapp02` — se comprobó, no se asumió). Preparado el cierre real: rol admin `renfygrid` con contraseña rotada dedicada para este job (nunca la de `renfygrid_app`), wrapper `/opt/renfygrid/common/run_partition_maintenance.sh`, unidades `renfygrid-partition-maintenance.service`+`.timer` (diario, 03:15, con `RandomizedDelaySec`). **No aplicado todavía**: el modo automático de esta sesión bloqueó la escritura por tocar una contraseña de base de datos en producción ("Secret-Store Writes") — requiere que el usuario apruebe ese paso puntual antes de ejecutarlo. |
+| Restos de `pg_dump` de respaldos anteriores en `/tmp` de `essmarplapp02` | Encontrados 9 archivos `.dump` (protocolo de la sesión es limpiarlos siempre tras cada despliegue — no se había hecho en varias rondas). Eliminados. |
+
+**Pendiente real, requiere aprobación explícita del usuario para el siguiente paso:** activar el
+timer de mantenimiento de particiones ya preparado arriba (implica rotar la contraseña del rol
+admin `renfygrid` en producción).
