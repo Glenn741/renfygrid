@@ -92,7 +92,8 @@ al sprint donde se construye y a su estado real.
 | F42 | `network_asset`/`asset_connectivity` (Gemelo Digital) + ingesta externa desde SIG | B5 | 🟢 |
 | F43 | Derivar `network_model` desde el Gemelo Digital (export EPANET) | B6 | 🟢 |
 | F44 | Generación de `maintenance_order` desde anomalías (condición/simulación/balance) | B7 | 🟢 (condición/balance validadas contra datos reales; simulación queda para un sprint futuro, ver bitácora) |
-| F45 | Integración con BayForce (envío de orden + webhook de cierre) | B7 | 🟡 (contrato real construido y probado de punta a punta contra un sandbox local real; conexión al BayForce vivo pendiente de su URL/credenciales reales) |
+| F45 | Integración con BayForce (envío de orden + webhook de cierre) | B7 | 🟡 (contrato real construido y probado de punta a punta contra un sandbox local real; **corregido 2026-09-14**: no es solo falta de credenciales — BayForce no tiene endpoint de intake externo genérico, ver `04-plan-sprints.md` §9. Se mantiene como notificación de salida opcional, nunca columna vertebral) |
+| F46b | CMMS real de dominio para Mantenimiento (prioridad/SLA, códigos de falla, PM programado, ciclo de vida completo, cierre, KPIs, asignación simple) | — (nuevo, 2026-09-14) | 🟪 no iniciado — alcance detallado en `04-plan-sprints.md` §9, decisión de arquitectura con el usuario ya tomada |
 
 ### Portal Web — Track C (agregado 2026-09-10)
 
@@ -1368,3 +1369,46 @@ recompilado (incremental) y desplegado a `essmarplapp02`, **smoke test real cont
 producción** con el tenant demo (login real, JWT real) confirmando los 3 conteos nuevos en el
 payload real. Frontend: build desplegado a `essmarplpxy03`, confirmado en vivo desde internet
 (nuevas etiquetas de sección y del lanzador de módulos presentes en el bundle servido).
+
+### Análisis real de alcance: Mantenimiento no es un CMMS todavía (2026-09-14)
+
+**Motivo:** el usuario, viendo el panel de Mantenimiento en vivo, señaló directamente que "es un
+dibujo y nada más" — sin parametrización de órdenes, planeación ni despacho — y pidió el mismo
+rigor de investigación de industria ya aplicado en otros módulos (VEE, Consumo, HES) antes de
+implementar nada.
+
+**Investigación real, no cosmética**: se leyó completo `core/renflow/bayforce/main.py` (9400
+líneas, otro producto del portafolio) para verificar el estado real de la integración —
+resultado: **BayForce no tiene ningún endpoint de creación de orden externa genérico**. Todo lo
+que entra a `field_orders` viene del workflow de cobro de RenFlow (`subscriber_id`/
+`execution_id`, numeración `RF-...`), confirmado también por `BAYFORCE_USER_GUIDE.md`
+("Workflow de cobro → genera FIELD_ORDER" es la única puerta de entrada). El contrato que
+`send_to_bayforce()` asume no tiene nada real del otro lado, con o sin credenciales — la
+descripción anterior de F45 como "bloqueado solo por credenciales" era inexacta, corregida en
+la matriz funcional arriba.
+
+Grounding de industria (Cityworks — referencia dominante en CMMS de acueducto/alcantarillado,
+GIS-céntrico — y métricas estándar MTTR/MTBF/% cumplimiento PM): confirmado que Mantenimiento
+carece de TODA la sustancia real de un CMMS — prioridad/SLA, códigos de falla, mantenimiento
+preventivo programado (`preventive` era solo una etiqueta), planeación/asignación, cierre con
+horas/materiales, KPIs.
+
+**Discusión de arquitectura real con el usuario** (pregunta directa: ¿construir esto en
+RenfyGrid viola una filosofía de microservicios de módulos encapsulados?) — respuesta: no, si se
+separan correctamente dos capas. La parametrización del dominio (activos de red, zonas, NRW,
+EPANET) es conocimiento propio real de RenfyGrid que BayForce nunca tendrá — construirla ahí no
+es "clonar" nada. El motor de despacho/ruteo (cuadrillas, turnos, OR-Tools, ejecución móvil) sí
+es tecnología genérica que BayForce ya resuelve bien — reconstruirla en RenfyGrid sí sería
+duplicar ingeniería real innecesariamente.
+
+**Decisión final** (detalle completo en `04-plan-sprints.md` §9 y
+`contextos/renflow/docs/BAYFORCE_RENFYGRID_INTEGRATION_NOTE.md`, repo de contextos local):
+RenfyGrid construye su propio CMMS de dominio (prioridad/SLA, códigos de falla, PM programado,
+ciclo de vida completo, cierre, KPIs) con una capa de asignación PROPORCIONADA (cuadrilla/
+técnico simple + calendario, no un motor de ruteo propio); BayForce queda como notificación de
+salida opcional, nunca columna vertebral; convertir BayForce en un servicio de plataforma
+compartido queda **explícitamente diferido, no autorizado** — decisión de negocio aparte que
+toca otro producto en vivo.
+
+**Pendiente de implementar** — alcance detallado ya en `04-plan-sprints.md` §9, siguiente ronda
+de trabajo sobre Mantenimiento.

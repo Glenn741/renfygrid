@@ -233,3 +233,52 @@ piloto real operando), **F25** (contrato de entrega a CIS — depende de elegir 
 **F45** (conexión viva a BayForce — necesita su URL/credenciales de sandbox o producción
 reales). Ninguno de los tres se puede avanzar con más código desde esta sesión; los tres
 requieren un insumo externo concreto del usuario.
+
+## 9. Corrección real sobre F45/Mantenimiento + CMMS propio de RenfyGrid (2026-09-14)
+
+**El usuario señaló, viendo el panel real, que Mantenimiento "es un dibujo y nada más" — sin
+parametrización de órdenes, planeación ni despacho.** Al investigar a fondo (pedido explícito:
+"analiza los estándares de industria... y pule lo que sea relevante" sobre usabilidad, extendido
+después a un análisis serio de alcance de Mantenimiento), se encontró que la descripción de F45
+como "bloqueado solo por credenciales" **era inexacta**:
+
+- Leído `core/renflow/bayforce/main.py` completo (9400 líneas, otro producto del portafolio):
+  BayForce **no tiene ningún endpoint de creación de orden externa genérico** — todo lo que
+  entra a `field_orders` viene del workflow de cobro propio de RenFlow (`subscriber_id`/
+  `execution_id`, numeración `RF-...`). El contrato que `order_service.send_to_bayforce()`
+  asume (`POST` con `{renfygrid_order_id, tenant_id, asset_id, type, source, reason}`) no tiene
+  nada real del otro lado que lo reciba, con o sin credenciales. Detalle completo y decisión en
+  `contextos/renflow/docs/BAYFORCE_RENFYGRID_INTEGRATION_NOTE.md` (repo de contextos local, no
+  en este repo — cruza a otro producto).
+- Además, Mantenimiento nunca tuvo la sustancia real de un CMMS (grounded en Cityworks —
+  referencia dominante en acueducto/alcantarillado — y las métricas estándar MTTR/MTBF/%
+  cumplimiento PM): sin prioridad/SLA, sin códigos de falla, sin mantenimiento preventivo
+  programado (`preventive` era solo una etiqueta, nunca se auto-generaba nada), sin
+  planeación/asignación de cuadrilla, sin cierre con horas/materiales, sin KPIs.
+
+**Decisión de arquitectura (con el usuario, evaluando si esto viola la filosofía de
+microservicios — no la viola si se separa correctamente en dos capas):**
+
+| Capa | Naturaleza | Decisión |
+|---|---|---|
+| Parametrización del dominio (prioridad/SLA, códigos de falla, PM programado, ciclo de vida, cierre, KPIs) | Dominio propio real de RenfyGrid — activos de red, zonas, NRW, EPANET; BayForce nunca lo sabrá | **RenfyGrid lo construye y lo posee**, mismo patrón que Balance de Red/Gemelo Digital |
+| Motor de despacho/ruteo (cuadrillas, turnos, OR-Tools, ejecución móvil) | Tecnología genérica y cara, BayForce ya la tiene resuelta y bien construida | **RenfyGrid NO la reconstruye** — usa algo proporcionado (cuadrilla/técnico simple + calendario), nunca un motor de ruteo propio |
+| Consolidar BayForce como servicio de plataforma compartido (API de intake genérica multi-dominio) | Decisión de negocio/arquitectura que toca otro producto en vivo | **Explícitamente diferida, NO autorizada** — requiere conversación aparte con el usuario antes de tocar `core/renflow/bayforce` |
+
+**Alcance real de la capa de dominio a construir (F45 se reformula — deja de ser "conexión
+BayForce" como única pieza pendiente):**
+- Prioridad (`low`/`medium`/`high`/`emergency`) con SLA objetivo configurable por tenant/prioridad
+  (nunca un umbral fijo en código).
+- Catálogo de códigos de falla (tabla, no un `dict` — mismo patrón semilla+catálogo del resto
+  del proyecto).
+- Mantenimiento preventivo programado: plan por tipo de activo con disparador por tiempo
+  (calendario), genera la orden solo cuando el plan vence de verdad.
+- Ciclo de vida real: `generated → scheduled → assigned → in_progress → completed | cancelled`
+  (más rico que el actual `generated → sent_to_bayforce → in_progress → completed`).
+- Cierre con horas de mano de obra, materiales usados y causa raíz.
+- Asignación simple a cuadrilla/técnico (lista configurable) + vista de calendario en el Portal.
+- KPIs reales: MTTR, backlog (abiertas + antigüedad), % cumplimiento PM, órdenes vencidas de SLA.
+- BayForce se mantiene como notificación de salida OPCIONAL (el webhook actual), nunca como la
+  columna vertebral del módulo.
+
+Pendiente de implementar — siguiente sesión/ronda de trabajo sobre Mantenimiento.
