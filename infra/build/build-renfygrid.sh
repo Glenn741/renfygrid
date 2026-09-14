@@ -1,26 +1,6 @@
 #!/bin/bash
 set -euo pipefail
 
-# Compila todos los servicios de RenfyGrid con Nuitka -- politica de
-# portafolio "no fuentes .py en servidores" (ver memoria
-# feedback_no_source_on_server_nuitka). Corre en WSL2 (venv Python 3.9
-# dedicado, ~/nuitka-env-renfygrid) contra el repo montado en /mnt/c --
-# nunca en el servidor de produccion.
-#
-# Pendiente historico corregido en esta version: el script vivia SOLO en
-# WSL (~/build-renfygrid.sh), sin versionar -- si la maquina de build se
-# perdia, se perdia tambien el conocimiento de que servicios/SKIP entraban
-# al build. Ahora vive en el repo; copiar a ~/build-renfygrid.sh (o
-# correrlo desde aca directo) en cualquier maquina de build nueva.
-#
-# Incremental de verdad (2026-09-13, a pedido del usuario -- "aseurate de
-# no estar compilando cada vez"): si el .so ya existe y es mas nuevo que
-# el .py fuente, NO se recompila -- antes se recompilaba TODO el
-# portafolio en cada corrida, apoyandose solo en ccache a nivel de
-# compilador C (que ahorra CPU pero sigue gastando tiempo real de
-# invocacion de Nuitka por archivo). Esto salta el archivo por completo
-# cuando no cambio.
-
 REPO="/mnt/c/PCGM/RENSOFTLABS/core/renmeter/services"
 NUITKA="$HOME/nuitka-env-renfygrid/bin/nuitka"
 DIST="/home/gmol/renfygrid-dist"
@@ -35,13 +15,21 @@ declare -A SKIP=(
   [network-balance]=''
   [network-model]='seed_demo_networks.py'
   [digital-twin]='seed_demo_assets.py'
+  [maintenance]=''
 )
 
 declare -A SRC_SUBDIR=(
   [common]='renmeter_common'
 )
 
-for svc in common hes-adapter-dlms vee-engine consumption control portal-api network-balance network-model digital-twin; do
+# Incremental de verdad: si el .so ya existe y es mas nuevo que el .py
+# fuente, no se vuelve a compilar (antes se recompilaba TODO el
+# portafolio en cada corrida, apoyandose solo en ccache a nivel de
+# compilador C -- sigue gastando tiempo real en cada archivo sin cambios;
+# esto se salta el archivo por completo). Un archivo "fuente" (SKIP) se
+# copia solo si cambio o no existe en destino, mismo criterio.
+
+for svc in common hes-adapter-dlms vee-engine consumption control portal-api network-balance network-model digital-twin maintenance; do
   subdir="${SRC_SUBDIR[$svc]:-}"
   src="$REPO/$svc"
   [[ -n "$subdir" ]] && src="$src/$subdir"

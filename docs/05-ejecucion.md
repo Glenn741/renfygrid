@@ -91,8 +91,8 @@ al sprint donde se construye y a su estado real.
 | F41 | Calibración de modelo con datos de `network_balance` | B4 | 🟢 |
 | F42 | `network_asset`/`asset_connectivity` (Gemelo Digital) + ingesta externa desde SIG | B5 | 🟢 |
 | F43 | Derivar `network_model` desde el Gemelo Digital (export EPANET) | B6 | 🟢 |
-| F44 | Generación de `maintenance_order` desde anomalías (condición/simulación/balance) | B7 | ⚪ |
-| F45 | Integración con BayForce (envío de orden + webhook de cierre) | B7 | ⚪ |
+| F44 | Generación de `maintenance_order` desde anomalías (condición/simulación/balance) | B7 | 🟢 (condición/balance validadas contra datos reales; simulación queda para un sprint futuro, ver bitácora) |
+| F45 | Integración con BayForce (envío de orden + webhook de cierre) | B7 | 🟡 (contrato real construido y probado de punta a punta contra un sandbox local real; conexión al BayForce vivo pendiente de su URL/credenciales reales) |
 
 ### Portal Web — Track C (agregado 2026-09-10)
 
@@ -1126,3 +1126,49 @@ cambios reales de B6) compiló **5 archivos** en vez de 85. Aprovechado también
 pendiente histórico ya anotado en la bitácora: el script vivía SOLO en WSL, sin versionar — ahora
 vive en el repo (`infra/build/build-renfygrid.sh` + `README.md`), copiar a
 `~/build-renfygrid.sh` en cualquier máquina de build nueva.
+
+### Track B, Sprint B7 — Gestión de Mantenimiento + integración BayForce (2026-09-13/14)
+
+**Motivo:** "continua" tras cerrar B6 — último sprint pendiente de Track B.
+
+**Investigación real antes de diseñar nada**: revisado el código real de BayForce ya en el
+portafolio (`core/renflow/bayforce/main.py`, ~9400 líneas, MySQL propio — un sistema externo de
+verdad, no una tabla compartida). Su API está orientada a SU propia operación (despacho,
+móviles, planificación) y ya tiene un patrón de eventos entrantes de un WFMS externo
+(`POST /wfms/events`) — pero no expone (todavía) un endpoint dedicado de "crear orden desde un
+sistema externo + webhook de cierre" con URL/credenciales de sandbox reales conocidas por esta
+sesión. Decisión honesta, misma postura que con F07 (medidor piloto real bloqueado): construir el
+**contrato real** que RenfyGrid expone/consume — probado de punta a punta contra un sandbox HTTP
+real (no un mock) — dejando la conexión al BayForce vivo como lo que es: pendiente de su URL/
+credenciales reales, no fabricado.
+
+**Reglas de generación, validadas contra datos reales antes de insertar** (nunca una orden
+"porque sí" para una fuente automática): `asset_condition` exige que el activo esté REALMENTE
+`out_of_service`/`maintenance` ahora mismo; `balance_anomaly` exige que la zona del activo tenga
+un balance reciente con `exceeds_threshold=True` (reusa B1-2/B4); `simulation_result` queda sin
+validación automática en esta v1 (declarado, no una promesa incumplida en silencio — el disparo
+automático desde una corrida real de B3/B4 es trabajo de un sprint futuro); `manual` no tiene
+precondición (juicio humano explícito).
+
+| Fecha | Avance | Evidencia |
+|---|---|---|
+| 2026-09-13 | **Migración `0017_maintenance_order_reason.sql`**: `maintenance_order.reason` (texto, opcional) — el operador necesita ver POR QUÉ se generó una orden, no solo su `type`/`source` en código | `infra/db/migrations/0017_maintenance_order_reason.sql` |
+| 2026-09-13 | **`order_service.py` (nuevo)**: `generate_order()` (valida tipo/fuente contra los valores reales del esquema, verifica la anomalía real para `asset_condition`/`balance_anomaly`, `AnomalyNotConfirmedError` si no se cumple); `list_orders()`/`get_order_detail()`; `send_to_bayforce()` (HTTP real — `POST` JSON al webhook configurado, `BayforceNotConfiguredError` si no hay URL, `BayforceIntegrationError` si BayForce no responde o responde algo no interpretable, nunca un envío fabricado); `close_from_webhook()` (máquina de estados real — `generated→sent_to_bayforce→in_progress→completed\|cancelled`, `InvalidStatusTransitionError` si el salto no es válido) | `services/maintenance/order_service.py` |
+| 2026-09-13 | `config.py`: `RENFYGRID_BAYFORCE_WEBHOOK_URL` (opcional, `None` si el tenant no tiene BayForce configurado todavía — nunca una URL fija en código) | `services/portal-api/config.py` |
+| 2026-09-13 | Endpoints nuevos: `POST/GET /maintenance-orders`, `GET /maintenance-orders/{id}`, `POST /maintenance-orders/{id}/send-to-bayforce`, `POST /maintenance-orders/bayforce-webhook` (mismo mecanismo de autenticación que ya usa el portal para un CIS externo — JWT del tenant — no se inventa un esquema de firma nuevo) | `services/portal-api/main.py` |
+| 2026-09-13 | **E2E real con un sandbox HTTP real** (`verify_maintenance_end_to_end.py`): un servidor `http.server` real en un hilo, sin mockear nada, hace de BayForce — recibe la orden por HTTP de verdad y devuelve un `bayforce_order_ref` real. Cubre: orden `asset_condition` sobre un activo realmente roto (éxito) vs. operativo (422); `balance_anomaly` sobre zona con exceso real (éxito) vs. sin balance (422); envío real a BayForce → `sent_to_bayforce`; reenvío → 422; flujo completo del webhook de cierre `sent_to_bayforce→in_progress→completed`; transición inválida → 422; `bayforce_order_ref` inexistente → 404; envío sin webhook configurado → error real, no un falso éxito | `verify_maintenance_end_to_end.py` → `SPRINT B7 MAINTENANCE E2E OK` |
+| 2026-09-13 | Regresión completa: los 19 `verify_*_end_to_end.py` de `portal-api` (con el nuevo de B7) en verde | `exit=0` en los 19 scripts |
+| 2026-09-13 | Frontend: **`Maintenance.tsx`** (nuevo) — KPIs (total, por enviar, en BayForce, completadas), filtro por estado, formulario de generación (con las precondiciones explicadas en la propia pantalla), botón "Enviar a BayForce" por orden en `generated`; el cierre se refleja solo (BayForce lo empuja por su webhook), sin un botón manual que lo falsee | `services/portal-web/src/pages/Maintenance.tsx` |
+| 2026-09-13 | `tsc -b && vite build` limpio, bundle contiene "Mantenimiento"/"maintenance-orders". Desplegado: migración 0017 con respaldo real primero, backend (Nuitka, servicio `maintenance` nuevo, build incremental: solo 2 archivos reales) + `main.py` a `essmarplapp02`, `systemctl restart renfygrid-portal-api` → activo; frontend a `essmarplpxy03`. Verificado en vivo: bundle coincide exacto, endpoint nuevo gateado (401, no 404/500) | `curl https://renfygrid.rensoftlabs.com/...` |
+| 2026-09-13 | **Smoke test real contra producción**: una orden manual real sobre un activo demo real (Chapinero), y confirmado que enviar a BayForce SIN webhook configurado (estado real de producción — no hay URL/credenciales de BayForce todavía) da el error correcto, no un falso éxito | corrida real contra Postgres/venv de producción → `PROD SMOKE B7 OK` |
+
+**Pendiente real, explícito**: conectar `RENFYGRID_BAYFORCE_WEBHOOK_URL` al BayForce vivo
+requiere su URL/credenciales de sandbox o producción reales — no están disponibles en esta
+sesión, no se fabricaron. El contrato del lado de RenfyGrid está completo, probado y listo para
+apuntar ahí en cuanto existan. Disparo automático de `simulation_result` desde una corrida real
+de B3/B4 queda para un sprint futuro.
+
+**Estado de Track B tras esta ronda:** **B1 a B7, las 7 épicas del Track B originalmente
+planteadas, están construidas** (B2 cubierto parcialmente por diseño desde B1, documentado en su
+propia entrada). Únicos pendientes reales: la conexión viva a BayForce (bloqueada por
+credenciales externas, no por trabajo) y el disparo automático de órdenes desde `simulation_result`.

@@ -33,6 +33,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "vee-engine"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "network-balance"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "network-model"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "digital-twin"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "maintenance"))
 
 import psycopg  # noqa: E402
 from fastapi import Depends, FastAPI, HTTPException  # noqa: E402
@@ -117,6 +118,21 @@ from asset_service import (  # noqa: E402
     register_asset,
     update_asset_status,
 )
+from order_service import (  # noqa: E402
+    AnomalyNotConfirmedError,
+    BayforceIntegrationError,
+    BayforceNotConfiguredError,
+    InvalidOrderSourceError,
+    InvalidOrderTypeError,
+    InvalidStatusTransitionError,
+    close_from_webhook,
+    generate_order,
+    get_order_detail,
+    list_orders,
+    send_to_bayforce,
+)
+from order_service import AssetNotFoundError as MaintenanceAssetNotFoundError  # noqa: E402
+from order_service import OrderNotFoundError as MaintenanceOrderNotFoundError  # noqa: E402
 from renmeter_common.auth import create_token  # noqa: E402
 from renmeter_common.db import tenant_scope  # noqa: E402
 from renmeter_common.user_service import InvalidCredentialsError, authenticate  # noqa: E402
@@ -891,4 +907,87 @@ def generate_network_model_from_twin_endpoint(
         try:
             return register_model_from_twin(conn, tenant_id, zone_id, body.name, app.state.settings.network_model_storage_dir)
         except (NoSourceAssetError, MissingGeometryError, MissingTankHeadError, AmbiguousPipeConnectivityError, InvalidModelError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# Track B, Sprint B7 -- Gestion de Mantenimiento + integracion BayForce
+# ══════════════════════════════════════════════════════════════════════════
+
+
+class GenerateOrderRequest(BaseModel):
+    asset_id: str
+    type: str
+    source: str
+    reason: str | None = None
+
+
+@app.post("/maintenance-orders", status_code=201)
+def create_maintenance_order_endpoint(body: GenerateOrderRequest, tenant_id: str = Depends(get_tenant_id)) -> dict:
+    """Genera una orden real -- `422` si el tipo/fuente no son validos o
+    la anomalia real que justificaria una fuente automatica no se cumple
+    ahora mismo (`AnomalyNotConfirmedError`); `404` si el activo no
+    existe."""
+    with db_conn() as conn:
+        try:
+            return generate_order(conn, tenant_id, body.asset_id, body.type, body.source, body.reason)
+        except MaintenanceAssetNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except (InvalidOrderTypeError, InvalidOrderSourceError, AnomalyNotConfirmedError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/maintenance-orders")
+def list_maintenance_orders_endpoint(
+    tenant_id: str = Depends(get_tenant_id), status: str | None = None, asset_id: str | None = None
+) -> list[dict]:
+    with db_conn() as conn:
+        return list_orders(conn, tenant_id, status, asset_id)
+
+
+@app.get("/maintenance-orders/{order_id}")
+def get_maintenance_order_endpoint(order_id: str, tenant_id: str = Depends(get_tenant_id)) -> dict:
+    with db_conn() as conn:
+        try:
+            return get_order_detail(conn, tenant_id, order_id)
+        except MaintenanceOrderNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/maintenance-orders/{order_id}/send-to-bayforce")
+def send_maintenance_order_to_bayforce_endpoint(order_id: str, tenant_id: str = Depends(get_tenant_id)) -> dict:
+    """Envia la orden real a BayForce (HTTP real al webhook configurado) --
+    `422` si BayForce no esta configurado para este tenant, si la orden no
+    esta en `generated`, o si BayForce no responde/responde algo
+    invalido (nunca un 200 con un envio fabricado); `404` si la orden no
+    existe."""
+    with db_conn() as conn:
+        try:
+            return send_to_bayforce(conn, tenant_id, order_id, app.state.settings.bayforce_webhook_url)
+        except MaintenanceOrderNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except (BayforceNotConfiguredError, InvalidStatusTransitionError, BayforceIntegrationError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+class BayforceWebhookRequest(BaseModel):
+    bayforce_order_ref: str
+    status: str
+
+
+@app.post("/maintenance-orders/bayforce-webhook")
+def bayforce_webhook_endpoint(body: BayforceWebhookRequest, tenant_id: str = Depends(get_tenant_id)) -> dict:
+    """Webhook real de cierre -- BayForce (o el modulo de integraciones que
+    ya recibe sus eventos, ver `core/renflow/bayforce/main.py` `/wfms/events`)
+    llama aca para avanzar el estado real de la orden. Mismo mecanismo de
+    autenticacion que ya usa el portal para un CIS externo (JWT del
+    tenant) -- no se inventa un esquema de firma nuevo para esto. `422` si
+    la transicion de estado pedida no es valida desde el estado actual;
+    `404` si no existe ninguna orden con ese `bayforce_order_ref`."""
+    with db_conn() as conn:
+        try:
+            return close_from_webhook(conn, tenant_id, body.bayforce_order_ref, body.status)
+        except MaintenanceOrderNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except InvalidStatusTransitionError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc

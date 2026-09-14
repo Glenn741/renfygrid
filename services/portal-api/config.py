@@ -22,6 +22,7 @@ class Settings:
     order_signing_secret: str
     cors_origins: list[str]
     network_model_storage_dir: str
+    bayforce_webhook_url: str | None
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -50,4 +51,10 @@ class Settings:
             # una ruta fija en codigo; el default solo aplica a desarrollo
             # local, produccion siempre lo fija explicito (systemd Environment=).
             network_model_storage_dir=os.environ.get("RENFYGRID_NETWORK_MODEL_STORAGE_DIR", "./network_model_storage"),
+            # RENFYGRID_BAYFORCE_WEBHOOK_URL (Track B, Sprint B7): a donde se
+            # envia una orden de mantenimiento real -- opcional (`None` si el
+            # tenant no tiene BayForce configurado todavia), nunca una URL
+            # fija en codigo. `send_to_bayforce()` rechaza el envio con un
+            # error claro si falta, nunca simula un envio que no ocurrio.
+            bayforce_webhook_url=os.environ.get("RENFYGRID_BAYFORCE_WEBHOOK_URL") or None,
         )

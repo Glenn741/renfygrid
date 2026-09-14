@@ -778,4 +778,38 @@ export function generateNetworkModelFromTwin(zoneId: string, name: string): Prom
   return request(`/network-zones/${zoneId}/generate-model`, { method: "POST", body: JSON.stringify({ name }) });
 }
 
+// --- Track B, Sprint B7: Gestion de Mantenimiento + integracion BayForce ---
+
+export interface MaintenanceOrder {
+  order_id: string;
+  asset_id: string;
+  type: string;
+  source: string;
+  status: string;
+  bayforce_order_ref: string | null;
+  reason: string | null;
+  created_at: string;
+}
+
+export function getMaintenanceOrders(params?: { status?: string; asset_id?: string }): Promise<MaintenanceOrder[]> {
+  const q = new URLSearchParams();
+  if (params?.status) q.set("status", params.status);
+  if (params?.asset_id) q.set("asset_id", params.asset_id);
+  const qs = q.toString();
+  return request(`/maintenance-orders${qs ? `?${qs}` : ""}`);
+}
+
+export function createMaintenanceOrder(body: {
+  asset_id: string;
+  type: string;
+  source: string;
+  reason?: string | null;
+}): Promise<MaintenanceOrder> {
+  return request("/maintenance-orders", { method: "POST", body: JSON.stringify(body) });
+}
+
+export function sendMaintenanceOrderToBayforce(orderId: string): Promise<{ order_id: string; status: string; bayforce_order_ref: string }> {
+  return request(`/maintenance-orders/${orderId}/send-to-bayforce`, { method: "POST", body: "{}" });
+}
+
 export { ApiError };

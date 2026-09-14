@@ -23,6 +23,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/network-balance", label: "Balance de Red", icon: "\u{1F4A7}" },
   { to: "/network-model", label: "Modelado Hidráulico", icon: "\u{1F30A}" },
   { to: "/digital-twin", label: "Gemelo Digital", icon: "\u{1F5FA}" },
+  { to: "/maintenance", label: "Mantenimiento", icon: "\u{1F527}" },
   { to: "/integrations", label: "Integraciones (CIS)", icon: "\u{1F517}" },
   { to: "/observability", label: "Observabilidad", icon: "\u{1FA7A}" },
   { to: "/configuration", label: "Configuración", icon: "⚙" },
