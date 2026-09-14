@@ -20,6 +20,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "common"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "digital-twin"))
 
 import psycopg  # noqa: E402
 from psycopg.types.json import Json  # noqa: E402
@@ -34,6 +35,14 @@ from network_model_engine import (  # noqa: E402
     load_model,
     model_topology_geojson,
     run_simulation,
+)
+from asset_service import zone_assets_and_connectivity  # noqa: E402
+from twin_export import (  # noqa: E402
+    AmbiguousPipeConnectivityError,
+    MissingGeometryError,
+    MissingTankHeadError,
+    NoSourceAssetError,
+    export_to_inp,
 )
 from renmeter_common.db import tenant_scope  # noqa: E402
 
@@ -96,6 +105,25 @@ def register_model(
                 )
 
     return {"model_id": str(model_id), "name": name, "version": max_version + 1}
+
+
+def register_model_from_twin(conn: psycopg.Connection, tenant_id: str, zone_id: str, name: str, storage_dir: str) -> dict[str, Any]:
+    """Genera un `.inp` real a partir del Gemelo Digital de una zona
+    (Sprint B6, `docs/07-track-b-alcance-funcional.md` SS5: "Un modelo
+    generado desde el Gemelo Digital simula igual que uno cargado a
+    mano") y lo registra por el MISMO camino que un `.inp` subido a mano
+    (`register_model()` -- misma validacion, mismo versionado). El modelo
+    generado queda vinculado a la zona de origen automaticamente
+    (`zone_id`), lo que ademas permite calibrarlo con su balance real
+    (Sprint B4) sin pasos adicionales.
+
+    Las excepciones reales de `twin_export` (`NoSourceAssetError`/
+    `MissingGeometryError`/`MissingTankHeadError`/`AmbiguousPipeConnectivityError`)
+    se propagan tal cual -- el llamador (`main.py`) las traduce a `422`,
+    nunca se genera un modelo a medias."""
+    assets, connectivity = zone_assets_and_connectivity(conn, tenant_id, zone_id)
+    inp_content = export_to_inp(assets, connectivity, title=f"Modelo generado desde el Gemelo Digital -- {name}")
+    return register_model(conn, tenant_id, name, inp_content, storage_dir, zone_id)
 
 
 def list_models(conn: psycopg.Connection, tenant_id: str) -> list[dict]:

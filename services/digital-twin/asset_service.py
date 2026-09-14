@@ -255,3 +255,35 @@ def assets_geojson(conn: psycopg.Connection, tenant_id: str) -> dict:
         })
 
     return {"type": "FeatureCollection", "features": features}
+
+
+def zone_assets_and_connectivity(conn: psycopg.Connection, tenant_id: str, zone_id: str) -> tuple[list[dict], list[dict]]:
+    """Activos de una zona + la conectividad restringida a AMBOS extremos
+    dentro de esa misma zona (Sprint B6, `docs/07-track-b-alcance-funcional.md`
+    SS5: "derivar network_model desde el Gemelo Digital"). Una conexion
+    que sale de la zona (a un activo de otra zona o sin zona) se excluye
+    sin avisar -- es un limite de alcance real, no un error: el modelo
+    generado es el de ESA zona, no de toda la red del tenant."""
+    assets = list_assets(conn, tenant_id, zone_id=zone_id)
+    asset_ids = {a["asset_id"] for a in assets}
+    if not asset_ids:
+        return assets, []
+
+    with conn.transaction():
+        with tenant_scope(conn, tenant_id):
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT ac.source_asset_id, ac.target_asset_id, ac.connection_type "
+                    "FROM asset_connectivity ac "
+                    "JOIN network_asset na_source ON na_source.id = ac.source_asset_id AND na_source.tenant_id = %s "
+                    "JOIN network_asset na_target ON na_target.id = ac.target_asset_id AND na_target.tenant_id = %s",
+                    (tenant_id, tenant_id),
+                )
+                rows = cur.fetchall()
+
+    connectivity = [
+        {"source_asset_id": str(row[0]), "target_asset_id": str(row[1]), "connection_type": row[2]}
+        for row in rows
+        if str(row[0]) in asset_ids and str(row[1]) in asset_ids
+    ]
+    return assets, connectivity

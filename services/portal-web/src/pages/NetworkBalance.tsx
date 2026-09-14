@@ -1,8 +1,10 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ApiError,
   createNetworkZone,
+  generateNetworkModelFromTwin,
   getNetworkBalanceSummary,
   getNetworkBalances,
   getNetworkZones,
@@ -314,7 +316,15 @@ function SubmitBalanceForm({ zone, onDone }: { zone: NetworkZone; onDone: () => 
 
 function ZoneRow({ zone }: { zone: NetworkZone }) {
   const [submitting, setSubmitting] = useState(false);
+  const [genError, setGenError] = useState<string | null>(null);
+  const [genOk, setGenOk] = useState<string | null>(null);
   const hasInfra = zone.network_length_km !== null && zone.num_connections !== null && zone.avg_pressure_mca !== null;
+
+  const generateMutation = useMutation({
+    mutationFn: () => generateNetworkModelFromTwin(zone.zone_id, `${zone.name} (desde Gemelo Digital)`),
+    onSuccess: (model) => { setGenError(null); setGenOk(model.name); },
+    onError: (err) => setGenError(err instanceof ApiError ? err.message : "No se pudo generar el modelo."),
+  });
 
   return (
     <>
@@ -331,9 +341,26 @@ function ZoneRow({ zone }: { zone: NetworkZone }) {
         </td>
         <td className="px-4 py-3 text-slate-600">{zone.nrw_threshold_pct === null ? "—" : `${zone.nrw_threshold_pct}%`}</td>
         <td className="px-4 py-3">
-          <button onClick={() => setSubmitting((v) => !v)} className="text-xs text-indigo-600 hover:text-indigo-700">
-            {submitting ? "Cancelar" : "Ingestar balance"}
-          </button>
+          <div className="flex flex-col gap-1 items-start">
+            <button onClick={() => setSubmitting((v) => !v)} className="text-xs text-indigo-600 hover:text-indigo-700">
+              {submitting ? "Cancelar" : "Ingestar balance"}
+            </button>
+            <button
+              onClick={() => { setGenOk(null); setGenError(null); generateMutation.mutate(); }}
+              disabled={generateMutation.isPending}
+              className="text-xs text-indigo-600 hover:text-indigo-700 disabled:opacity-40"
+              title="Genera un modelo EPANET real desde los activos y conectividad registrados en el Gemelo Digital para esta zona"
+            >
+              {generateMutation.isPending ? "Generando..." : "Generar modelo (Gemelo Digital)"}
+            </button>
+            {genOk && (
+              <span className="text-[11px] text-emerald-700">
+                "{genOk}" generado —{" "}
+                <Link to="/network-model" className="underline">ver en Modelado Hidráulico</Link>
+              </span>
+            )}
+            {genError && <span className="text-[11px] text-red-600">{genError}</span>}
+          </div>
         </td>
       </tr>
       {submitting && <SubmitBalanceForm zone={zone} onDone={() => setSubmitting(false)} />}

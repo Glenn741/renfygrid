@@ -96,9 +96,16 @@ from model_service import (  # noqa: E402
     list_simulation_results,
     model_geojson,
     register_model,
+    register_model_from_twin,
     run_and_store_simulation,
 )
 from network_model_engine import CalibrationInputError, InvalidModelError, SimulationFailedError  # noqa: E402
+from twin_export import (  # noqa: E402
+    AmbiguousPipeConnectivityError,
+    MissingGeometryError,
+    MissingTankHeadError,
+    NoSourceAssetError,
+)
 from asset_service import (  # noqa: E402
     AssetNotFoundError,
     InvalidAssetStatusError,
@@ -860,3 +867,28 @@ def create_asset_connectivity_endpoint(body: AssetConnectivityRequest, tenant_id
             return connect_assets(conn, tenant_id, body.source_asset_id, body.target_asset_id, body.connection_type)
         except AssetNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# Track B, Sprint B6 -- generar un modelo EPANET desde el Gemelo Digital
+# ══════════════════════════════════════════════════════════════════════════
+
+
+class GenerateModelRequest(BaseModel):
+    name: str
+
+
+@app.post("/network-zones/{zone_id}/generate-model", status_code=201)
+def generate_network_model_from_twin_endpoint(
+    zone_id: str, body: GenerateModelRequest, tenant_id: str = Depends(get_tenant_id)
+) -> dict:
+    """Genera un `.inp` real desde los activos/conectividad de esa zona y
+    lo registra por el mismo camino que un `.inp` subido a mano -- `422`
+    con el motivo REAL si falta una fuente (`tank`), geometría, o la
+    topología de un activo `pipe` es ambigua (nunca un modelo fabricado
+    "a medias")."""
+    with db_conn() as conn:
+        try:
+            return register_model_from_twin(conn, tenant_id, zone_id, body.name, app.state.settings.network_model_storage_dir)
+        except (NoSourceAssetError, MissingGeometryError, MissingTankHeadError, AmbiguousPipeConnectivityError, InvalidModelError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc

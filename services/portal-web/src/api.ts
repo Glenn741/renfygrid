@@ -772,4 +772,10 @@ export function getNetworkAssetsGeojson(): Promise<GeoJSON.FeatureCollection> {
   return request("/network-assets/geojson");
 }
 
+// --- Track B, Sprint B6: generar un modelo EPANET desde el Gemelo Digital ---
+
+export function generateNetworkModelFromTwin(zoneId: string, name: string): Promise<NetworkModel> {
+  return request(`/network-zones/${zoneId}/generate-model`, { method: "POST", body: JSON.stringify({ name }) });
+}
+
 export { ApiError };

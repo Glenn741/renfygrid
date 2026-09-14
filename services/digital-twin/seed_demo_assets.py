@@ -45,9 +45,14 @@ def run(dsn: str, tenant_id: str, zone_name: str) -> int:
         zone_id = str(row[0])
         print("zone_id", zone_id)
 
+        # head_m/elevation_m: mismos valores del modelo hidraulico de demostracion
+        # de Chapinero (Sprint B3, bogota_chapinero_dma.inp: R1 Head=2680,
+        # J1 Elev=2645) -- para que "Generar modelo (Gemelo Digital)" funcione
+        # de verdad sobre estos activos demo (Sprint B6 exige `head_m` real en
+        # el tank, nunca lo inventa).
         tank = register_asset(
             conn, tenant_id, "tank", zone_id=zone_id,
-            attributes={"notes": "Tanque elevado (ilustrativo, mismas coordenadas del modelo R1)", "capacity_m3": 500},
+            attributes={"notes": "Tanque elevado (ilustrativo, mismas coordenadas del modelo R1)", "capacity_m3": 500, "head_m": 2680},
             geometry={"type": "Point", "coordinates": [-74.0464, 4.6572]},
         )
         print("tank", tank)
@@ -61,7 +66,7 @@ def run(dsn: str, tenant_id: str, zone_name: str) -> int:
 
         valve = register_asset(
             conn, tenant_id, "valve", zone_id=zone_id,
-            attributes={"notes": "Valvula de seccionamiento (ilustrativo)"},
+            attributes={"notes": "Valvula de seccionamiento (ilustrativo)", "elevation_m": 2645},
             geometry={"type": "Point", "coordinates": [-74.0570, 4.6510]},
         )
         print("valve", valve)

@@ -90,7 +90,7 @@ al sprint donde se construye y a su estado real.
 | F40 | Simulación vía WNTR | B3 | 🟢 |
 | F41 | Calibración de modelo con datos de `network_balance` | B4 | 🟢 |
 | F42 | `network_asset`/`asset_connectivity` (Gemelo Digital) + ingesta externa desde SIG | B5 | 🟢 |
-| F43 | Derivar `network_model` desde el Gemelo Digital (export EPANET) | B6 | ⚪ |
+| F43 | Derivar `network_model` desde el Gemelo Digital (export EPANET) | B6 | 🟢 |
 | F44 | Generación de `maintenance_order` desde anomalías (condición/simulación/balance) | B7 | ⚪ |
 | F45 | Integración con BayForce (envío de orden + webhook de cierre) | B7 | ⚪ |
 
@@ -1084,3 +1084,45 @@ en el E2E con un tenant B real intentando conectar contra un activo de un tenant
 **Estado de Track B tras esta ronda:** B1, B3, B4 y B5 🟢 completos. Pendiente: **B6-B7**
 (generación de modelo `.inp` desde el Gemelo Digital, Mantenimiento + integración BayForce) sin
 iniciar.
+
+### Track B, Sprint B6 — generar un modelo EPANET desde el Gemelo Digital (2026-09-13)
+
+**Motivo:** "continua" tras cerrar B5 — siguiente paso natural: cerrar el ciclo entre el Gemelo
+Digital (B5) y el Modelado Hidráulico (B3), igual que B4 cerró el ciclo entre Balance de Red y
+Modelado Hidráulico.
+
+**Criterio de mapeo activo→elemento EPANET, definido y documentado ANTES de escribir código**
+(nunca una regla implícita): `tank`→`RESERVOIR` (cabeza fija real, `attributes.head_m`
+obligatorio — el catastro no rastrea nivel/volumen en el tiempo, mapear a `TANK` real sería
+fabricar datos que no existen); `valve`/`pump`/`meter`/`sensor`→`JUNCTION` (nudo de paso; el
+comportamiento de control real de una válvula/bomba EPANET no se modela en esta v1, declarado,
+no una promesa incumplida en silencio); un activo `pipe` que conecta EXACTAMENTE otros dos
+activos se "contrae" en un enlace `PIPE` real entre sus dos vecinos (así modela un SIG real una
+tubería — una línea entre dos nudos, no un tercer nudo intermedio); una conexión directa sin un
+`pipe` describiéndola también genera un enlace `PIPE`, con diámetro/rugosidad genérico
+documentado (nunca se omite el enlace, tampoco se inventa un diámetro "real" que no existe).
+
+| Fecha | Avance | Evidencia |
+|---|---|---|
+| 2026-09-13 | **`twin_export.py` (nuevo, lógica pura)**: `export_to_inp()` construye el `.inp` real desde listas de activos/conectividad ya leídas — `NoSourceAssetError` (sin ningún `tank`), `MissingTankHeadError` (`tank` sin `head_m`), `MissingGeometryError` (nudo sin `[COORDINATES]` real), `AmbiguousPipeConnectivityError` (un `pipe` con ≠2 conexiones) — nunca se adivina, siempre un error claro. Longitud de cada tubería calculada por Haversine real entre las coordenadas de sus dos extremos (no un valor inventado) | `services/digital-twin/twin_export.py` |
+| 2026-09-13 | 8/8 pruebas unitarias puras — incluye el caso real que confirma que el `.inp` generado, cargado y simulado con WNTR, da una presión EXACTA (`Head - Elevación`, sin demanda) igual que un modelo escrito a mano — mismo camino de validación/simulación (`network_model_engine.py`) | `python -m unittest tests.test_twin_export -v` → 8/8 OK |
+| 2026-09-13 | **`asset_service.zone_assets_and_connectivity()`** (nuevo): activos de una zona + conectividad restringida a AMBOS extremos dentro de esa misma zona (una conexión que sale de la zona se excluye sin avisar — límite de alcance real, documentado, no un error). **`model_service.register_model_from_twin()`** (nuevo): genera el `.inp` y lo registra por el MISMO camino que uno subido a mano (`register_model()` — misma validación, mismo versionado), vinculando el modelo a la zona de origen automáticamente (reusa `zone_id` de B4 — el modelo generado queda calibrable con el balance real de esa zona sin pasos adicionales) | `services/digital-twin/asset_service.py`, `services/network-model/model_service.py` |
+| 2026-09-13 | Endpoint nuevo: `POST /network-zones/{id}/generate-model` — `422` con el motivo REAL (`NoSourceAssetError`/`MissingGeometryError`/`MissingTankHeadError`/`AmbiguousPipeConnectivityError`) si el grafo no alcanza para generar un modelo válido | `services/portal-api/main.py` |
+| 2026-09-13 | E2E real (`verify_generate_model_end_to_end.py`): zona con `tank`→`pipe`→`valve` reales y georreferenciados (coordenadas reales de Cali) genera un modelo real, vinculado a la zona; **el modelo generado SE SIMULA por el mismo endpoint que uno cargado a mano y da la presión hidráulica EXACTA esperada** (`Head - Elevación = 45.0 m.c.a.`, sin demanda) — confirma el criterio de aceptación del sprint ("simula igual que uno cargado a mano") de punta a punta, no solo en el motor puro; zona sin ningún `tank` → `422` | `verify_generate_model_end_to_end.py` → `SPRINT B6 GENERATE MODEL E2E OK` |
+| 2026-09-13 | Regresión completa: los 18 `verify_*_end_to_end.py` de `portal-api` (con el nuevo de B6) en verde | `exit=0` en los 18 scripts |
+| 2026-09-13 | Frontend: botón "Generar modelo (Gemelo Digital)" en cada fila de zona de `NetworkBalance.tsx` — genera el modelo, confirma el nombre y enlaza directo a Modelado Hidráulico para verlo/simularlo | `services/portal-web/src/pages/NetworkBalance.tsx`, `services/portal-web/src/api.ts` |
+| 2026-09-13 | `tsc -b && vite build` limpio, bundle contiene "Generar modelo (Gemelo Digital)"/"generate-model". Desplegado: backend (Nuitka) + `main.py` a `essmarplapp02`, `systemctl restart renfygrid-portal-api` → activo; frontend a `essmarplpxy03`. Verificado en vivo: bundle coincide exacto, endpoint nuevo gateado (401, no 404/500) | `curl https://renfygrid.rensoftlabs.com/...` |
+
+**Estado de Track B tras esta ronda:** B1, B3, B4, B5 y B6 🟢 completos. Pendiente: **B7**
+(generación de `maintenance_order` desde anomalías + integración BayForce) sin iniciar.
+
+**Corrección adicional pedida por el usuario en la misma ronda** ("aseurate de no estar
+compilando cada vez. Solo deberias compilar los cambios"): `~/build-renfygrid.sh` recompilaba
+**todo** el portafolio (~85 archivos) en cada corrida, apoyándose solo en `ccache` a nivel de
+compilador C para no gastar CPU — pero seguía invocando Nuitka por archivo sin cambios, gastando
+tiempo real. Corregido para ser incremental de verdad: si el `.so` ya existe y es más nuevo que
+su `.py` fuente, se salta por completo. Verificado en vivo: la siguiente corrida (con los
+cambios reales de B6) compiló **5 archivos** en vez de 85. Aprovechado también para corregir un
+pendiente histórico ya anotado en la bitácora: el script vivía SOLO en WSL, sin versionar — ahora
+vive en el repo (`infra/build/build-renfygrid.sh` + `README.md`), copiar a
+`~/build-renfygrid.sh` en cualquier máquina de build nueva.
