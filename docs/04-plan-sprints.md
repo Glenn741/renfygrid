@@ -213,3 +213,23 @@ Track C están completos salvo lo que depende de un piloto real (F05 operando en
 F07) o de elegir un CIS real (F25)** — ninguno de los dos es trabajo de desarrollo pendiente,
 son bloqueos externos ya documentados. Track B sigue siendo el único bloque grande sin empezar,
 deliberadamente pospuesto hasta que haya una oportunidad comercial real.
+
+**Actualización 2026-09-11/14: Track B activado y completado (B1-B7)**. El usuario confirmó
+activar Track B ("vamos con el Track B... investigación profunda de mercado... y luego sí
+implementas") — investigación real de mercado y alcance funcional documentados en
+`docs/07-track-b-alcance-funcional.md` antes de escribir código. Las 7 épicas (E8-E11, sprints
+B1-B7) se construyeron completas: Balance de Red (Top-Down/Bottom-Up reales, AWWA M36/IWA),
+Modelado Hidráulico (WNTR/EPANET real), un módulo de georreferenciación nuevo (compartido entre
+módulos, patrón tomado de "Mapa de Deuda" de RenFlow), calibración real Modelo↔Balance,
+Gemelo Digital (inventario de activos + conectividad), generación de modelo desde el Gemelo
+Digital, y Gestión de Mantenimiento con el contrato real de integración BayForce (probado de
+punta a punta contra un sandbox local real). Todo con E2E real, regresión completa verde en
+cada sprint, y desplegado a producción.
+
+**Estado real al cierre de esta ronda: los tres tracks (A, B, C) están completos.** Lo único que
+queda en la matriz funcional sin cerrar son 3 ítems bloqueados por dependencias externas, no por
+trabajo de desarrollo pendiente: **F07** (comandos SCR contra un medidor real — necesita un
+piloto real operando), **F25** (contrato de entrega a CIS — depende de elegir un CIS real),
+**F45** (conexión viva a BayForce — necesita su URL/credenciales de sandbox o producción
+reales). Ninguno de los tres se puede avanzar con más código desde esta sesión; los tres
+requieren un insumo externo concreto del usuario.
