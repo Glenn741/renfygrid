@@ -21,10 +21,11 @@ Que prueba, en espanol llano:
   4. Enviar la orden a BayForce (HTTP real contra el sandbox local) --
      quedan `sent_to_bayforce` con un `bayforce_order_ref` real devuelto
      por el sandbox.
-  5. Reenviar la misma orden -> 422 (no esta en `generated`).
+  5. Reenviar la misma orden -> 409 (no esta en `generated` -- transicion
+     de estado invalida, misma convencion que Control/SCR).
   6. El webhook de cierre (llamado como lo haria BayForce) avanza el
      estado real -- `sent_to_bayforce -> in_progress -> completed`.
-  7. Una transicion invalida (`completed -> in_progress`) -> 422.
+  7. Una transicion invalida (`completed -> in_progress`) -> 409.
   8. `bayforce_order_ref` que no existe -> 404.
   9. Enviar a BayForce SIN `RENFYGRID_BAYFORCE_WEBHOOK_URL` configurado ->
      `BayforceNotConfiguredError` real (probado contra el servicio
@@ -156,10 +157,10 @@ def run(dsn: str) -> int:
             bayforce_ref = send_resp.json().get("bayforce_order_ref")
             ok_send = send_resp.status_code == 200 and send_resp.json()["status"] == "sent_to_bayforce" and bool(bayforce_ref)
 
-            # 5. Reenviar la misma orden -> 422 (no esta en 'generated').
+            # 5. Reenviar la misma orden -> 409 (no esta en 'generated' -- transicion invalida).
             resend_resp = client.post(f"/maintenance-orders/{order_id}/send-to-bayforce", headers=headers)
             print(f"POST send-to-bayforce (reenvio): {resend_resp.status_code}")
-            ok_resend_rejected = resend_resp.status_code == 422
+            ok_resend_rejected = resend_resp.status_code == 409
 
             # 6. Webhook de cierre real: sent_to_bayforce -> in_progress -> completed.
             wh1 = client.post("/maintenance-orders/bayforce-webhook", headers=headers, json={"bayforce_order_ref": bayforce_ref, "status": "in_progress"})
@@ -167,10 +168,10 @@ def run(dsn: str) -> int:
             print(f"webhook in_progress: {wh1.status_code}, webhook completed: {wh2.status_code}, {wh2.json()}")
             ok_webhook_flow = wh1.status_code == 200 and wh2.status_code == 200 and wh2.json()["status"] == "completed"
 
-            # 7. Transicion invalida (completed -> in_progress) -> 422.
+            # 7. Transicion invalida (completed -> in_progress) -> 409.
             wh_invalid = client.post("/maintenance-orders/bayforce-webhook", headers=headers, json={"bayforce_order_ref": bayforce_ref, "status": "in_progress"})
             print(f"webhook transicion invalida: {wh_invalid.status_code}")
-            ok_invalid_transition = wh_invalid.status_code == 422
+            ok_invalid_transition = wh_invalid.status_code == 409
 
             # 8. bayforce_order_ref inexistente -> 404.
             wh_missing = client.post("/maintenance-orders/bayforce-webhook", headers=headers, json={"bayforce_order_ref": "BF-NO-EXISTE", "status": "completed"})

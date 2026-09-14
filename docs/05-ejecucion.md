@@ -1253,3 +1253,41 @@ Corregido con `semanage fcontext -a -t bin_t` (persiste tras un relabel completo
 **Cerrado y verificado**: `renfygrid-partition-maintenance.service`+`.timer` activos en
 `essmarplapp02`, corrida real confirmada (aseguró `raw_reading_y2026_m09/_m10/_m11`), próxima
 corrida automática mañana 03:16. **F10 ya no tiene ningún pendiente real.**
+
+### Pulido de consistencia entre módulos, Track B (2026-09-14)
+
+**Motivo:** con el endurecimiento real cerrado, el usuario pidió una pasada de consistencia
+entre las 4 pantallas nuevas de Track B (Balance de Red, Modelado Hidráulico, Gemelo Digital,
+Mantenimiento) y entre los servicios backend nuevos vs. los de Track A.
+
+**Revisión de frontend** (las 4 pantallas contra `Integrations.tsx`/`StagePage`/`EmptyState`
+como referencia): sin hallazgos reales. Las 4 páginas ya siguen el mismo idioma visual completo
+— mismas tarjetas de resumen, mismo patrón de formulario colapsable, mismo cuadro explicativo
+`indigo-50` al pie, mismos estados de carga/vacío, mismo manejo de `ApiError`, ya integradas en
+`AppShell`/`NAV_ITEMS` con ícono propio. No se tocó nada.
+
+**Revisión de backend** (docstrings de módulo, nombres de excepciones, mapeo excepción→HTTP en
+`portal-api/main.py`): los 4 servicios nuevos (`balance_service.py`, `model_service.py`,
+`asset_service.py`, `order_service.py`) siguen el mismo patrón que los de Track A —
+docstring de cabecera con la justificación de diseño, excepciones nombradas
+`*Error(LookupError|ValueError|RuntimeError)`, `NotFound*` → 404, `Invalid*`/`Missing*` → 422.
+
+**Un hallazgo real, corregido**: `order_service.InvalidStatusTransitionError` (transición de
+estado inválida de una `maintenance_order`, ej. reenviar una orden que ya no está en
+`generated`) mapeaba a `422` en los dos endpoints donde se usa
+(`POST /maintenance-orders/{id}/send-to-bayforce`, `POST /maintenance-orders/bayforce-webhook`).
+El caso análogo exacto en Control/SCR (`control_service.InvalidTransitionError`, transición de
+estado inválida de un `control_order`) ya usaba `409` desde antes — mismo concepto semántico
+(transición de máquina de estados inválida, no un cuerpo de request malformado) mapeado
+distinto entre dos módulos. Corregido a `409` en Mantenimiento para seguir la convención ya
+establecida por Control/SCR. `BayforceNotConfiguredError`/`BayforceIntegrationError` (errores
+de configuración/integración real, no de transición de estado) se quedan en `422`, sin cambio.
+
+E2E actualizado (`verify_maintenance_end_to_end.py`, pasos 5 y 7) y regresión completa de los
+19 `verify_*_end_to_end.py` de `portal-api` en verde. `main.py` (mantenido como fuente, no
+compilado con Nuitka) desplegado directo a `essmarplapp02`, `systemctl restart
+renfygrid-portal-api` → activo, verificado en vivo desde internet (`401` en los endpoints
+protegidos, no `500`, confirma que la app arrancó limpia con el cambio). El flujo `409` real
+contra BayForce en vivo queda sin poder probarse en producción por la misma razón ya
+documentada en B7 (`RENFYGRID_BAYFORCE_WEBHOOK_URL` no configurado ahí a propósito) — la
+prueba real de punta a punta es el E2E local contra el sandbox real, no un mock.

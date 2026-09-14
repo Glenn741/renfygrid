@@ -964,8 +964,10 @@ def get_maintenance_order_endpoint(order_id: str, tenant_id: str = Depends(get_t
 @app.post("/maintenance-orders/{order_id}/send-to-bayforce")
 def send_maintenance_order_to_bayforce_endpoint(order_id: str, tenant_id: str = Depends(get_tenant_id)) -> dict:
     """Envia la orden real a BayForce (HTTP real al webhook configurado) --
-    `422` si BayForce no esta configurado para este tenant, si la orden no
-    esta en `generated`, o si BayForce no responde/responde algo
+    `409` si la orden no esta en `generated` (misma convencion que
+    `InvalidTransitionError` de Control/SCR: transicion de estado invalida,
+    no un cuerpo de request malformado); `422` si BayForce no esta
+    configurado para este tenant, o si BayForce no responde/responde algo
     invalido (nunca un 200 con un envio fabricado); `404` si la orden no
     existe."""
     with db_conn() as conn:
@@ -973,7 +975,9 @@ def send_maintenance_order_to_bayforce_endpoint(order_id: str, tenant_id: str = 
             return send_to_bayforce(conn, tenant_id, order_id, app.state.settings.bayforce_webhook_url)
         except MaintenanceOrderNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
-        except (BayforceNotConfiguredError, InvalidStatusTransitionError, BayforceIntegrationError) as exc:
+        except InvalidStatusTransitionError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except (BayforceNotConfiguredError, BayforceIntegrationError) as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
@@ -988,13 +992,14 @@ def bayforce_webhook_endpoint(body: BayforceWebhookRequest, tenant_id: str = Dep
     ya recibe sus eventos, ver `core/renflow/bayforce/main.py` `/wfms/events`)
     llama aca para avanzar el estado real de la orden. Mismo mecanismo de
     autenticacion que ya usa el portal para un CIS externo (JWT del
-    tenant) -- no se inventa un esquema de firma nuevo para esto. `422` si
-    la transicion de estado pedida no es valida desde el estado actual;
-    `404` si no existe ninguna orden con ese `bayforce_order_ref`."""
+    tenant) -- no se inventa un esquema de firma nuevo para esto. `409` si
+    la transicion de estado pedida no es valida desde el estado actual
+    (misma convencion que `InvalidTransitionError` de Control/SCR); `404`
+    si no existe ninguna orden con ese `bayforce_order_ref`."""
     with db_conn() as conn:
         try:
             return close_from_webhook(conn, tenant_id, body.bayforce_order_ref, body.status)
         except MaintenanceOrderNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except InvalidStatusTransitionError as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
