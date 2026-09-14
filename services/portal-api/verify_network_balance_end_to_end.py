@@ -172,7 +172,8 @@ def run(dsn: str) -> int:
                 f"/network-zones/{zone_inconsistent}/balance", headers=headers,
                 json={
                     "period_start": "2026-08-01", "period_end": "2026-09-01", "method": "top_down",
-                    "system_input_volume": 10000, "billed_metered_consumption": 7000,  # componentes suman 7000 de 10000 -> 30% sin declarar
+                    "system_input_volume": 10000, "billed_metered_consumption": 7000,
+                    "real_losses": 0,  # explicito (Sprint B2: si se omite, top_down lo DERIVA y el balance cierra solo -- aca se prueba la inconsistencia real, no el residual)
                 },
             )
             print(f"POST balance (inconsistente): {balance_inconsistent.status_code}, {balance_inconsistent.json()}")
@@ -182,20 +183,64 @@ def run(dsn: str) -> int:
                 and balance_inconsistent.json()["balance_check_pct"] == 30.0
                 and balance_inconsistent.json()["nrw_pct"] == 30.0
                 and balance_inconsistent.json()["exceeds_threshold"] is False
+                and balance_inconsistent.json()["real_losses_derived"] is False
             )
+
+            # 5b. (Sprint B2) method='top_down' SIN real_losses -> se DERIVA como residual real (AWWA M36).
+            zone_derived = client.post(
+                "/network-zones", headers=headers,
+                json={"name": "DMA Top-Down derivado", "type": "dma", "data_source": "external"},
+            ).json()["zone_id"]
+            balance_derived = client.post(
+                f"/network-zones/{zone_derived}/balance", headers=headers,
+                json={
+                    "period_start": "2026-08-01", "period_end": "2026-09-01", "method": "top_down",
+                    "system_input_volume": 10000, "billed_metered_consumption": 7000, "apparent_losses": 500,
+                    # real_losses omitido -> debe derivarse como 10000-7000-0-0-500 = 2500
+                },
+            )
+            print(f"POST balance (top_down, real_losses omitido): {balance_derived.status_code}, {balance_derived.json()}")
+            ok_derived = (
+                balance_derived.status_code == 201
+                and balance_derived.json()["real_losses"] == 2500.0
+                and balance_derived.json()["real_losses_derived"] is True
+                and balance_derived.json()["balance_check_pct"] == 0.0  # cierra exacto por construccion
+            )
+
+            # 5c. (Sprint B2) method='bottom_up' SIN real_losses -> 422 (nunca se calcula como residual).
+            zone_bottom_up = client.post(
+                "/network-zones", headers=headers,
+                json={"name": "DMA Bottom-Up sin perdidas", "type": "dma", "data_source": "external"},
+            ).json()["zone_id"]
+            balance_missing_losses = client.post(
+                f"/network-zones/{zone_bottom_up}/balance", headers=headers,
+                json={"period_start": "2026-08-01", "period_end": "2026-09-01", "method": "bottom_up", "system_input_volume": 10000, "billed_metered_consumption": 7000},
+            )
+            print(f"POST balance (bottom_up sin real_losses): {balance_missing_losses.status_code}")
+            ok_bottom_up_requires_losses = balance_missing_losses.status_code == 422
+
+            # 5d. (Sprint B2) method invalido -> 422.
+            balance_bad_method = client.post(
+                f"/network-zones/{zone_bottom_up}/balance", headers=headers,
+                json={"period_start": "2026-08-01", "period_end": "2026-09-01", "method": "promedio_al_ojo", "system_input_volume": 10000, "real_losses": 100},
+            )
+            print(f"POST balance (method invalido): {balance_bad_method.status_code}")
+            ok_invalid_method = balance_bad_method.status_code == 422
 
             zones = client.get("/network-zones", headers=headers).json()
             print(f"GET /network-zones: {[z['name'] for z in zones]}")
-            ok_zones_list = len(zones) == 4
+            # sin-infra, con-infra, con-tope, inconsistente, top-down-derivado, bottom-up-sin-perdidas = 6
+            # (la zona georreferenciada del paso 7 todavia no existe aca)
+            ok_zones_list = len(zones) == 6
 
-            # 6. (B1-2) Resumen de portafolio -- numeros reales derivados de las 4 zonas de arriba.
+            # 6. (B1-2) Resumen de portafolio -- numeros reales derivados de las zonas de arriba.
             summary = client.get("/network-balances/summary", headers=headers).json()
             print(f"GET /network-balances/summary: {summary}")
-            # zones_with_balance: sin-infra, con-infra (v2, unica version contada), con-tope, inconsistente = 4
-            # zones_exceeding_threshold: solo "con tope CRA" (True) -- "inconsistente" da exactamente 30% (False), "sin tope"/"con infra" no tienen tope -> None
+            # zones_with_balance: todas menos "bottom-up-sin-perdidas" (esa fallo, 422, nunca se guardo) = 5
+            # zones_exceeding_threshold: solo "con tope CRA" (40%>30%) = 1
             ok_summary = (
-                summary["total_zones"] == 4
-                and summary["zones_with_balance"] == 4
+                summary["total_zones"] == 6
+                and summary["zones_with_balance"] == 5
                 and summary["zones_exceeding_threshold"] == 1
                 # unica zona con insumos de infraestructura, version 2 (real_losses=6900/30 dias): ILI ~= 0.99
                 and abs(summary["worst_ili"] - 0.99) < 0.01
@@ -231,9 +276,10 @@ def run(dsn: str) -> int:
 
             ok = (
                 ok_no_infra and ok_with_infra and ok_version and ok_latest_only and ok_missing_zone
-                and ok_over_threshold and ok_inconsistent and ok_zones_list and ok_summary and ok_geojson
+                and ok_over_threshold and ok_inconsistent and ok_derived and ok_bottom_up_requires_losses
+                and ok_invalid_method and ok_zones_list and ok_summary and ok_geojson
             )
-            print("SPRINT B1/B1-2 NETWORK BALANCE E2E OK" if ok else "SPRINT B1/B1-2 NETWORK BALANCE E2E FALLA")
+            print("SPRINT B1/B1-2/B2 NETWORK BALANCE E2E OK" if ok else "SPRINT B1/B1-2/B2 NETWORK BALANCE E2E FALLA")
             return 0 if ok else 1
         finally:
             with conn.transaction():

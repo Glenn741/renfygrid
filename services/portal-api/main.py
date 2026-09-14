@@ -81,6 +81,8 @@ from on_demand_reader import MeterNotReadableError, read_meter_now  # noqa: E402
 from meter_ping import MeterNotReachableError, ping_meter  # noqa: E402
 from protocol_mapping_admin import create_protocol_mapping, list_protocol_mappings  # noqa: E402
 from balance_service import (  # noqa: E402
+    InvalidMethodError,
+    MissingRealLossesError,
     ZoneNotFoundError,
     balance_summary,
     list_balances,
@@ -698,7 +700,10 @@ class NetworkBalanceRequest(BaseModel):
     billed_unbilled_consumption: float = 0.0
     unbilled_authorized_consumption: float = 0.0
     apparent_losses: float = 0.0
-    real_losses: float = 0.0
+    # Sprint B2: opcional para 'top_down' (se calcula como residual real si
+    # se omite, AWWA M36); obligatorio para 'bottom_up' (medido/estimado
+    # directo, nunca como residual -- 422 si falta).
+    real_losses: float | None = None
 
 
 @app.post("/network-zones/{zone_id}/balance", status_code=201)
@@ -716,6 +721,8 @@ def submit_network_balance_endpoint(
             )
         except ZoneNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except (InvalidMethodError, MissingRealLossesError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.get("/network-balances")

@@ -8,6 +8,14 @@ RenfyGrid o de un `POST /network-zones/{id}/balance` externo, ver
 `balance_service.py`) -- este modulo solo aplica las formulas del
 estandar, nunca inventa un componente que no se le paso.
 
+Sprint B2 (completo en esta ronda): las DOS formas reales en las que un
+operador llega a "Real Losses" -- `compute_top_down_real_losses()`
+(residual del balance, metodo Top-Down real de AWWA M36) y
+`bottom_up_real_losses_from_mnf()` (medicion/estimacion directa por
+Caudal Minimo Nocturno, metodo Bottom-Up real IWA). Antes, `real_losses`
+se pedia como dato directo para CUALQUIER metodo -- ahora Top-Down lo
+calcula solo si el llamador no lo trae ya hecho (`balance_service.submit_balance`).
+
 NRW (Non-Revenue Water) es simple: System Input Volume menos lo que
 genera ingreso (Billed, medido o no). Water Losses (Apparent + Real) no
 es lo mismo que NRW -- Consumo Autorizado No Facturado (hidrantes, lavado
@@ -85,6 +93,71 @@ def balance_check_pct(inputs: WaterBalanceInputs) -> float | None:
         + inputs.unbilled_authorized_consumption + inputs.apparent_losses + inputs.real_losses
     )
     return ((inputs.system_input_volume - declared_total) / inputs.system_input_volume) * 100
+
+
+def compute_top_down_real_losses(
+    system_input_volume: float,
+    billed_metered_consumption: float = 0.0,
+    billed_unbilled_consumption: float = 0.0,
+    unbilled_authorized_consumption: float = 0.0,
+    apparent_losses: float = 0.0,
+) -> float | None:
+    """Perdidas reales como RESIDUAL del balance (Sprint B2, metodo
+    Top-Down real -- AWWA M36 SS "Water Audit Methodology"): en un audit
+    Top-Down, las perdidas reales NUNCA se miden directo -- son lo que
+    sobra despues de restar del System Input Volume los 4 componentes que
+    SI se conocen (medidos o ya estimados por el operador con su propia
+    metodologia). Esto es lo que distingue Top-Down de Bottom-Up (donde
+    las perdidas reales se miden/estiman de forma directa, ver
+    `bottom_up_real_losses_from_mnf`).
+
+    Puede devolver un valor NEGATIVO si los 4 componentes declarados
+    exceden el SIV -- eso es una señal real de datos inconsistentes (el
+    balance no cierra), nunca se recorta a 0 en silencio: un residual
+    negativo debe verse y corregirse, no esconderse. `None` solo si el
+    SIV es 0 o negativo (residual indefinido)."""
+    if system_input_volume <= 0:
+        return None
+    return (
+        system_input_volume - billed_metered_consumption - billed_unbilled_consumption
+        - unbilled_authorized_consumption - apparent_losses
+    )
+
+
+def bottom_up_real_losses_from_mnf(
+    minimum_night_flow_lps: float,
+    legitimate_night_use_lps: float,
+    night_day_factor: float,
+    period_days: float,
+) -> float | None:
+    """Perdidas reales por analisis de Caudal Minimo Nocturno (Sprint B2,
+    metodo Bottom-Up real, estandar IWA -- fuente: MDPI *Water* 2022,
+    "Probabilistic Minimum Night Flow Estimation..."
+    https://doi.org/10.3390/w14010098): de madrugada (tipicamente 2-4am)
+    el consumo cae al minimo, asi que la mayor parte del caudal que sigue
+    entrando a la zona es fuga, no consumo -- de dia la fuga queda
+    escondida dentro del consumo normal y no se puede aislar.
+
+        NNF (caudal de fuga neto nocturno) = MNF - consumo legitimo nocturno
+        Perdidas reales (volumen) = NNF * NDF * duracion del periodo
+
+    El Night-Day Factor (NDF) convierte la tasa de fuga nocturna (presion
+    baja) en el promedio real de 24h (presion variable) -- depende de la
+    presion y el material de CADA zona especifica, por eso es un insumo
+    OBLIGATORIO del llamador, nunca un valor generico asumido aca (mismo
+    criterio de "cero hardcode" que el resto del motor). Todos los demas
+    insumos tambien son obligatorios y reales -- ninguno se asume.
+
+    `None` si `period_days <= 0`, o si el NNF resultante es negativo (mas
+    "consumo legitimo" declarado que flujo medido -- dato de entrada
+    inconsistente, nunca una fuga negativa fabricada)."""
+    if period_days <= 0:
+        return None
+    net_night_flow_lps = minimum_night_flow_lps - legitimate_night_use_lps
+    if net_night_flow_lps < 0:
+        return None
+    avg_loss_rate_lps = net_night_flow_lps * night_day_factor
+    return avg_loss_rate_lps * period_days * 86400 / 1000.0  # L/s -> m3 sobre el periodo completo
 
 
 def water_losses(inputs: WaterBalanceInputs) -> float:

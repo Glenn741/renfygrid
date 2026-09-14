@@ -13,6 +13,8 @@ from network_balance_engine import (
     WaterBalanceInputs,
     ZoneInfrastructure,
     balance_check_pct,
+    bottom_up_real_losses_from_mnf,
+    compute_top_down_real_losses,
     infrastructure_leakage_index,
     non_revenue_water,
     non_revenue_water_pct,
@@ -120,6 +122,60 @@ class InfrastructureLeakageIndexTests(unittest.TestCase):
         low = infrastructure_leakage_index(WaterBalanceInputs(system_input_volume=10000, real_losses=1000), zone, period_days=30)
         high = infrastructure_leakage_index(WaterBalanceInputs(system_input_volume=10000, real_losses=5000), zone, period_days=30)
         self.assertLess(low, high)
+
+
+class ComputeTopDownRealLossesTests(unittest.TestCase):
+    """Sprint B2: metodo Top-Down real (AWWA M36) -- perdidas reales como
+    RESIDUAL del balance, nunca medidas directo."""
+
+    def test_residual_equals_siv_minus_the_four_known_components(self):
+        result = compute_top_down_real_losses(
+            system_input_volume=10000, billed_metered_consumption=7000,
+            billed_unbilled_consumption=200, unbilled_authorized_consumption=100, apparent_losses=300,
+        )
+        self.assertAlmostEqual(result, 2400.0)  # 10000 - 7000 - 200 - 100 - 300
+
+    def test_defaults_to_siv_when_no_other_component_declared(self):
+        self.assertAlmostEqual(compute_top_down_real_losses(system_input_volume=5000), 5000.0)
+
+    def test_none_when_siv_is_zero_or_negative(self):
+        self.assertIsNone(compute_top_down_real_losses(system_input_volume=0))
+        self.assertIsNone(compute_top_down_real_losses(system_input_volume=-10))
+
+    def test_negative_residual_is_not_clamped_real_data_signal(self):
+        # Componentes declarados EXCEDEN el SIV -- dato inconsistente real,
+        # nunca se esconde recortando a 0.
+        result = compute_top_down_real_losses(system_input_volume=1000, billed_metered_consumption=1200)
+        self.assertAlmostEqual(result, -200.0)
+
+
+class BottomUpRealLossesFromMnfTests(unittest.TestCase):
+    """Sprint B2: metodo Bottom-Up real (IWA) -- perdidas reales medidas/
+    estimadas directo por Caudal Minimo Nocturno, no como residual."""
+
+    def test_real_volume_from_mnf_ndf_and_period(self):
+        # NNF = 10 - 3 = 7 LPS; tasa promedio = 7*1.8 = 12.6 LPS;
+        # volumen = 12.6 * 30 * 86400 / 1000 = 32659.2 m3.
+        result = bottom_up_real_losses_from_mnf(
+            minimum_night_flow_lps=10, legitimate_night_use_lps=3, night_day_factor=1.8, period_days=30,
+        )
+        self.assertAlmostEqual(result, 32659.2, places=1)
+
+    def test_none_when_period_is_zero_or_negative(self):
+        self.assertIsNone(bottom_up_real_losses_from_mnf(10, 3, 1.8, period_days=0))
+
+    def test_none_when_legitimate_use_exceeds_mnf(self):
+        # Mas "consumo legitimo" declarado que flujo medido -- dato de
+        # entrada inconsistente, nunca una fuga negativa fabricada.
+        self.assertIsNone(bottom_up_real_losses_from_mnf(
+            minimum_night_flow_lps=5, legitimate_night_use_lps=8, night_day_factor=1.8, period_days=30,
+        ))
+
+    def test_all_inputs_are_required_no_hidden_default_for_ndf(self):
+        import inspect
+        sig = inspect.signature(bottom_up_real_losses_from_mnf)
+        for name in ("minimum_night_flow_lps", "legitimate_night_use_lps", "night_day_factor", "period_days"):
+            self.assertEqual(sig.parameters[name].default, inspect.Parameter.empty, f"{name} no deberia tener default")
 
 
 if __name__ == "__main__":

@@ -84,8 +84,8 @@ al sprint donde se construye y a su estado real.
 |---|---|---|---|
 | F35 | `network_zone` jerárquica (DMA/circuito/distrito) | B1 | 🟢 (con insumos de infraestructura para ILI — ver `07-track-b-alcance-funcional.md`) |
 | F36 | Endpoint de ingesta externa (venta modular sin HES propio) | B1 | 🟢 |
-| F37 | Cálculo de balance Top-Down (IWA) | B2 | 🟡 (NRW/ILI se calculan igual sin importar el método — `method` es metadata trazable, no una fórmula distinta; ver bitácora Sprint B1) |
-| F38 | Cálculo de balance Bottom-Up (IWA) | B2 | 🟡 (mismo alcance que F37 — la estimación de componentes por flujo mínimo nocturno/frecuencia de fugas es trabajo especializado fuera de alcance, `07-track-b-alcance-funcional.md` §6) |
+| F37 | Cálculo de balance Top-Down (IWA) | B2 | 🟢 (`real_losses` se calcula como el RESIDUAL del balance si el llamador no lo trae — metodo Top-Down real, AWWA M36; ver Sprint B2) |
+| F38 | Cálculo de balance Bottom-Up (IWA) | B2 | 🟢 (`real_losses` sigue siendo obligatorio/medido, mas la formula real de Caudal Mínimo Nocturno — `bottom_up_real_losses_from_mnf` — para producirlo; ver Sprint B2) |
 | F39 | Carga y versionado de modelo hidráulico (`.inp`) | B3 | 🟢 |
 | F40 | Simulación vía WNTR | B3 | 🟢 |
 | F41 | Calibración de modelo con datos de `network_balance` | B4 | 🟢 |
@@ -1168,7 +1168,35 @@ sesión, no se fabricaron. El contrato del lado de RenfyGrid está completo, pro
 apuntar ahí en cuanto existan. Disparo automático de `simulation_result` desde una corrida real
 de B3/B4 queda para un sprint futuro.
 
+**Estado de Track B tras esta ronda:** B1, B3-B7 completos. B2 quedó parcialmente cubierto por
+diseño desde B1 — completado en la siguiente ronda.
+
+### Track B, Sprint B2 — completo: Top-Down (residual) y Bottom-Up (MNF) reales (2026-09-13/14)
+
+**Motivo:** "sigue con B2 completo" — el usuario pidió cerrar el único hueco real que quedaba
+declarado como parcial desde B1: `real_losses` se pedía como dato directo para **cualquier**
+método, cuando el método Top-Down real (AWWA M36, *Water Audits and Loss Control Programs*) lo
+define como el **residual** del balance (nunca medido directo), y Bottom-Up (IWA) lo mide/estima
+por separado — normalmente por análisis de Caudal Mínimo Nocturno (MNF). Investigación real
+antes de tocar código: confirmada la metodología MNF real (fuente:
+[MDPI *Water* 2022, "Probabilistic Minimum Night Flow Estimation..."](https://doi.org/10.3390/w14010098))
+— de madrugada el consumo cae al mínimo, así que casi todo el caudal que sigue entrando es fuga,
+no consumo; el Night-Day Factor (NDF) convierte esa tasa nocturna en el promedio real de 24h.
+
+| Fecha | Avance | Evidencia |
+|---|---|---|
+| 2026-09-13 | **`network_balance_engine.compute_top_down_real_losses()`** (nuevo): `real_losses` = SIV menos los otros 4 componentes — residual real, puede dar NEGATIVO si los componentes declarados exceden el SIV (señal real de datos inconsistentes, nunca recortado a 0 en silencio). `None` solo si SIV≤0 | `services/network-balance/network_balance_engine.py` |
+| 2026-09-13 | **`bottom_up_real_losses_from_mnf()`** (nuevo): NNF (fuga neta nocturna) = MNF − consumo legítimo nocturno; Volumen real = NNF × NDF × período. TODOS los insumos son obligatorios, sin default oculto — el NDF depende de la presión/material real de cada zona, nunca un valor genérico asumido en el motor (mismo criterio "cero hardcode" del resto del proyecto) | `services/network-balance/network_balance_engine.py` |
+| 2026-09-13 | 8 pruebas unitarias nuevas — incluye confirmar que un residual negativo NO se recorta, y que los 4 parámetros de la fórmula MNF no tienen default (inspeccionado por firma de la función). **26/26 pruebas puras del módulo en verde** | `python -m unittest tests.test_network_balance_engine -v` → 26/26 OK |
+| 2026-09-13 | **Migración `0018_network_balance_derived_flag.sql`**: `network_balance.real_losses_derived` — de dónde salió `real_losses` (calculado vs. medido/declarado), proveniencia real, nunca implícita | `infra/db/migrations/0018_network_balance_derived_flag.sql` |
+| 2026-09-13 | `balance_service.submit_balance()`: `real_losses` pasa a ser OPCIONAL — `method='top_down'` sin `real_losses` lo deriva como residual (si el llamador ya trae su propio audit externo, se respeta tal cual, nunca se sobreescribe); `method='bottom_up'` sigue exigiéndolo (`MissingRealLossesError` si falta — nunca se calcula como residual, eso rompería la definición misma del método). `method` ahora se valida contra los 2 valores reales (`InvalidMethodError` si no es `top_down`/`bottom_up`) | `services/network-balance/balance_service.py`, `services/portal-api/main.py` |
+| 2026-09-13 | E2E extendido: `top_down` sin `real_losses` → se deriva correcto (`real_losses_derived=True`, balance cierra exacto por construcción); `bottom_up` sin `real_losses` → `422`; `method` inválido → `422`; caso de inconsistencia real preexistente ajustado para declarar `real_losses` explícito (si no, ya no prueba una inconsistencia real — ahora se derivaría y cerraría solo) | `verify_network_balance_end_to_end.py` → `SPRINT B1/B1-2/B2 NETWORK BALANCE E2E OK` |
+| 2026-09-13 | Regresión completa: los 19 `verify_*_end_to_end.py` de `portal-api` en verde | `exit=0` en los 19 scripts |
+| 2026-09-13 | Frontend: el campo "Pérdidas reales" del formulario de ingesta ahora es opcional para Top-Down (con la explicación del residual en pantalla) y obligatorio para Bottom-Up (deshabilita el botón si falta); la tabla de balances muestra una columna "Pérdidas reales" con badge "derivado" cuando `real_losses_derived=true` | `services/portal-web/src/pages/NetworkBalance.tsx`, `api.ts` |
+| 2026-09-13 | `tsc -b && vite build` limpio, bundle contiene "derivado"/"se calcula solo". Desplegado: migración 0018 con respaldo real primero, backend (Nuitka, build incremental) + `main.py` a `essmarplapp02`, `systemctl restart renfygrid-portal-api` → activo; frontend a `essmarplpxy03`. **Smoke test real contra producción**: un balance `top_down` real sin `real_losses` se deriva correctamente (`10000-7500-200=2300`, `real_losses_derived=True`) | corrida real contra Postgres/venv de producción → `PROD SMOKE B2 OK` |
+
 **Estado de Track B tras esta ronda:** **B1 a B7, las 7 épicas del Track B originalmente
-planteadas, están construidas** (B2 cubierto parcialmente por diseño desde B1, documentado en su
-propia entrada). Únicos pendientes reales: la conexión viva a BayForce (bloqueada por
-credenciales externas, no por trabajo) y el disparo automático de órdenes desde `simulation_result`.
+planteadas, están construidas y completas** (incluyendo B2, ya sin ningún alcance parcial
+declarado). Únicos pendientes reales: la conexión viva a BayForce (bloqueada por credenciales
+externas, no por trabajo) y el disparo automático de órdenes de mantenimiento desde
+`simulation_result`.

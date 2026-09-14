@@ -600,6 +600,7 @@ export interface NetworkBalance {
   unbilled_authorized_consumption: number;
   apparent_losses: number;
   real_losses: number;
+  real_losses_derived: boolean;
   nrw: number | null;
   nrw_pct: number | null;
   ili: number | null;

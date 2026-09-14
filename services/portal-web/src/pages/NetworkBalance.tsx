@@ -240,7 +240,9 @@ function SubmitBalanceForm({ zone, onDone }: { zone: NetworkZone; onDone: () => 
         billed_unbilled_consumption: billedUnbilled ? Number(billedUnbilled) : 0,
         unbilled_authorized_consumption: unbilledAuthorized ? Number(unbilledAuthorized) : 0,
         apparent_losses: apparentLosses ? Number(apparentLosses) : 0,
-        real_losses: realLosses ? Number(realLosses) : 0,
+        // Sprint B2: en blanco se OMITE (no se manda 0) -- para 'top_down' eso hace
+        // que el backend lo derive como residual real (AWWA M36); 'bottom_up' lo exige.
+        ...(realLosses ? { real_losses: Number(realLosses) } : {}),
       }),
     onSuccess: () => {
       setError(null);
@@ -292,15 +294,28 @@ function SubmitBalanceForm({ zone, onDone }: { zone: NetworkZone; onDone: () => 
             <input type="number" className="rounded-lg border border-slate-300 px-2 py-1 text-xs w-full" value={apparentLosses} onChange={(e) => setApparentLosses(e.target.value)} />
           </div>
           <div className="col-span-1">
-            <label className="block text-[10px] font-medium text-slate-500 mb-1">Pérdidas reales</label>
-            <input type="number" className="rounded-lg border border-slate-300 px-2 py-1 text-xs w-full" value={realLosses} onChange={(e) => setRealLosses(e.target.value)} />
+            <label className="block text-[10px] font-medium text-slate-500 mb-1">
+              Pérdidas reales {method === "top_down" ? "(opcional)" : "*"}
+            </label>
+            <input
+              type="number"
+              className="rounded-lg border border-slate-300 px-2 py-1 text-xs w-full"
+              value={realLosses}
+              onChange={(e) => setRealLosses(e.target.value)}
+              placeholder={method === "top_down" ? "en blanco = se calcula solo" : "medido/estimado (ej. caudal mínimo nocturno)"}
+            />
           </div>
         </div>
+        <p className="text-xs text-slate-500 mt-2">
+          {method === "top_down"
+            ? "Top-Down: si dejas \"Pérdidas reales\" en blanco, se calcula como el residual del balance (System Input Volume menos los otros 4 componentes) -- así funciona un audit Top-Down real."
+            : "Bottom-Up: \"Pérdidas reales\" es obligatorio -- se mide o estima directo (ej. análisis de caudal mínimo nocturno), nunca como residual."}
+        </p>
         {error && <p className="text-sm text-red-600 mt-2">{error}</p>}
         <div className="mt-3 flex gap-2">
           <button
             onClick={() => mutation.mutate()}
-            disabled={!siv || !periodStart || !periodEnd || mutation.isPending}
+            disabled={!siv || !periodStart || !periodEnd || (method === "bottom_up" && !realLosses) || mutation.isPending}
             className="rounded-lg bg-indigo-600 text-white text-xs font-semibold px-3 py-1.5 hover:bg-indigo-700 disabled:opacity-40"
           >
             Registrar balance
@@ -492,6 +507,7 @@ export function NetworkBalancePage() {
                 <th className="px-4 py-3">Período</th>
                 <th className="px-4 py-3">Método</th>
                 <th className="px-4 py-3">NRW</th>
+                <th className="px-4 py-3">Pérdidas reales</th>
                 <th className="px-4 py-3">ILI</th>
                 <th className="px-4 py-3">Consistencia</th>
                 <th className="px-4 py-3">Versión</th>
@@ -508,6 +524,14 @@ export function NetworkBalancePage() {
                     {row.exceeds_threshold === true && (
                       <span className="ml-2 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700" title="Excede el tope regulatorio configurado para esta zona">
                         excede tope
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 tabular-nums text-slate-600">
+                    {row.real_losses.toFixed(1)}
+                    {row.real_losses_derived && (
+                      <span className="ml-2 rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700" title="Calculado como el residual del balance (System Input Volume menos los otros 4 componentes) -- método Top-Down real, no medido directo">
+                        derivado
                       </span>
                     )}
                   </td>
