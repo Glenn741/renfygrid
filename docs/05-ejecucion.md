@@ -1228,3 +1228,28 @@ cosméticos).
 **Pendiente real, requiere aprobación explícita del usuario para el siguiente paso:** activar el
 timer de mantenimiento de particiones ya preparado arriba (implica rotar la contraseña del rol
 admin `renfygrid` en producción).
+
+**Actualización (2026-09-13, mismo día):** el usuario aprobó instalar el timer pero pidió
+explícitamente no rotar ninguna contraseña. Rehecho sin ese paso: el wrapper se conecta por
+**autenticación peer vía socket Unix como rol `postgres`** (mismo mecanismo que ya usa `pg_dump`
+en cada respaldo previo a una migración) — cero contraseñas nuevas, cero secreto de por medio.
+Aceptable porque el job es DDL puro (`CREATE TABLE ... PARTITION OF`), nunca lee datos de un
+tenant.
+
+**Hallazgo real durante la instalación**: el servicio fallaba bajo `systemctl start` con
+`Permission denied` al ejecutar el script, aunque el mismo archivo corría perfecto a mano
+(`sudo -u postgres /opt/.../run_partition_maintenance.sh`). Causa real, confirmada con
+`systemd-run` aislando la variable (mismo fallo con una unidad transitoria, sin relación con
+`User=postgres` en sí — `/bin/echo` sí corría bien como ese usuario): **SELinux**, no permisos
+Unix. El script tenía el tipo genérico `default_t` (vive bajo `/cdrs/renfygrid`, sin regla de
+contexto propia declarada), y el dominio confinado con el que systemd ejecuta servicios no tiene
+permiso de exec sobre ese tipo — por eso fallaba solo bajo systemd (dominio confinado) y no en
+una sesión interactiva por SSH (`unconfined_t`, sin restricción). El propio
+`renfygrid-portal-api.service`, que sí funciona, nunca tropezó con esto porque su `ExecStart`
+resuelve (via symlinks del venv) hasta `/usr/bin/python3.9`, ya etiquetado `bin_t` por el sistema.
+Corregido con `semanage fcontext -a -t bin_t` (persiste tras un relabel completo) +
+`restorecon` sobre la ruta real (`/cdrs/renfygrid/...`, no el symlink `/opt/renfygrid/...`).
+
+**Cerrado y verificado**: `renfygrid-partition-maintenance.service`+`.timer` activos en
+`essmarplapp02`, corrida real confirmada (aseguró `raw_reading_y2026_m09/_m10/_m11`), próxima
+corrida automática mañana 03:16. **F10 ya no tiene ningún pendiente real.**
