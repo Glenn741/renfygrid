@@ -5,16 +5,24 @@ import {
   bulkMarkMeterProtection,
   createApprovalLevel,
   createConsumptionAnomalyRule,
+  createCrew,
+  createFailureCode,
   createProtocolMapping,
   createVeeRule,
   deactivateConsumptionAnomalyRule,
+  deactivateCrew,
+  deactivateFailureCode,
   deactivateVeeRule,
   getApprovalLevels,
   getConsumptionAnomalyRules,
+  getCrews,
+  getFailureCodes,
   getProtectedMeters,
   getProtocolMappings,
+  getSlaPolicies,
   getVeeRules,
   markMeterProtection,
+  setSlaPolicy,
 } from "../api";
 import { StagePage, EmptyState } from "../components/StagePage";
 import { NavSection, SectionNav } from "../components/SectionNav";
@@ -32,7 +40,14 @@ const SECTIONS = [
   { id: "approval-levels", label: "Aprobación (SCR)" },
   { id: "protocol-mapping", label: "Mapeo OBIS" },
   { id: "protected-accounts", label: "Cuentas protegidas" },
+  { id: "sla-policies", label: "SLA de mantenimiento" },
+  { id: "failure-codes", label: "Códigos de falla" },
+  { id: "crews", label: "Cuadrillas" },
 ];
+
+const PRIORITY_LABEL: Record<string, string> = {
+  low: "Baja", medium: "Media", high: "Alta", emergency: "Emergencia",
+};
 
 function SectionCard({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
   return (
@@ -541,6 +556,144 @@ function ProtectedAccountsSection() {
   );
 }
 
+function SlaPoliciesSection() {
+  const queryClient = useQueryClient();
+  const { data } = useQuery({ queryKey: ["sla-policies"], queryFn: getSlaPolicies });
+  const [priority, setPriority] = useState<string>("medium");
+  const [targetHours, setTargetHours] = useState("24");
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["sla-policies"] });
+  const saveMutation = useMutation({
+    mutationFn: () => setSlaPolicy(priority, Number(targetHours)),
+    onSuccess: invalidate,
+  });
+
+  const configured = new Map((data ?? []).map((p) => [p.priority, p.target_hours]));
+
+  return (
+    <SectionCard
+      title="SLA de mantenimiento"
+      description="Horas objetivo para cerrar una orden según su prioridad. Sin una política configurada, esa prioridad nunca queda marcada como vencida — ninguna orden vence contra un tope inventado."
+    >
+      <div className="flex flex-wrap items-end gap-3 mb-4">
+        <div>
+          <label className="block text-xs font-medium text-slate-500 mb-1">Prioridad</label>
+          <select className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm" value={priority} onChange={(e) => setPriority(e.target.value)}>
+            {Object.entries(PRIORITY_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-slate-500 mb-1">Horas objetivo</label>
+          <input type="number" className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm w-28" value={targetHours} onChange={(e) => setTargetHours(e.target.value)} />
+        </div>
+        <button
+          onClick={() => saveMutation.mutate()}
+          disabled={saveMutation.isPending}
+          className="rounded-lg bg-indigo-600 text-white text-sm font-semibold px-4 py-1.5 hover:bg-indigo-700 disabled:opacity-50"
+        >
+          Guardar
+        </button>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {Object.entries(PRIORITY_LABEL).map(([p, label]) => (
+          <span key={p} className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+            {label}: {configured.has(p) ? `${configured.get(p)}h` : "sin configurar"}
+          </span>
+        ))}
+      </div>
+    </SectionCard>
+  );
+}
+
+function FailureCodesSection() {
+  const queryClient = useQueryClient();
+  const { data } = useQuery({ queryKey: ["failure-codes"], queryFn: () => getFailureCodes() });
+  const [code, setCode] = useState("");
+  const [label, setLabel] = useState("");
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["failure-codes"] });
+  const createMutation = useMutation({
+    mutationFn: () => createFailureCode(code, label),
+    onSuccess: () => { setCode(""); setLabel(""); invalidate(); },
+  });
+  const deactivateMutation = useMutation({ mutationFn: deactivateFailureCode, onSuccess: invalidate });
+
+  return (
+    <SectionCard title="Códigos de falla" description="Catálogo real de causas — se elige al cerrar una orden de mantenimiento, nunca texto libre sin estructura.">
+      <div className="flex flex-wrap items-end gap-3 mb-4">
+        <div>
+          <label className="block text-xs font-medium text-slate-500 mb-1">Código</label>
+          <input className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm w-32" value={code} onChange={(e) => setCode(e.target.value)} placeholder="ej. VLV-STUCK" />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-slate-500 mb-1">Descripción</label>
+          <input className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm w-56" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="ej. Válvula atascada" />
+        </div>
+        <button
+          onClick={() => createMutation.mutate()}
+          disabled={!code || !label || createMutation.isPending}
+          className="rounded-lg bg-indigo-600 text-white text-sm font-semibold px-4 py-1.5 hover:bg-indigo-700 disabled:opacity-50"
+        >
+          Agregar
+        </button>
+      </div>
+      {data && data.length === 0 && <EmptyState message="Sin códigos de falla todavía." />}
+      {data && data.length > 0 && (
+        <ul className="divide-y divide-slate-100">
+          {data.map((fc) => (
+            <li key={fc.failure_code_id} className="flex items-center justify-between py-2 text-sm">
+              <span className="text-slate-700"><strong>{fc.code}</strong> — {fc.label}</span>
+              <button onClick={() => deactivateMutation.mutate(fc.failure_code_id)} className="text-xs text-slate-400 hover:text-red-600">Desactivar</button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </SectionCard>
+  );
+}
+
+function CrewsSection() {
+  const queryClient = useQueryClient();
+  const { data } = useQuery({ queryKey: ["crews"], queryFn: () => getCrews() });
+  const [name, setName] = useState("");
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["crews"] });
+  const createMutation = useMutation({
+    mutationFn: () => createCrew(name),
+    onSuccess: () => { setName(""); invalidate(); },
+  });
+  const deactivateMutation = useMutation({ mutationFn: deactivateCrew, onSuccess: invalidate });
+
+  return (
+    <SectionCard title="Cuadrillas" description="Lista simple de cuadrillas/técnicos para asignar órdenes — sin motor de ruteo/optimización, asignación explícita a propósito.">
+      <div className="flex flex-wrap items-end gap-3 mb-4">
+        <div>
+          <label className="block text-xs font-medium text-slate-500 mb-1">Nombre</label>
+          <input className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm w-56" value={name} onChange={(e) => setName(e.target.value)} placeholder="ej. Cuadrilla Centro" />
+        </div>
+        <button
+          onClick={() => createMutation.mutate()}
+          disabled={!name || createMutation.isPending}
+          className="rounded-lg bg-indigo-600 text-white text-sm font-semibold px-4 py-1.5 hover:bg-indigo-700 disabled:opacity-50"
+        >
+          Agregar
+        </button>
+      </div>
+      {data && data.length === 0 && <EmptyState message="Sin cuadrillas todavía." />}
+      {data && data.length > 0 && (
+        <ul className="divide-y divide-slate-100">
+          {data.map((c) => (
+            <li key={c.crew_id} className="flex items-center justify-between py-2 text-sm">
+              <span className="text-slate-700">{c.name}</span>
+              <button onClick={() => deactivateMutation.mutate(c.crew_id)} className="text-xs text-slate-400 hover:text-red-600">Desactivar</button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </SectionCard>
+  );
+}
+
 export function ConfigurationPage() {
   return (
     <StagePage title="Configuración">
@@ -550,6 +703,9 @@ export function ConfigurationPage() {
       <NavSection id="approval-levels"><ApprovalLevelsSection /></NavSection>
       <NavSection id="protocol-mapping"><ProtocolMappingSection /></NavSection>
       <NavSection id="protected-accounts"><ProtectedAccountsSection /></NavSection>
+      <NavSection id="sla-policies"><SlaPoliciesSection /></NavSection>
+      <NavSection id="failure-codes"><FailureCodesSection /></NavSection>
+      <NavSection id="crews"><CrewsSection /></NavSection>
     </StagePage>
   );
 }

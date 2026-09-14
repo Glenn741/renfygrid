@@ -124,14 +124,34 @@ from order_service import (  # noqa: E402
     AnomalyNotConfirmedError,
     BayforceIntegrationError,
     BayforceNotConfiguredError,
+    CrewNotFoundError,
+    FailureCodeNotFoundError,
+    InvalidCloseStatusError,
     InvalidOrderSourceError,
     InvalidOrderTypeError,
+    InvalidPriorityError,
     InvalidStatusTransitionError,
+    assign_order,
     close_from_webhook,
+    close_order,
+    create_crew,
+    create_failure_code,
+    create_pm_plan,
+    deactivate_crew,
+    deactivate_failure_code,
+    generate_due_pm_orders,
     generate_order,
     get_order_detail,
+    list_crews,
+    list_failure_codes,
     list_orders,
+    list_pm_plans,
+    list_sla_policies,
+    maintenance_kpis,
+    schedule_order,
     send_to_bayforce,
+    set_sla_policy,
+    start_order,
 )
 from order_service import AssetNotFoundError as MaintenanceAssetNotFoundError  # noqa: E402
 from order_service import OrderNotFoundError as MaintenanceOrderNotFoundError  # noqa: E402
@@ -926,21 +946,23 @@ class GenerateOrderRequest(BaseModel):
     asset_id: str
     type: str
     source: str
+    priority: str
     reason: str | None = None
 
 
 @app.post("/maintenance-orders", status_code=201)
 def create_maintenance_order_endpoint(body: GenerateOrderRequest, tenant_id: str = Depends(get_tenant_id)) -> dict:
-    """Genera una orden real -- `422` si el tipo/fuente no son validos o
-    la anomalia real que justificaria una fuente automatica no se cumple
-    ahora mismo (`AnomalyNotConfirmedError`); `404` si el activo no
-    existe."""
+    """Genera una orden real -- `422` si el tipo/fuente/prioridad no son
+    validos o la anomalia real que justificaria una fuente automatica no
+    se cumple ahora mismo (`AnomalyNotConfirmedError`); `404` si el
+    activo no existe. El SLA (`sla_due_at`) se calcula solo si el tenant
+    configuro una politica real para esa prioridad."""
     with db_conn() as conn:
         try:
-            return generate_order(conn, tenant_id, body.asset_id, body.type, body.source, body.reason)
+            return generate_order(conn, tenant_id, body.asset_id, body.type, body.source, body.priority, body.reason)
         except MaintenanceAssetNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
-        except (InvalidOrderTypeError, InvalidOrderSourceError, AnomalyNotConfirmedError) as exc:
+        except (InvalidOrderTypeError, InvalidOrderSourceError, InvalidPriorityError, AnomalyNotConfirmedError) as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
@@ -1003,3 +1025,199 @@ def bayforce_webhook_endpoint(body: BayforceWebhookRequest, tenant_id: str = Dep
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except InvalidStatusTransitionError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# CMMS real de dominio (2026-09-14, docs/04-plan-sprints.md SS9) --
+# prioridad/SLA, codigos de falla, PM programado, ciclo de vida propio
+# (generated -> scheduled -> assigned -> in_progress -> completed |
+# cancelled), cierre con sustancia, KPIs. BayForce sigue siendo la
+# notificacion de salida OPCIONAL de arriba, nunca esta columna vertebral.
+# ══════════════════════════════════════════════════════════════════════════
+
+
+class ScheduleOrderRequest(BaseModel):
+    scheduled_at: datetime
+
+
+@app.post("/maintenance-orders/{order_id}/schedule")
+def schedule_maintenance_order_endpoint(order_id: str, body: ScheduleOrderRequest, tenant_id: str = Depends(get_tenant_id)) -> dict:
+    """Programa la orden -- `409` si no esta en `generated`; `404` si no existe."""
+    with db_conn() as conn:
+        try:
+            return schedule_order(conn, tenant_id, order_id, body.scheduled_at)
+        except MaintenanceOrderNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except InvalidStatusTransitionError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+class AssignOrderRequest(BaseModel):
+    crew_id: str
+
+
+@app.post("/maintenance-orders/{order_id}/assign")
+def assign_maintenance_order_endpoint(order_id: str, body: AssignOrderRequest, tenant_id: str = Depends(get_tenant_id)) -> dict:
+    """Asigna la orden a una cuadrilla real y activa -- `404` si la orden o
+    la cuadrilla no existen; `409` si la orden no esta en `scheduled`."""
+    with db_conn() as conn:
+        try:
+            return assign_order(conn, tenant_id, order_id, body.crew_id)
+        except (MaintenanceOrderNotFoundError, CrewNotFoundError) as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except InvalidStatusTransitionError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post("/maintenance-orders/{order_id}/start")
+def start_maintenance_order_endpoint(order_id: str, tenant_id: str = Depends(get_tenant_id)) -> dict:
+    """Marca el trabajo como iniciado en campo -- `409` si no esta en
+    `assigned`/`sent_to_bayforce`; `404` si no existe."""
+    with db_conn() as conn:
+        try:
+            return start_order(conn, tenant_id, order_id)
+        except MaintenanceOrderNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except InvalidStatusTransitionError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+class CloseOrderRequest(BaseModel):
+    status: str
+    labor_hours: float | None = None
+    materials_used: str | None = None
+    root_cause: str | None = None
+    failure_code_id: str | None = None
+
+
+@app.post("/maintenance-orders/{order_id}/close")
+def close_maintenance_order_endpoint(order_id: str, body: CloseOrderRequest, tenant_id: str = Depends(get_tenant_id)) -> dict:
+    """Cierra la orden real -- `completed` (con lo que de verdad se hizo)
+    o `cancelled`. `409` si no esta en `in_progress`; `404` si la orden o
+    el codigo de falla no existen; `422` si `status` no es uno de los 2
+    validos para cerrar."""
+    with db_conn() as conn:
+        try:
+            return close_order(
+                conn, tenant_id, order_id, body.status,
+                body.labor_hours, body.materials_used, body.root_cause, body.failure_code_id,
+            )
+        except (MaintenanceOrderNotFoundError, FailureCodeNotFoundError) as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except InvalidCloseStatusError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except InvalidStatusTransitionError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.get("/maintenance/kpis")
+def maintenance_kpis_endpoint(tenant_id: str = Depends(get_tenant_id)) -> dict:
+    """MTTR, backlog, % de cumplimiento de mantenimiento preventivo y
+    ordenes vencidas de SLA -- todo real, nunca aproximado."""
+    with db_conn() as conn:
+        return maintenance_kpis(conn, tenant_id)
+
+
+class SlaPolicyRequest(BaseModel):
+    priority: str
+    target_hours: float
+
+
+@app.get("/maintenance/sla-policies")
+def list_sla_policies_endpoint(tenant_id: str = Depends(get_tenant_id)) -> list[dict]:
+    with db_conn() as conn:
+        return list_sla_policies(conn, tenant_id)
+
+
+@app.post("/maintenance/sla-policies", status_code=201)
+def set_sla_policy_endpoint(body: SlaPolicyRequest, tenant_id: str = Depends(get_tenant_id)) -> dict:
+    """Crea o reemplaza el SLA objetivo (horas) para una prioridad -- `422`
+    si la prioridad no es una de las 4 reales."""
+    with db_conn() as conn:
+        try:
+            return set_sla_policy(conn, tenant_id, body.priority, body.target_hours)
+        except InvalidPriorityError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+class FailureCodeRequest(BaseModel):
+    code: str
+    label: str
+
+
+@app.get("/maintenance/failure-codes")
+def list_failure_codes_endpoint(tenant_id: str = Depends(get_tenant_id), include_inactive: bool = False) -> list[dict]:
+    with db_conn() as conn:
+        return list_failure_codes(conn, tenant_id, include_inactive)
+
+
+@app.post("/maintenance/failure-codes", status_code=201)
+def create_failure_code_endpoint(body: FailureCodeRequest, tenant_id: str = Depends(get_tenant_id)) -> dict:
+    with db_conn() as conn:
+        return create_failure_code(conn, tenant_id, body.code, body.label)
+
+
+@app.delete("/maintenance/failure-codes/{failure_code_id}", status_code=204)
+def deactivate_failure_code_endpoint(failure_code_id: str, tenant_id: str = Depends(get_tenant_id)) -> None:
+    with db_conn() as conn:
+        deactivate_failure_code(conn, tenant_id, failure_code_id)
+
+
+class CrewRequest(BaseModel):
+    name: str
+
+
+@app.get("/maintenance/crews")
+def list_crews_endpoint(tenant_id: str = Depends(get_tenant_id), include_inactive: bool = False) -> list[dict]:
+    with db_conn() as conn:
+        return list_crews(conn, tenant_id, include_inactive)
+
+
+@app.post("/maintenance/crews", status_code=201)
+def create_crew_endpoint(body: CrewRequest, tenant_id: str = Depends(get_tenant_id)) -> dict:
+    with db_conn() as conn:
+        return create_crew(conn, tenant_id, body.name)
+
+
+@app.delete("/maintenance/crews/{crew_id}", status_code=204)
+def deactivate_crew_endpoint(crew_id: str, tenant_id: str = Depends(get_tenant_id)) -> None:
+    with db_conn() as conn:
+        deactivate_crew(conn, tenant_id, crew_id)
+
+
+class PmPlanRequest(BaseModel):
+    asset_id: str
+    order_type: str
+    priority: str
+    interval_days: int
+    next_due_at: datetime
+
+
+@app.get("/maintenance/pm-plans")
+def list_pm_plans_endpoint(tenant_id: str = Depends(get_tenant_id)) -> list[dict]:
+    with db_conn() as conn:
+        return list_pm_plans(conn, tenant_id)
+
+
+@app.post("/maintenance/pm-plans", status_code=201)
+def create_pm_plan_endpoint(body: PmPlanRequest, tenant_id: str = Depends(get_tenant_id)) -> dict:
+    """Plan de mantenimiento preventivo real, por activo especifico --
+    `404` si el activo no existe; `422` si el tipo/prioridad no son
+    validos."""
+    with db_conn() as conn:
+        try:
+            return create_pm_plan(conn, tenant_id, body.asset_id, body.order_type, body.priority, body.interval_days, body.next_due_at)
+        except MaintenanceAssetNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except (InvalidOrderTypeError, InvalidPriorityError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/maintenance/pm-plans/generate-due")
+def generate_due_pm_orders_endpoint(tenant_id: str = Depends(get_tenant_id)) -> list[dict]:
+    """Genera una orden real por cada plan PM activo cuyo vencimiento ya
+    llego -- idempotente en el sentido de que un plan que no vencio no
+    genera nada; pensado para correr periodicamente (o a mano desde el
+    Portal) mientras no haya un cron propio."""
+    with db_conn() as conn:
+        return generate_due_pm_orders(conn, tenant_id)

@@ -93,7 +93,7 @@ al sprint donde se construye y a su estado real.
 | F43 | Derivar `network_model` desde el Gemelo Digital (export EPANET) | B6 | 🟢 |
 | F44 | Generación de `maintenance_order` desde anomalías (condición/simulación/balance) | B7 | 🟢 (condición/balance validadas contra datos reales; simulación queda para un sprint futuro, ver bitácora) |
 | F45 | Integración con BayForce (envío de orden + webhook de cierre) | B7 | 🟡 (contrato real construido y probado de punta a punta contra un sandbox local real; **corregido 2026-09-14**: no es solo falta de credenciales — BayForce no tiene endpoint de intake externo genérico, ver `04-plan-sprints.md` §9. Se mantiene como notificación de salida opcional, nunca columna vertebral) |
-| F46b | CMMS real de dominio para Mantenimiento (prioridad/SLA, códigos de falla, PM programado, ciclo de vida completo, cierre, KPIs, asignación simple) | — (nuevo, 2026-09-14) | 🟪 no iniciado — alcance detallado en `04-plan-sprints.md` §9, decisión de arquitectura con el usuario ya tomada |
+| F46b | CMMS real de dominio para Mantenimiento (prioridad/SLA, códigos de falla, PM programado, ciclo de vida completo, cierre, KPIs, asignación simple) | — (nuevo, 2026-09-14) | 🟢 construido, probado (16 pruebas puras + E2E extendido) y desplegado a producción el mismo día — ver bitácora abajo |
 
 ### Portal Web — Track C (agregado 2026-09-10)
 
@@ -1412,3 +1412,63 @@ toca otro producto en vivo.
 
 **Pendiente de implementar** — alcance detallado ya en `04-plan-sprints.md` §9, siguiente ronda
 de trabajo sobre Mantenimiento.
+
+### CMMS real de Mantenimiento — Fase 1 construida y desplegada (2026-09-14)
+
+**Motivo:** el usuario aprobó la fase 1 del alcance recién documentado ("Si, adelante") y pidió
+seguir directo a la implementación real.
+
+**Migración `0019_maintenance_cmms_core.sql`**: 4 tablas nuevas (patrón semilla+catálogo, RLS en
+las 4) — `maintenance_sla_policy` (horas objetivo por tenant+prioridad), `maintenance_failure_code`,
+`maintenance_crew`, `maintenance_pm_plan` (plan real por activo específico, nunca "por tipo de
+activo" genérico); 9 columnas nuevas en `maintenance_order` (`priority`, `sla_due_at`,
+`failure_code_id`, `scheduled_at`, `assigned_crew_id`, `labor_hours`, `materials_used`,
+`root_cause`, `closed_at`).
+
+**`maintenance_engine.py` (nuevo, lógica pura sin BD)**: `compute_sla_due_at` (nunca fabrica una
+fecha límite sin una política real configurada), `is_overdue`, `compute_mttr_hours`,
+`compute_backlog`, `compute_pm_compliance_pct` (solo cuenta órdenes que SÍ tenían un SLA real
+configurado — nunca inventa un % de cumplimiento sobre nada), `pm_plan_is_due`/`advance_pm_plan`.
+**16/16 pruebas puras nuevas en verde**.
+
+**`order_service.py` reescrito**: ciclo de vida real y propio —
+`generated -> scheduled -> assigned -> in_progress -> completed | cancelled` — con el ramal
+`sent_to_bayforce` de B7 intacto como camino OPCIONAL en paralelo (BayForce sigue siendo
+notificación de salida, nunca la columna vertebral, tal como se decidió). `priority` ahora
+obligatoria al generar una orden (igual que `type`/`source`); `close_order()` exige horas de
+mano de obra/materiales/causa raíz/código de falla reales para cerrar, solo válido desde
+`in_progress`. Nueva fuente `pm_schedule`, exclusiva de `generate_due_pm_orders()` — nunca a
+mano. 12 endpoints nuevos en `portal-api/main.py` (schedule/assign/start/close, KPIs, CRUD de
+SLA/códigos de falla/cuadrillas/planes PM, generar vencidos), mapeo HTTP consistente con el
+resto del proyecto (`NotFound*` → 404, `Invalid*` → 422, transición inválida → 409 — nueva
+`InvalidCloseStatusError` separada de `InvalidStatusTransitionError` para que el endpoint no
+tenga que adivinar cuál de las dos causó el error).
+
+**E2E extendido** (`verify_maintenance_end_to_end.py`, 7 pasos nuevos): política de SLA real
+(`high`→4h calcula `sla_due_at`, `low` sin política queda en `None`); catálogos; ciclo de vida
+completo sin BayForce con cierre real (horas/materiales/causa/código de falla); cerrar antes de
+`in_progress` → 409; asignar cuadrilla inexistente → 404; KPIs reflejan la orden completada
+(MTTR) y las abiertas (backlog); plan PM ya vencido → `generate-due` genera una orden real
+`pm_schedule` y avanza `next_due_at` al futuro, una segunda corrida inmediata no genera otra.
+Regresión completa de los 19 `verify_*_end_to_end.py` en verde.
+
+**Frontend**: `Configuration.tsx` gana 3 secciones nuevas (SLA de mantenimiento, códigos de
+falla, cuadrillas) sobre el mismo patrón `SectionCard`. `Maintenance.tsx` reconstruida — tarjetas
+de KPI reales (MTTR, backlog, % cumplimiento PM, vencidas de SLA), tabla de órdenes con badge de
+prioridad/SLA/vencida y acciones contextuales según el estado real (programar → asignar → iniciar
+→ cerrar con formulario real), sección nueva de planes de mantenimiento preventivo con botón
+"Generar órdenes vencidas". `tsc -b`/`vite build` limpios.
+
+**Desplegado y verificado en producción**: respaldo real (`pg_dump`) antes de la migración,
+migración 0019 aplicada (peer auth como `postgres`, sin contraseña nueva) + `GRANT` explícito
+verificado para `renfygrid_app` sobre las 4 tablas nuevas (nunca asumido); `maintenance_engine.so`
++ `order_service.so` recompilados (incremental, 0 fallidos) y desplegados; **smoke test real
+contra producción** con el tenant demo (login real, JWT real): `GET /maintenance/kpis` responde
+correcto, crear/listar/desactivar una cuadrilla real funciona de punta a punta. Frontend
+desplegado y confirmado en vivo desde internet.
+
+**Pendiente real, explícito, no bloqueante**: automatizar `generate_due_pm_orders()` con un
+timer real (hoy es un botón manual en el Portal, mismo patrón que ya se resolvió para
+`partition_maintenance.py` — se puede replicar el mismo timer systemd cuando haya planes PM
+reales que lo necesiten). El motor de despacho/ruteo y la integración BayForce en vivo siguen
+explícitamente fuera de alcance, tal como se decidió.

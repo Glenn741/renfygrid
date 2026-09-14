@@ -31,6 +31,23 @@ Que prueba, en espanol llano:
      `BayforceNotConfiguredError` real (probado contra el servicio
      directo, no vía HTTP -- el webhook configurado es de instancia).
 
+CMMS real (2026-09-14, docs/04-plan-sprints.md SS9):
+  10. Configurar una politica de SLA real (`high` -> 4h) -- una orden
+      `high` generada despues trae `sla_due_at` calculado; una orden
+      `low` (sin politica configurada) trae `sla_due_at=None`.
+  11. Catalogos: crear codigo de falla y cuadrilla reales, listarlos.
+  12. Ciclo de vida propio (sin BayForce): `generated -> scheduled ->
+      assigned -> in_progress -> completed` con horas/materiales/causa
+      raiz/codigo de falla reales al cerrar.
+  13. Intentar `close` antes de `in_progress` -> 409.
+  14. `assign` con una cuadrilla inexistente -> 404.
+  15. KPIs reflejan la orden completada (MTTR > 0) y la que sigue abierta
+      (backlog >= 1).
+  16. Plan de mantenimiento preventivo ya vencido (`next_due_at` en el
+      pasado) -- `generate-due` genera una orden real `pm_schedule` y
+      avanza `next_due_at` al futuro; una segunda corrida inmediata no
+      genera otra (el plan ya no esta vencido).
+
 Uso:
     python verify_maintenance_end_to_end.py "postgresql://renfygrid_app:renfygrid_app_dev_only@localhost:5455/renfygrid"
 """
@@ -113,7 +130,7 @@ def run(dsn: str) -> int:
             broken_asset_id = client.post("/network-assets", headers=headers, json={"type": "pump", "status": "out_of_service"}).json()["asset_id"]
             order_resp = client.post(
                 "/maintenance-orders", headers=headers,
-                json={"asset_id": broken_asset_id, "type": "corrective", "source": "asset_condition", "reason": "Bomba fuera de servicio"},
+                json={"asset_id": broken_asset_id, "type": "corrective", "source": "asset_condition", "priority": "medium", "reason": "Bomba fuera de servicio"},
             )
             print(f"POST /maintenance-orders (asset_condition, activo roto): {order_resp.status_code}, {order_resp.json()}")
             ok_create = order_resp.status_code == 201 and order_resp.json()["status"] == "generated"
@@ -123,7 +140,7 @@ def run(dsn: str) -> int:
             healthy_asset_id = client.post("/network-assets", headers=headers, json={"type": "pump"}).json()["asset_id"]
             rejected_resp = client.post(
                 "/maintenance-orders", headers=headers,
-                json={"asset_id": healthy_asset_id, "type": "corrective", "source": "asset_condition"},
+                json={"asset_id": healthy_asset_id, "type": "corrective", "source": "asset_condition", "priority": "medium"},
             )
             print(f"POST /maintenance-orders (asset_condition, activo operativo): {rejected_resp.status_code}")
             ok_condition_rejected = rejected_resp.status_code == 422
@@ -137,7 +154,7 @@ def run(dsn: str) -> int:
             asset_in_bad_zone = client.post("/network-assets", headers=headers, json={"type": "valve", "zone_id": zone_bad_id}).json()["asset_id"]
             balance_order_resp = client.post(
                 "/maintenance-orders", headers=headers,
-                json={"asset_id": asset_in_bad_zone, "type": "inspection", "source": "balance_anomaly", "reason": "NRW sobre el tope regulatorio"},
+                json={"asset_id": asset_in_bad_zone, "type": "inspection", "source": "balance_anomaly", "priority": "medium", "reason": "NRW sobre el tope regulatorio"},
             )
             print(f"POST /maintenance-orders (balance_anomaly, zona con exceso): {balance_order_resp.status_code}")
             ok_balance_anomaly = balance_order_resp.status_code == 201
@@ -146,7 +163,7 @@ def run(dsn: str) -> int:
             asset_in_ok_zone = client.post("/network-assets", headers=headers, json={"type": "valve", "zone_id": zone_ok_id}).json()["asset_id"]
             balance_rejected_resp = client.post(
                 "/maintenance-orders", headers=headers,
-                json={"asset_id": asset_in_ok_zone, "type": "inspection", "source": "balance_anomaly"},
+                json={"asset_id": asset_in_ok_zone, "type": "inspection", "source": "balance_anomaly", "priority": "medium"},
             )
             print(f"POST /maintenance-orders (balance_anomaly, zona sin balance): {balance_rejected_resp.status_code}")
             ok_balance_rejected = balance_rejected_resp.status_code == 422
@@ -182,7 +199,7 @@ def run(dsn: str) -> int:
             from order_service import BayforceNotConfiguredError, send_to_bayforce as send_to_bayforce_direct
             order2_id = client.post(
                 "/maintenance-orders", headers=headers,
-                json={"asset_id": broken_asset_id, "type": "corrective", "source": "manual", "reason": "prueba sin webhook"},
+                json={"asset_id": broken_asset_id, "type": "corrective", "source": "manual", "priority": "low", "reason": "prueba sin webhook"},
             ).json()["order_id"]
             ok_not_configured = False
             try:
@@ -191,24 +208,110 @@ def run(dsn: str) -> int:
                 ok_not_configured = True
             print(f"send_to_bayforce sin webhook configurado -> BayforceNotConfiguredError: {ok_not_configured}")
 
+            # 10. Politica de SLA real: 'high' -> 4h. Orden 'high' trae sla_due_at; 'low' (sin politica) no.
+            sla_resp = client.post("/maintenance/sla-policies", headers=headers, json={"priority": "high", "target_hours": 4})
+            high_order = client.post(
+                "/maintenance-orders", headers=headers,
+                json={"asset_id": broken_asset_id, "type": "corrective", "source": "manual", "priority": "high", "reason": "prueba SLA"},
+            ).json()
+            print(f"POST sla-policies: {sla_resp.status_code}; orden 'high' sla_due_at: {high_order.get('sla_due_at')}; orden 'low' (sin politica) sla_due_at: {order2_id and get_order(client, headers, order2_id).get('sla_due_at')}")
+            ok_sla = sla_resp.status_code == 201 and high_order.get("sla_due_at") is not None and get_order(client, headers, order2_id).get("sla_due_at") is None
+
+            # 11. Catalogos reales: codigo de falla + cuadrilla.
+            fc_resp = client.post("/maintenance/failure-codes", headers=headers, json={"code": "VLV-STUCK", "label": "Válvula atascada"})
+            crew_resp = client.post("/maintenance/crews", headers=headers, json={"name": "Cuadrilla Centro"})
+            print(f"POST failure-codes: {fc_resp.status_code}; POST crews: {crew_resp.status_code}")
+            ok_catalogs = fc_resp.status_code == 201 and crew_resp.status_code == 201
+            failure_code_id = fc_resp.json()["failure_code_id"]
+            crew_id = crew_resp.json()["crew_id"]
+
+            # 12. Ciclo de vida propio (sin BayForce): generated -> scheduled -> assigned -> in_progress -> completed.
+            cmms_order_id = client.post(
+                "/maintenance-orders", headers=headers,
+                json={"asset_id": broken_asset_id, "type": "corrective", "source": "manual", "priority": "medium", "reason": "ciclo de vida real"},
+            ).json()["order_id"]
+            sched = client.post(f"/maintenance-orders/{cmms_order_id}/schedule", headers=headers, json={"scheduled_at": "2026-09-20T08:00:00Z"})
+            assign = client.post(f"/maintenance-orders/{cmms_order_id}/assign", headers=headers, json={"crew_id": crew_id})
+            start = client.post(f"/maintenance-orders/{cmms_order_id}/start", headers=headers)
+            close = client.post(
+                f"/maintenance-orders/{cmms_order_id}/close", headers=headers,
+                json={"status": "completed", "labor_hours": 2.5, "materials_used": "empaque nuevo", "root_cause": "desgaste", "failure_code_id": failure_code_id},
+            )
+            print(f"schedule: {sched.status_code}, assign: {assign.status_code}, start: {start.status_code}, close: {close.status_code}, {close.json()}")
+            ok_lifecycle = (
+                sched.status_code == 200 and sched.json()["status"] == "scheduled"
+                and assign.status_code == 200 and assign.json()["status"] == "assigned"
+                and start.status_code == 200 and start.json()["status"] == "in_progress"
+                and close.status_code == 200 and close.json()["status"] == "completed"
+                and close.json()["labor_hours"] == 2.5 and close.json()["closed_at"] is not None
+            )
+
+            # 13. Intentar cerrar una orden que nunca se empezo -> 409.
+            never_started_id = client.post(
+                "/maintenance-orders", headers=headers,
+                json={"asset_id": broken_asset_id, "type": "inspection", "source": "manual", "priority": "low", "reason": "nunca se empieza"},
+            ).json()["order_id"]
+            close_too_early = client.post(f"/maintenance-orders/{never_started_id}/close", headers=headers, json={"status": "completed"})
+            print(f"close antes de in_progress: {close_too_early.status_code}")
+            ok_close_too_early = close_too_early.status_code == 409
+
+            # 14. assign con cuadrilla inexistente -> 404.
+            other_id = client.post(
+                "/maintenance-orders", headers=headers,
+                json={"asset_id": broken_asset_id, "type": "inspection", "source": "manual", "priority": "low"},
+            ).json()["order_id"]
+            client.post(f"/maintenance-orders/{other_id}/schedule", headers=headers, json={"scheduled_at": "2026-09-21T08:00:00Z"})
+            assign_missing_crew = client.post(f"/maintenance-orders/{other_id}/assign", headers=headers, json={"crew_id": "00000000-0000-0000-0000-000000000000"})
+            print(f"assign cuadrilla inexistente: {assign_missing_crew.status_code}")
+            ok_crew_missing = assign_missing_crew.status_code == 404
+
+            # 15. KPIs reflejan la orden completada (MTTR) y las abiertas (backlog).
+            kpis = client.get("/maintenance/kpis", headers=headers).json()
+            print(f"GET /maintenance/kpis: {kpis}")
+            ok_kpis = kpis["mttr_hours"] is not None and kpis["mttr_hours"] >= 0 and kpis["backlog"]["count"] >= 1
+
+            # 16. Plan PM ya vencido -> generate-due genera una orden real; segunda corrida no genera otra.
+            pm_asset_id = client.post("/network-assets", headers=headers, json={"type": "valve"}).json()["asset_id"]
+            pm_plan_resp = client.post(
+                "/maintenance/pm-plans", headers=headers,
+                json={"asset_id": pm_asset_id, "order_type": "inspection", "priority": "low", "interval_days": 180, "next_due_at": "2026-01-01T00:00:00Z"},
+            )
+            gen1 = client.post("/maintenance/pm-plans/generate-due", headers=headers).json()
+            gen2 = client.post("/maintenance/pm-plans/generate-due", headers=headers).json()
+            plans_after = client.get("/maintenance/pm-plans", headers=headers).json()
+            print(f"POST pm-plans: {pm_plan_resp.status_code}; generate-due #1: {len(gen1)} generada(s); #2: {len(gen2)} generada(s); next_due_at: {plans_after[0]['next_due_at']}")
+            ok_pm = (
+                pm_plan_resp.status_code == 201 and len(gen1) == 1 and gen1[0]["source"] == "pm_schedule"
+                and len(gen2) == 0 and plans_after[0]["next_due_at"] > "2026-09-14"
+            )
+
             ok = (
                 ok_create and ok_condition_rejected and ok_balance_anomaly and ok_balance_rejected
                 and ok_send and ok_resend_rejected and ok_webhook_flow and ok_invalid_transition
                 and ok_missing_ref and ok_not_configured
+                and ok_sla and ok_catalogs and ok_lifecycle and ok_close_too_early and ok_crew_missing and ok_kpis and ok_pm
             )
-            print("SPRINT B7 MAINTENANCE E2E OK" if ok else "SPRINT B7 MAINTENANCE E2E FALLA")
+            print("SPRINT B7 + CMMS MAINTENANCE E2E OK" if ok else "SPRINT B7 + CMMS MAINTENANCE E2E FALLA")
             return 0 if ok else 1
         finally:
             with conn.transaction():
                 with tenant_scope(conn, tenant_id):
                     with conn.cursor() as cur:
+                        cur.execute("DELETE FROM maintenance_pm_plan WHERE tenant_id = %s", (tenant_id,))
                         cur.execute("DELETE FROM maintenance_order WHERE tenant_id = %s", (tenant_id,))
+                        cur.execute("DELETE FROM maintenance_crew WHERE tenant_id = %s", (tenant_id,))
+                        cur.execute("DELETE FROM maintenance_failure_code WHERE tenant_id = %s", (tenant_id,))
+                        cur.execute("DELETE FROM maintenance_sla_policy WHERE tenant_id = %s", (tenant_id,))
                         cur.execute("DELETE FROM network_balance WHERE tenant_id = %s", (tenant_id,))
                         cur.execute("DELETE FROM network_asset WHERE tenant_id = %s", (tenant_id,))
                         cur.execute("DELETE FROM network_zone WHERE tenant_id = %s", (tenant_id,))
             with conn.cursor() as cur:
                 cur.execute("DELETE FROM tenant WHERE id = %s", (tenant_id,))
             sandbox.shutdown()
+
+
+def get_order(client, headers, order_id: str) -> dict:
+    return client.get(f"/maintenance-orders/{order_id}", headers=headers).json()
 
 
 if __name__ == "__main__":

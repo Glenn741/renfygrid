@@ -782,17 +782,27 @@ export function generateNetworkModelFromTwin(zoneId: string, name: string): Prom
   return request(`/network-zones/${zoneId}/generate-model`, { method: "POST", body: JSON.stringify({ name }) });
 }
 
-// --- Track B, Sprint B7: Gestion de Mantenimiento + integracion BayForce ---
+// --- Track B, Sprint B7 + CMMS real (2026-09-14): Gestion de Mantenimiento ---
 
 export interface MaintenanceOrder {
   order_id: string;
   asset_id: string;
   type: string;
   source: string;
+  priority: string | null;
   status: string;
   bayforce_order_ref: string | null;
   reason: string | null;
   created_at: string;
+  sla_due_at: string | null;
+  failure_code_id: string | null;
+  scheduled_at: string | null;
+  assigned_crew_id: string | null;
+  labor_hours: number | null;
+  materials_used: string | null;
+  root_cause: string | null;
+  closed_at: string | null;
+  is_overdue: boolean;
 }
 
 export function getMaintenanceOrders(params?: { status?: string; asset_id?: string }): Promise<MaintenanceOrder[]> {
@@ -807,6 +817,7 @@ export function createMaintenanceOrder(body: {
   asset_id: string;
   type: string;
   source: string;
+  priority: string;
   reason?: string | null;
 }): Promise<MaintenanceOrder> {
   return request("/maintenance-orders", { method: "POST", body: JSON.stringify(body) });
@@ -814,6 +825,121 @@ export function createMaintenanceOrder(body: {
 
 export function sendMaintenanceOrderToBayforce(orderId: string): Promise<{ order_id: string; status: string; bayforce_order_ref: string }> {
   return request(`/maintenance-orders/${orderId}/send-to-bayforce`, { method: "POST", body: "{}" });
+}
+
+export function scheduleMaintenanceOrder(orderId: string, scheduledAt: string): Promise<MaintenanceOrder> {
+  return request(`/maintenance-orders/${orderId}/schedule`, { method: "POST", body: JSON.stringify({ scheduled_at: scheduledAt }) });
+}
+
+export function assignMaintenanceOrder(orderId: string, crewId: string): Promise<MaintenanceOrder> {
+  return request(`/maintenance-orders/${orderId}/assign`, { method: "POST", body: JSON.stringify({ crew_id: crewId }) });
+}
+
+export function startMaintenanceOrder(orderId: string): Promise<MaintenanceOrder> {
+  return request(`/maintenance-orders/${orderId}/start`, { method: "POST", body: "{}" });
+}
+
+export function closeMaintenanceOrder(orderId: string, body: {
+  status: "completed" | "cancelled";
+  labor_hours?: number | null;
+  materials_used?: string | null;
+  root_cause?: string | null;
+  failure_code_id?: string | null;
+}): Promise<MaintenanceOrder> {
+  return request(`/maintenance-orders/${orderId}/close`, { method: "POST", body: JSON.stringify(body) });
+}
+
+export interface MaintenanceKpis {
+  total_orders: number;
+  mttr_hours: number | null;
+  backlog: { count: number; avg_age_hours: number | null };
+  pm_compliance_pct: number | null;
+  overdue_count: number;
+  by_status: Record<string, number>;
+  by_priority: Record<string, number>;
+}
+
+export function getMaintenanceKpis(): Promise<MaintenanceKpis> {
+  return request("/maintenance/kpis");
+}
+
+export interface SlaPolicy {
+  priority: string;
+  target_hours: number;
+}
+
+export function getSlaPolicies(): Promise<SlaPolicy[]> {
+  return request("/maintenance/sla-policies");
+}
+
+export function setSlaPolicy(priority: string, targetHours: number): Promise<SlaPolicy> {
+  return request("/maintenance/sla-policies", { method: "POST", body: JSON.stringify({ priority, target_hours: targetHours }) });
+}
+
+export interface FailureCode {
+  failure_code_id: string;
+  code: string;
+  label: string;
+  is_active: boolean;
+}
+
+export function getFailureCodes(includeInactive = false): Promise<FailureCode[]> {
+  return request(`/maintenance/failure-codes${includeInactive ? "?include_inactive=true" : ""}`);
+}
+
+export function createFailureCode(code: string, label: string): Promise<FailureCode> {
+  return request("/maintenance/failure-codes", { method: "POST", body: JSON.stringify({ code, label }) });
+}
+
+export function deactivateFailureCode(failureCodeId: string): Promise<void> {
+  return request(`/maintenance/failure-codes/${failureCodeId}`, { method: "DELETE" });
+}
+
+export interface Crew {
+  crew_id: string;
+  name: string;
+  is_active: boolean;
+}
+
+export function getCrews(includeInactive = false): Promise<Crew[]> {
+  return request(`/maintenance/crews${includeInactive ? "?include_inactive=true" : ""}`);
+}
+
+export function createCrew(name: string): Promise<Crew> {
+  return request("/maintenance/crews", { method: "POST", body: JSON.stringify({ name }) });
+}
+
+export function deactivateCrew(crewId: string): Promise<void> {
+  return request(`/maintenance/crews/${crewId}`, { method: "DELETE" });
+}
+
+export interface PmPlan {
+  pm_plan_id: string;
+  asset_id: string;
+  order_type: string;
+  priority: string;
+  interval_days: number;
+  next_due_at: string;
+  last_generated_at: string | null;
+  is_active: boolean;
+}
+
+export function getPmPlans(): Promise<PmPlan[]> {
+  return request("/maintenance/pm-plans");
+}
+
+export function createPmPlan(body: {
+  asset_id: string;
+  order_type: string;
+  priority: string;
+  interval_days: number;
+  next_due_at: string;
+}): Promise<PmPlan> {
+  return request("/maintenance/pm-plans", { method: "POST", body: JSON.stringify(body) });
+}
+
+export function generateDuePmOrders(): Promise<MaintenanceOrder[]> {
+  return request("/maintenance/pm-plans/generate-due", { method: "POST", body: "{}" });
 }
 
 export { ApiError };
