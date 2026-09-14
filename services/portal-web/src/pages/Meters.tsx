@@ -12,6 +12,19 @@ import {
   type MeterEvent,
 } from "../api";
 import { StagePage, EmptyState } from "../components/StagePage";
+import { SectionNav } from "../components/SectionNav";
+
+// Pulido de usabilidad (2026-09-14): 5 secciones reales apiladas (flota,
+// concentradores, cola de reintentos, eventos/alarmas, medidores) sin
+// forma de saltar entre ellas -- mismo patron de barra de secciones que
+// el resto del portal (ver Configuration.tsx).
+const SECTIONS = [
+  { id: "fleet", label: "Flota" },
+  { id: "gateways", label: "Concentradores" },
+  { id: "retry-queue", label: "Cola de reintentos" },
+  { id: "events", label: "Eventos y alarmas" },
+  { id: "meters-list", label: "Medidores" },
+];
 
 // HES / Ingesta (Sprint C7/C8, `docs/06-benchmark-e2e-y-brechas.md` G4/G5,
 // mas Sprint C11-4): el benchmark E2E encontro que faltaban flota por
@@ -134,6 +147,7 @@ export function MetersPage() {
 
   return (
     <StagePage title="Medidores / HES / Ingesta">
+      <SectionNav items={SECTIONS} />
       {/* KPIs generales del modulo -- alarmas, salud de comunicacion y cola
           de reintentos, lo que un HES de referencia llama "communication
           statistics" + "alarm management" (Sprint C11-4). */}
@@ -167,6 +181,7 @@ export function MetersPage() {
       {/* Flota por marca/modelo (G4) -- lo primero que pregunta un operador
           de HES: "¿cuántos medidores de cada marca tengo y qué porcentaje
           está reportando ahora?" */}
+      <div id="fleet" className="scroll-mt-24">
       <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-2">
         Flota por marca / modelo
       </h2>
@@ -208,10 +223,12 @@ export function MetersPage() {
           ))}
         </div>
       )}
+      </div>
 
       {/* Capa de agregacion (G5) -- concentradores/gateways que agrupan
           medidores de una o varias marcas, con su tasa de exito real de
           polling en 24h (auditada, F09). */}
+      <div id="gateways" className="scroll-mt-24">
       <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-2">
         Concentradores (capa de agregación)
       </h2>
@@ -259,9 +276,11 @@ export function MetersPage() {
           </table>
         </div>
       )}
+      </div>
 
       {/* Cola de reintentos (F08, Sprint C11) -- antes solo backend, ahora
           visible: que medidor esta en backoff, hace cuanto, y por que. */}
+      <div id="retry-queue" className="scroll-mt-24">
       <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-2">
         Cola de reintentos
       </h2>
@@ -300,10 +319,12 @@ export function MetersPage() {
           </table>
         </div>
       )}
+      </div>
 
       {/* Eventos y alarmas (F05 + F09, Sprint C11-4) -- feed real de
           `meter_event`: alarmas del medidor y auditoria de comunicacion,
           antes invisibles salvo el conteo agregado de exito 24h. */}
+      <div id="events" className="scroll-mt-24">
       <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-2">
         Eventos y alarmas
       </h2>
@@ -365,10 +386,12 @@ export function MetersPage() {
           </table>
         </div>
       )}
+      </div>
 
       {/* Detalle por medidor (Sprint C2, extendido con marca/modelo/
           concentrador en C7) -- exception-first: solo importa el que esta
           caido o al que hay que leerle algo ahora. */}
+      <div id="meters-list" className="scroll-mt-24">
       <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-2">
         Medidores
       </h2>
@@ -440,6 +463,7 @@ export function MetersPage() {
           </table>
         </div>
       )}
+      </div>
     </StagePage>
   );
 }

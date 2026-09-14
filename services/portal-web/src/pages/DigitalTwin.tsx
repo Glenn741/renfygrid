@@ -13,6 +13,12 @@ import {
 } from "../api";
 import { StagePage, EmptyState } from "../components/StagePage";
 import { NetworkMap } from "../components/NetworkMap";
+import { SectionNav } from "../components/SectionNav";
+
+const SECTIONS = [
+  { id: "map", label: "Mapa de activos" },
+  { id: "assets", label: "Activos" },
+];
 
 // Gemelo Digital -- Track B, Sprint B5 (docs/07-track-b-alcance-funcional.md
 // SS5): inventario de activos de red (tuberías, válvulas, tanques, bombas,
@@ -253,6 +259,7 @@ export function DigitalTwinPage() {
 
   return (
     <StagePage title="Gemelo Digital">
+      <SectionNav items={SECTIONS} />
       {assets && (
         <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="rounded-xl border border-slate-200 bg-white p-4">
@@ -288,6 +295,7 @@ export function DigitalTwinPage() {
         </div>
       )}
 
+      <div id="map" className="scroll-mt-24">
       <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-2">Mapa de activos</h2>
       <div className="mb-2">
         <NetworkMap
@@ -310,7 +318,9 @@ export function DigitalTwinPage() {
         <span><span className="inline-block w-2.5 h-2.5 rounded-full mr-1" style={{ background: STATUS_COLOR.maintenance }} />En mantenimiento</span>
         <span><span className="inline-block w-2.5 h-2.5 rounded-full mr-1" style={{ background: STATUS_COLOR.out_of_service }} />Fuera de servicio</span>
       </div>
+      </div>
 
+      <div id="assets" className="scroll-mt-24">
       <div className="mb-2 flex items-center justify-between flex-wrap gap-2">
         <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide">Activos</h2>
         <div className="flex gap-3">
@@ -339,6 +349,7 @@ export function DigitalTwinPage() {
           </table>
         </div>
       )}
+      </div>
 
       <div className="mt-4 rounded-xl border border-indigo-100 bg-indigo-50/40 p-4 text-sm text-slate-600">
         <b className="text-slate-900">¿Qué es esto?</b>{" "}

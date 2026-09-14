@@ -9,6 +9,12 @@ import {
   type Consumption,
 } from "../api";
 import { StagePage, EmptyState } from "../components/StagePage";
+import { SectionNav } from "../components/SectionNav";
+
+const SECTIONS = [
+  { id: "under-review", label: "En revisión" },
+  { id: "orders", label: "Órdenes de relectura / inspección" },
+];
 
 // Gestion de Consumos (Sprint C11-6, benchmark real: docs/05-ejecucion.md
 // -- Bynry: "MDMS reporting and analytics covers... billing validation
@@ -116,6 +122,7 @@ export function ConsumptionPage() {
 
   return (
     <StagePage title="Consumos">
+      <SectionNav items={SECTIONS} />
       {summary && (
         <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="rounded-xl border border-slate-200 bg-white p-4">
@@ -151,6 +158,7 @@ export function ConsumptionPage() {
         </div>
       )}
 
+      <div id="under-review" className="scroll-mt-24">
       <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-2">
         En revisión
       </h2>
@@ -180,7 +188,9 @@ export function ConsumptionPage() {
           </table>
         </div>
       )}
+      </div>
 
+      <div id="orders" className="scroll-mt-24">
       <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-2">
         Órdenes de relectura / inspección
       </h2>
@@ -218,6 +228,7 @@ export function ConsumptionPage() {
           </table>
         </div>
       )}
+      </div>
     </StagePage>
   );
 }

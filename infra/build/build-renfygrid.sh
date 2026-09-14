@@ -6,7 +6,17 @@ NUITKA="$HOME/nuitka-env-renfygrid/bin/nuitka"
 DIST="/home/gmol/renfygrid-dist"
 
 declare -A SKIP=(
-  [common]='dummy_config_loader.py dummy_config_reader.py run_partition_maintenance.py'
+  # __init__.py de renmeter_common: Nuitka rechaza compilar un __init__.py
+  # de paquete de forma standalone ("to compile a package, specify its
+  # directory but, not the '__init__.py'") -- limitacion real de la
+  # herramienta, no una decision de politica. Encontrado 2026-09-14: este
+  # build llevaba desde el Sprint C11 fallando en silencio en cada corrida
+  # (el script no fallaba duro por un archivo individual) y produccion
+  # tenia el .py fuente desde el primer despliegue manual, nunca
+  # recompilado -- 109 bytes, un simple re-export sin logica de negocio
+  # (`from .config_cache import ...`). Formalizado aca en vez de dejarlo
+  # como un FALLO silencioso.
+  [common]='__init__.py dummy_config_loader.py dummy_config_reader.py run_partition_maintenance.py'
   [hes-adapter-dlms]='main.py poller.py seed_demo_data.py refresh_obis_mapping_cache.py event_listener.py'
   [vee-engine]='run_vee_estimation.py run_vee_pass.py refresh_vee_rules_cache.py'
   [consumption]='run_consumption_pass.py'

@@ -1291,3 +1291,80 @@ protegidos, no `500`, confirma que la app arrancó limpia con el cambio). El flu
 contra BayForce en vivo queda sin poder probarse en producción por la misma razón ya
 documentada en B7 (`RENFYGRID_BAYFORCE_WEBHOOK_URL` no configurado ahí a propósito) — la
 prueba real de punta a punta es el E2E local contra el sandbox real, no un mock.
+
+### Pulido de usabilidad y navegación interna (2026-09-14)
+
+**Motivo:** el usuario pidió explícitamente revisar la usabilidad de cada menú contra estándar
+real de industria, sin conformarse con lo cosmético — "la navegación dentro de cada menú no se
+ve intuitiva".
+
+**Investigación real** (no gusto propio): Nielsen Norman Group, ["Anchors OK? Re-Assessing
+In-Page Links"](https://www.nngroup.com/articles/in-page-links/) — una navegación
+persistente/sticky es ~22% más rápida de recorrer que un scroll ciego, y una página larga sin
+ella tiene 39% más abandono al 50% del scroll. El patrón real de "Settings view" empresarial
+(Stripe, Salesforce Setup) organiza secciones heterogéneas con su propia navegación en vez de
+apilarlas sin más.
+
+**Hallazgo real**: revisando las 12 pantallas, 6 tenían 2+ secciones stackeadas verticalmente
+sin ninguna forma de saltar entre ellas — la más severa, `Configuration.tsx` (5 secciones de
+administración sin relación visual entre sí, la página más larga del portal).
+
+**Corregido**: nuevo componente compartido `SectionNav` (`components/SectionNav.tsx`) — barra
+de chips pegajosa justo debajo del header de `AppShell`, con scroll-spy real (resalta la
+sección visible mientras se hace scroll, no solo al hacer click) y `scroll-mt-24` en cada
+sección para que ni el header ni la propia barra tapen el título al saltar (el problema de
+solape que NN/g documenta explícitamente). Aplicado a `Configuration.tsx` (5 secciones),
+`Meters.tsx` (5), `NetworkBalance.tsx` (3), `Vee.tsx` (3, sobre el patrón V/E/E ya existente),
+`DigitalTwin.tsx` (2), `Consumption.tsx` (2).
+
+**Segundo hallazgo real, encontrado en la misma revisión**: `Overview.tsx` (Vista general, la
+pantalla de entrada) solo tenía 4 tiles de KPI — únicamente Track A (HES, VEE, Consumo,
+Control). Los 4 módulos de Track B (Balance de Red, Modelado Hidráulico, Gemelo Digital,
+Mantenimiento) eran invisibles desde la entrada, sin ninguna señal de que existieran salvo el
+propio sidebar. El usuario, viendo el resultado intermedio, pidió explícitamente ir más allá
+de agregar tiles: **"eso luce como una plataforma escolar... asegúrate que sea un reflejo
+general de TODA la plataforma con KPIs de todo. Mapas, si es posible, gráficos, etc."**
+
+**Vista general reconstruida de punta a punta**, con datos reales ya expuestos por endpoints
+existentes (nada inventado para "verse lleno"):
+- **`dashboard_overview()` extendido** (`portal-api/dashboard.py`) con 3 conteos reales más,
+  reusando servicios ya existentes en vez de duplicar SQL: `balance_summary()` → zonas sobre
+  su tope de NRW; `list_assets()` → activos fuera de servicio; `list_orders(status='generated')`
+  → órdenes de mantenimiento por enviar. Modelado Hidráulico deliberadamente NO tiene tile
+  propio — no tiene una noción real de "excepción pendiente" (una simulación falla o no falla
+  al pedirla, no queda cola por revisar); forzar un tile ahí violaría el patrón exception-first
+  en vez de servirlo.
+- **7 tiles de KPI** (antes 4) cubriendo los 7 módulos con noción real de excepción.
+- **Mapa real de la red**: mismo `NetworkMap`/`nrwColorForMap` que usa Balance de Red, con las
+  zonas geolocalizadas coloreadas por NRW.
+- **2 gráficos reales**: tendencia VEE de 7 días (`TrendBars`, extraído de `Vee.tsx` a un
+  componente compartido `components/TrendBars.tsx` para no duplicar lógica) y flota HES con
+  menor % reportando (barras horizontales, mismo criterio visual que `Meters.tsx`) + 4
+  estadísticos compactos (NRW% promedio, peor ILI, éxito de comando SCR, % listo para
+  facturar).
+- **Lanzador de los 11 módulos**: grid de tarjetas con ícono/nombre/descripción de una línea
+  para cada pantalla del portal (mismos íconos que el sidebar de `AppShell`), para que la
+  entrada sea un mapa real de toda la plataforma, no solo de los módulos con alertas.
+- La propia Vista general ahora también usa `SectionNav` (4 secciones: Estado general, Mapa de
+  la red, Tendencias, Todos los módulos) — aplica el mismo pulido de navegación a sí misma.
+
+**Hallazgo real de infraestructura, encontrado al recompilar**: el build de Nuitka llevaba
+desde el Sprint C11 (2026-09-11) fallando en silencio en `common/renmeter_common/__init__.py`
+en CADA corrida — Nuitka rechaza compilar un `__init__.py` de paquete de forma standalone
+("to compile a package, specify its directory but, not the '__init__.py'"), una limitación
+real de la herramienta, no detectada antes porque el script nunca fallaba duro por un archivo
+individual. Confirmado en producción: `__init__.py` seguía como fuente `.py` sin compilar
+desde el primer despliegue manual (11-sep), violando la política de portafolio ("no fuentes
+.py en servidores") sin que nadie lo notara. Corregido formalizando `__init__.py` en la lista
+`SKIP` de `common` (109 bytes, un simple re-export sin lógica de negocio — la única excepción
+real y documentada a la política, por una limitación genuina de Nuitka, no una decisión de
+conveniencia) — `infra/build/build-renfygrid.sh` actualizado y sincronizado con la copia viva
+en WSL. Build re-corrido: **0 fallidos** en los 10 servicios.
+
+**Verificado y desplegado**: `tsc -b` y `vite build` limpios; regresión completa de los 19
+`verify_*_end_to_end.py` de `portal-api` en verde (incluye `verify_login_and_dashboard_end_to_end.py`
+extendido con aserciones reales sobre los 3 conteos nuevos). Backend: `dashboard.so`
+recompilado (incremental) y desplegado a `essmarplapp02`, **smoke test real contra
+producción** con el tenant demo (login real, JWT real) confirmando los 3 conteos nuevos en el
+payload real. Frontend: build desplegado a `essmarplpxy03`, confirmado en vivo desde internet
+(nuevas etiquetas de sección y del lanzador de módulos presentes en el bundle servido).

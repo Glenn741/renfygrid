@@ -119,6 +119,12 @@ def run(dsn: str) -> int:
                 and data["vee"]["invalid_pending"] == 1
                 and data["consumption"]["under_review"] == 1
                 and data["control"]["pending_approval"] == 1
+                # Pulido de usabilidad (2026-09-14): el tablero ahora tambien
+                # cubre Track B -- este tenant no sembro datos ahi, asi que
+                # los 3 conteos reales deben dar 0, no faltar del todo.
+                and data["network_balance"]["zones_exceeding_threshold"] == 0
+                and data["digital_twin"]["assets_out_of_service"] == 0
+                and data["maintenance"]["orders_pending"] == 0
             )
             print("F47/F48 OK" if (ok_login and ok_dashboard) else "F47/F48 FALLA")
             return 0 if (ok_login and ok_dashboard) else 1

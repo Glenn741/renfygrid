@@ -17,6 +17,22 @@ import {
   markMeterProtection,
 } from "../api";
 import { StagePage, EmptyState } from "../components/StagePage";
+import { NavSection, SectionNav } from "../components/SectionNav";
+
+// Pulido de usabilidad (2026-09-14): esta era la pagina mas larga del
+// portal -- 5 secciones de administracion sin ninguna relacion visual
+// entre si, apiladas en un solo scroll ciego. Convertida al patron real
+// de "Settings view" de SaaS empresarial (Stripe, Salesforce Setup: ver
+// docs/05-ejecucion.md, pulido de navegacion) -- barra de secciones
+// pegajosa arriba, cada `SectionCard` con su propio `id` para saltar
+// directo.
+const SECTIONS = [
+  { id: "vee-rules", label: "Reglas VEE" },
+  { id: "consumption-rules", label: "Reglas de consumo" },
+  { id: "approval-levels", label: "Aprobación (SCR)" },
+  { id: "protocol-mapping", label: "Mapeo OBIS" },
+  { id: "protected-accounts", label: "Cuentas protegidas" },
+];
 
 function SectionCard({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
   return (
@@ -528,11 +544,12 @@ function ProtectedAccountsSection() {
 export function ConfigurationPage() {
   return (
     <StagePage title="Configuración">
-      <VeeRulesSection />
-      <ConsumptionAnomalyRulesSection />
-      <ApprovalLevelsSection />
-      <ProtocolMappingSection />
-      <ProtectedAccountsSection />
+      <SectionNav items={SECTIONS} />
+      <NavSection id="vee-rules"><VeeRulesSection /></NavSection>
+      <NavSection id="consumption-rules"><ConsumptionAnomalyRulesSection /></NavSection>
+      <NavSection id="approval-levels"><ApprovalLevelsSection /></NavSection>
+      <NavSection id="protocol-mapping"><ProtocolMappingSection /></NavSection>
+      <NavSection id="protected-accounts"><ProtectedAccountsSection /></NavSection>
     </StagePage>
   );
 }

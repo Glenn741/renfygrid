@@ -71,6 +71,9 @@ export interface DashboardOverview {
   vee: { invalid_pending: number };
   consumption: { under_review: number };
   control: { pending_approval: number };
+  network_balance: { zones_exceeding_threshold: number };
+  digital_twin: { assets_out_of_service: number };
+  maintenance: { orders_pending: number };
 }
 
 export function getDashboardOverview(): Promise<DashboardOverview> {

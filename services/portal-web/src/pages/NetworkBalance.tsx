@@ -15,6 +15,13 @@ import {
 } from "../api";
 import { StagePage, EmptyState } from "../components/StagePage";
 import { NetworkMap, nrwColorForMap } from "../components/NetworkMap";
+import { SectionNav } from "../components/SectionNav";
+
+const SECTIONS = [
+  { id: "map", label: "Mapa de zonas" },
+  { id: "zones", label: "Zonas de red" },
+  { id: "balances", label: "Balances por período" },
+];
 
 // Balance de Red -- Track B, Sprint B1/B1-2 (docs/07-track-b-alcance-funcional.md):
 // matriz de Balance Hidrico IWA completa. Venta modular -- este panel no
@@ -410,6 +417,7 @@ export function NetworkBalancePage() {
 
   return (
     <StagePage title="Balance de Red">
+      <SectionNav items={SECTIONS} />
       {summary && (
         <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="rounded-xl border border-slate-200 bg-white p-4">
@@ -439,6 +447,7 @@ export function NetworkBalancePage() {
         </div>
       )}
 
+      <div id="map" className="scroll-mt-24">
       <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-2">Mapa de zonas</h2>
       <div className="mb-2">
         <NetworkMap
@@ -460,7 +469,9 @@ export function NetworkBalancePage() {
         <span><span className="inline-block w-2.5 h-2.5 rounded-full mr-1" style={{ background: "#ef4444" }} />Excede tope regulatorio</span>
         <span><span className="inline-block w-2.5 h-2.5 rounded-full mr-1" style={{ background: "#94a3b8" }} />Sin balance/tope</span>
       </div>
+      </div>
 
+      <div id="zones" className="scroll-mt-24">
       <div className="mb-2 flex items-center justify-between">
         <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide">Zonas de red (DMA)</h2>
         <RegisterZoneForm />
@@ -492,7 +503,9 @@ export function NetworkBalancePage() {
           </table>
         </div>
       )}
+      </div>
 
+      <div id="balances" className="scroll-mt-24">
       <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-2">
         Balances por período (última versión de cada zona/período)
       </h2>
@@ -548,6 +561,7 @@ export function NetworkBalancePage() {
           </table>
         </div>
       )}
+      </div>
 
       <div className="mt-4 rounded-xl border border-indigo-100 bg-indigo-50/40 p-4 text-sm text-slate-600">
         <b className="text-slate-900">¿Qué es NRW e ILI?</b>{" "}
