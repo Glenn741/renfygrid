@@ -1512,3 +1512,60 @@ servidor). **Verificado con un smoke test real contra producción** (login real 
 `GET /dashboard/overview` → refleja el activo fuera de servicio y las 2 órdenes pendientes;
 `GET /network-zones/geojson` → 2 zonas reales (Bogotá + Cali) en el mapa;
 `GET /network-balances/summary` → NRW promedio 21%, ninguna zona excede su tope.
+
+### HES de acueducto real y completo: 100 medidores, 6 meses, 4h de intervalo (2026-09-15)
+
+**Motivo:** el usuario pidió enriquecer HES con datos suficientes para reflejar todo lo que
+maneja un HES real: "al menos 100 medidores de acueducto (diferentes marcas) que entregan datos
+cada 4 horas durante 6 meses. Al menos el 10% de los datos no llegaron o tienen valores
+inconsistentes. El VEE procesa automáticamente el 90% de ese 10% y el resto pone un dato
+sugerido pero requiere validación de usuario" — un escenario exacto, no solo "más datos".
+
+**`services/hes-adapter-dlms/seed_demo_water_meters.py`** (nuevo, mismo patrón kept-as-source
+que `seed_demo_data.py`): 100 medidores reales de 5 marcas de AMI de agua (Sensus, Badger Meter,
+Neptune, Diehl Metering, Kamstrup — fabricantes reales, no inventados), canal propio
+`volume_m3` (registro acumulado, mismo criterio que un registro DLMS de energía — nunca
+resetea, el consumo real sale de la diferencia entre lecturas), 8 concentradores, ~1081
+intervalos de 4h por medidor a lo largo de 6 meses (~108,100 intervalos totales).
+
+**El 90%/9%/1% pedido, mapeado sobre las dos fallas reales que el motor VEE ya distingue** (no
+una simulación aparte — el mismo split matemático que la arquitectura real):
+- **9% del total (90% del 10% problemático) = intervalo NO LLEGA** — sin fila en `raw_reading`,
+  hueco real. `vee_engine.detect_gaps` + `estimate_gap` (interpolación lineal, F16/F17) los
+  rellena automáticamente — exactamente "el VEE procesa el 90% de ese 10% sin intervención".
+- **1% del total (10% del 10% problemático) = intervalo LLEGA con valor inconsistente** — un
+  valor de registro/comunicación absurdo (60-400x el valor real esperado), capturado por una
+  regla `range` real (`vee_engine.validate_reading`) con un tope de sanidad configurado
+  (`max=10000 m³`, nunca fijo en el motor — solo en los parámetros de esta regla demo). Queda
+  `is_valid=false`, con un **valor sugerido calculado por la misma interpolación** puesto en
+  `validation_notes` (ej. *"...-- valor sugerido por interpolación: 1185.50 m³ (pendiente de
+  validación de un supervisor)"*) — el valor guardado sigue siendo el recibido tal cual, la
+  corrección real la aplica un supervisor via el flujo de edición manual ya existente (F18).
+
+**Escala real, sin simulación DLMS por lectura** (100 × 1081 vía el poller/simulador real
+tardaría horas de I/O de socket por nada): se generó con las mismas funciones PURAS del motor
+VEE real (`validate_reading`, `detect_gaps`, `estimate_gap`) e insertó en bloque. **Hallazgo real
+en el camino**: `COPY FROM STDIN` de Postgres **no funciona contra una tabla con RLS activo**
+para un rol no-superusuario ("FeatureNotSupported ... Use INSERT statements instead" — limitación
+real de Postgres, no de este proyecto) — cambiado a `executemany` por lotes de 5000, ~2 minutos
+para las ~206,000 filas totales (raw_reading + validated_reading + meter_event).
+
+**Resultado real verificado** (`GET /vee/summary` contra producción): `exception_rate_pct: 1.1%`,
+`fill_rate_pct: 9.0%` — calza con precisión con el 10%/90%/10% pedido. 6 excepciones antiguas
+resueltas a mano de verdad (`manual_edit.edit_reading`, con 2 usuarios distintos, para que
+"Edición manual" tenga historial real) dejando **1044 excepciones recientes genuinamente
+pendientes** de validación — el escenario exacto pedido. Además, 1300 `meter_event` reales
+(comunicación + 4 alarmas) sembrados solo en las últimas 48h (lo único que los paneles de 24h
+de HES miran) — `comm_success_rate_24h: 91.8%`, no inventado ni en 0 ni en 100%.
+
+**Hallazgo real de producto, no un bug de esta siembra**: con datos reales de 4 horas de
+intervalo, `fleet_summary.reporting_pct` y el KPI "medidores caídos" de Vista general muestran
+**0% reportando / 100% caídos** — porque `stale_after_seconds` tiene un **default fijo de 3600s
+(1h) tanto en el backend (`observability.py`) como en el frontend (`api.ts`, nunca lo
+sobreescribe)**, y ningún medidor de 4h en 4h puede estar "fresco" dentro de una ventana de 1h la
+mayor parte del tiempo — la ventana de "caído" no fue pensada para una cadencia más lenta que
+horaria (agua/gas vs. electricidad). **No es un problema de los datos de muestra: es un umbral
+fijo real que no calza con una cadencia de reporte real más lenta** — mismo principio "cero
+hardcode" que el resto del proyecto ya aplica en otros lados, aquí no se aplicó. **No corregido
+en esta ronda** (fuera del alcance pedido -- "genera datos sample"), señalado al usuario para que
+decida si se retoma.
