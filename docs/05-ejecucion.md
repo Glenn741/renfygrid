@@ -1569,3 +1569,21 @@ fijo real que no calza con una cadencia de reporte real más lenta** — mismo p
 hardcode" que el resto del proyecto ya aplica en otros lados, aquí no se aplicó. **No corregido
 en esta ronda** (fuera del alcance pedido -- "genera datos sample"), señalado al usuario para que
 decida si se retoma.
+
+
+## 2026-09-15 — Umbral de "caído" configurable, tipos de medidor y mapa por sector (registrado 2026-09-23)
+
+Trabajo hecho y desplegado el 2026-09-15 que quedó sin comitear ni anotar aquí; se registra
+al verificar que corre en producción (módulos `meter_geo` y `tenant_settings` compilados en
+`/cdrs/renfygrid/portal-api/` con fecha 15-sep y migración 0020 aplicada en la BD `renfygrid`).
+
+- **Cierra el hallazgo anterior**: `stale_after_seconds` deja de ser un default fijo de 3600 s;
+  ahora es un ajuste por tenant (`tenant_settings.py`, editable en Configuración), leído por
+  `observability.py`, `fleet_aggregation.py` y `dashboard.py`.
+- **Migración 0020**: `meter_type` (`micro` = medidor de cliente, `macro` = macromedidor de
+  sector) y geometría de zona.
+- **`meter_geo.py`**: GeoJSON de medidores, resumen por sector, distribución de consumo y tasa de
+  excepciones por marca; nuevas vistas en `Meters.tsx` y ajustes en Vista general.
+- **`seed_demo_hydraulic_sectors.py`**: sectores hidráulicos ilustrativos (Cali) para el tenant demo.
+- CI básico de Sprint 0 (`.github/workflows/tests.yml`) listo pero **sin subir a GitHub**: el token de este PC no tiene el permiso `workflow` (GitHub rechaza el push). Corre las 24 pruebas
+  de `services/common` (verificadas en verde localmente el 2026-09-23).
