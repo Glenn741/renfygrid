@@ -95,6 +95,13 @@ def run(dsn: str) -> int:
             token = create_token({"tenant_id": tenant_id, "role": "supervisor", "email": "ana@renfygrid.demo"}, JWT_SECRET)
             headers = {"Authorization": f"Bearer {token}"}
 
+            # Umbral real configurado por el tenant (2026-09-15) -- sin esto,
+            # `is_stale`/`reporting_pct` quedan `None` a proposito (nunca un
+            # 3600 adivinado). Se configura una vez, como lo haria un usuario
+            # real desde Configuracion.
+            settings_resp = client.put("/settings/hes", headers=headers, json={"stale_after_seconds": 3600})
+            print(f"PUT /settings/hes: {settings_resp.status_code}, {settings_resp.json()}")
+
             fleet = client.get("/meters/fleet-summary", headers=headers).json()
             print(f"GET /meters/fleet-summary: {fleet}")
             by_brand = {row["brand"]: row for row in fleet}
@@ -123,7 +130,8 @@ def run(dsn: str) -> int:
                 and meters_by_account["ACC-B1"]["gateway_name"] == "GW-BrandB"
             )
 
-            ok = ok_fleet and ok_gateways and ok_ingestion
+            ok_settings = settings_resp.status_code == 200 and settings_resp.json()["stale_after_seconds"] == 3600
+            ok = ok_settings and ok_fleet and ok_gateways and ok_ingestion
             print("SPRINT C7 E2E OK" if ok else "SPRINT C7 E2E FALLA")
             return 0 if ok else 1
         finally:

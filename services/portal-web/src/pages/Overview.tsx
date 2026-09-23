@@ -90,7 +90,10 @@ export function OverviewPage() {
     refetchInterval: 30_000,
   });
 
-  const topFleet = [...(fleet ?? [])].sort((a, b) => a.reporting_pct - b.reporting_pct).slice(0, 5);
+  const topFleet = [...(fleet ?? [])]
+    .filter((r) => r.reporting_pct !== null)
+    .sort((a, b) => (a.reporting_pct as number) - (b.reporting_pct as number))
+    .slice(0, 5);
 
   return (
     <AppShell title="Vista general">
@@ -106,8 +109,8 @@ export function OverviewPage() {
               to="/meters"
               label="Medidores caídos"
               value={data.hes.meters_stale}
-              alert={data.hes.meters_stale > 0}
-              hint={`de ${data.hes.meters_total} activos`}
+              alert={!!data.hes.meters_stale && data.hes.meters_stale > 0}
+              hint={data.hes.meters_stale === null ? "umbral sin configurar" : `de ${data.hes.meters_total} activos`}
             />
             <KpiTile
               to="/vee"
@@ -204,7 +207,7 @@ export function OverviewPage() {
                     </div>
                     <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
                       <div
-                        className={`h-full ${row.reporting_pct >= 90 ? "bg-emerald-500" : row.reporting_pct >= 60 ? "bg-amber-500" : "bg-red-500"}`}
+                        className={`h-full ${row.reporting_pct! >= 90 ? "bg-emerald-500" : row.reporting_pct! >= 60 ? "bg-amber-500" : "bg-red-500"}`}
                         style={{ width: `${row.reporting_pct}%` }}
                       />
                     </div>

@@ -35,7 +35,7 @@ from observability import ingestion_metrics  # noqa: E402
 from renmeter_common.db import tenant_scope  # noqa: E402
 
 
-def dashboard_overview(conn: psycopg.Connection, tenant_id: str, stale_after_seconds: int = 3600) -> dict:
+def dashboard_overview(conn: psycopg.Connection, tenant_id: str, stale_after_seconds: int | None) -> dict:
     ingestion = ingestion_metrics(conn, tenant_id, stale_after_seconds)
 
     with conn.transaction():
@@ -61,7 +61,9 @@ def dashboard_overview(conn: psycopg.Connection, tenant_id: str, stale_after_sec
     return {
         "hes": {
             "meters_total": len(ingestion["meters"]),
-            "meters_stale": len(ingestion["alerts"]),
+            # None (no un 0 fabricado) si el tenant no configuro el umbral
+            # de "caido" todavia -- ver tenant_settings.py.
+            "meters_stale": len(ingestion["alerts"]) if stale_after_seconds is not None else None,
         },
         "vee": {"invalid_pending": vee_invalid_pending},
         "consumption": {"under_review": consumption_under_review},

@@ -67,7 +67,7 @@ export function login(body: LoginRequest): Promise<LoginResponse> {
 }
 
 export interface DashboardOverview {
-  hes: { meters_total: number; meters_stale: number };
+  hes: { meters_total: number; meters_stale: number | null };
   vee: { invalid_pending: number };
   consumption: { under_review: number };
   control: { pending_approval: number };
@@ -93,7 +93,8 @@ export interface MeterIngestion {
   readings_24h: number;
   last_reading_at: string | null;
   communication_failures_24h: number;
-  is_stale: boolean;
+  // null = sin umbral configurado todavia (Configuración → HES), no "sano" ni "caído".
+  is_stale: boolean | null;
 }
 
 export interface IngestionAlert {
@@ -108,8 +109,24 @@ export interface IngestionMetrics {
   alerts: IngestionAlert[];
 }
 
-export function getIngestionMetrics(staleAfterSeconds = 3600): Promise<IngestionMetrics> {
-  return request(`/observability/ingestion?stale_after_seconds=${staleAfterSeconds}`);
+// Sin default fijo (2026-09-15, a pedido explícito del usuario): sin
+// argumento, el backend resuelve el umbral REAL configurado por el tenant
+// (`GET/PUT /settings/hes`) -- nunca un 3600 adivinado en el frontend.
+export function getIngestionMetrics(staleAfterSeconds?: number): Promise<IngestionMetrics> {
+  const qs = staleAfterSeconds !== undefined ? `?stale_after_seconds=${staleAfterSeconds}` : "";
+  return request(`/observability/ingestion${qs}`);
+}
+
+export interface HesSettings {
+  stale_after_seconds: number | null;
+}
+
+export function getHesSettings(): Promise<HesSettings> {
+  return request("/settings/hes");
+}
+
+export function setHesSettings(staleAfterSeconds: number): Promise<HesSettings> {
+  return request("/settings/hes", { method: "PUT", body: JSON.stringify({ stale_after_seconds: staleAfterSeconds }) });
 }
 
 // --- HES / Ingesta -- flota por marca y capa de agregacion (Sprint C7/C8) ---
@@ -119,12 +136,59 @@ export interface FleetSummaryRow {
   model: string | null;
   total: number;
   active: number;
-  reporting: number;
-  reporting_pct: number;
+  reporting: number | null;
+  reporting_pct: number | null;
 }
 
 export function getFleetSummary(): Promise<FleetSummaryRow[]> {
   return request("/meters/fleet-summary");
+}
+
+// --- Mapa de medidores + distribución estadística + sectores hidráulicos
+// (macro/micro medición, 2026-09-15) ---
+
+export function getMetersGeojson(): Promise<GeoJSON.FeatureCollection> {
+  return request("/meters/geojson");
+}
+
+export interface ConsumptionDistribution {
+  window_days: number;
+  meters_with_data: number;
+  avg_m3: number | null;
+  min_m3: number | null;
+  max_m3: number | null;
+  buckets: { label: string; count: number }[];
+}
+
+export function getConsumptionDistribution(): Promise<ConsumptionDistribution> {
+  return request("/meters/consumption-distribution");
+}
+
+export interface ExceptionRateByBrand {
+  brand: string;
+  total_processed: number;
+  invalid_count: number;
+  exception_rate_pct: number | null;
+}
+
+export function getExceptionRateByBrand(): Promise<ExceptionRateByBrand[]> {
+  return request("/meters/exception-rate-by-brand");
+}
+
+export interface SectorSummary {
+  zone_id: string;
+  zone_name: string;
+  macro_meter_id: string | null;
+  micro_count: number;
+  micro_with_data: number;
+  macro_volume_m3: number | null;
+  micro_total_m3: number | null;
+  nrw_pct: number | null;
+  window: string;
+}
+
+export function getSectorSummary(): Promise<SectorSummary[]> {
+  return request("/meters/sector-summary");
 }
 
 export interface Gateway {

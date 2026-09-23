@@ -77,6 +77,8 @@ from list_invalid_readings import list_invalid_readings  # noqa: E402
 from manual_edit import ReadingNotFoundError, edit_reading  # noqa: E402
 from vee_summary import list_edits, list_estimated_readings, vee_summary  # noqa: E402
 from observability import ingestion_metrics  # noqa: E402
+from tenant_settings import get_hes_settings, get_meter_stale_after_seconds, set_meter_stale_after_seconds  # noqa: E402
+from meter_geo import consumption_distribution, exception_rate_by_brand, meters_geojson, sector_summary  # noqa: E402
 from on_demand_reader import MeterNotReadableError, read_meter_now  # noqa: E402
 from meter_ping import MeterNotReachableError, ping_meter  # noqa: E402
 from protocol_mapping_admin import create_protocol_mapping, list_protocol_mappings  # noqa: E402
@@ -214,9 +216,14 @@ def login(body: LoginRequest) -> dict:
 
 
 @app.get("/dashboard/overview")
-def dashboard_overview_endpoint(tenant_id: str = Depends(get_tenant_id), stale_after_seconds: int = 3600) -> dict:
+def dashboard_overview_endpoint(tenant_id: str = Depends(get_tenant_id), stale_after_seconds: int | None = None) -> dict:
+    """`stale_after_seconds` como query param es un override explícito
+    opcional (ej. para depuración) -- si no viene, se resuelve del umbral
+    REAL configurado por el tenant (`GET/PUT /settings/hes`), nunca un
+    3600 fijo en el código (2026-09-15, a pedido explícito del usuario)."""
     with db_conn() as conn:
-        return dashboard_overview(conn, tenant_id, stale_after_seconds)
+        effective = stale_after_seconds if stale_after_seconds is not None else get_meter_stale_after_seconds(conn, tenant_id)
+        return dashboard_overview(conn, tenant_id, effective)
 
 
 @app.get("/meters")
@@ -486,11 +493,47 @@ def service_orders_endpoint(tenant_id: str = Depends(get_tenant_id), limit: int 
 
 
 @app.get("/meters/fleet-summary")
-def fleet_summary_endpoint(tenant_id: str = Depends(get_tenant_id), stale_after_seconds: int = 3600) -> list[dict]:
+def fleet_summary_endpoint(tenant_id: str = Depends(get_tenant_id), stale_after_seconds: int | None = None) -> list[dict]:
     """Sprint C7 (G4): flota agrupada por marca/modelo, con % de medidores
-    activos que de verdad estan reportando -- no solo el conteo total."""
+    activos que de verdad estan reportando -- no solo el conteo total.
+    `stale_after_seconds` resuelve del umbral configurado por el tenant si
+    no viene explícito (ver `dashboard_overview_endpoint`)."""
     with db_conn() as conn:
-        return fleet_summary(conn, tenant_id, stale_after_seconds)
+        effective = stale_after_seconds if stale_after_seconds is not None else get_meter_stale_after_seconds(conn, tenant_id)
+        return fleet_summary(conn, tenant_id, effective)
+
+
+@app.get("/meters/geojson")
+def meters_geojson_endpoint(tenant_id: str = Depends(get_tenant_id), stale_after_seconds: int | None = None) -> dict:
+    """Mapa de medidores real (2026-09-15) -- capas tematicas (en línea/
+    caído, tipo micro/macro, marca) sobre coordenadas reales; un medidor
+    sin georreferenciar no aparece."""
+    with db_conn() as conn:
+        effective = stale_after_seconds if stale_after_seconds is not None else get_meter_stale_after_seconds(conn, tenant_id)
+        return meters_geojson(conn, tenant_id, effective)
+
+
+@app.get("/meters/consumption-distribution")
+def consumption_distribution_endpoint(tenant_id: str = Depends(get_tenant_id)) -> dict:
+    """Distribución estadística real del consumo (últimos 30 días, solo
+    medidores MICRO) -- histograma para el panel de KPIs de HES."""
+    with db_conn() as conn:
+        return consumption_distribution(conn, tenant_id)
+
+
+@app.get("/meters/exception-rate-by-brand")
+def exception_rate_by_brand_endpoint(tenant_id: str = Depends(get_tenant_id)) -> list[dict]:
+    with db_conn() as conn:
+        return exception_rate_by_brand(conn, tenant_id)
+
+
+@app.get("/meters/sector-summary")
+def sector_summary_endpoint(tenant_id: str = Depends(get_tenant_id)) -> list[dict]:
+    """Por sector hidráulico con macro-medidor real: inflow del macro vs.
+    consumo sumado de sus micro-medidores -- NRW operativo real derivado
+    de medición cruda (docs/05-ejecucion.md 2026-09-15)."""
+    with db_conn() as conn:
+        return sector_summary(conn, tenant_id)
 
 
 @app.get("/gateways")
@@ -529,9 +572,34 @@ def retry_queue_endpoint(tenant_id: str = Depends(get_tenant_id)) -> list[dict]:
 
 
 @app.get("/observability/ingestion")
-def ingestion_observability(tenant_id: str = Depends(get_tenant_id), stale_after_seconds: int = 3600) -> dict:
+def ingestion_observability(tenant_id: str = Depends(get_tenant_id), stale_after_seconds: int | None = None) -> dict:
+    """`stale_after_seconds` resuelve del umbral configurado por el tenant
+    si no viene explícito (ver `dashboard_overview_endpoint`)."""
     with db_conn() as conn:
-        return ingestion_metrics(conn, tenant_id, stale_after_seconds)
+        effective = stale_after_seconds if stale_after_seconds is not None else get_meter_stale_after_seconds(conn, tenant_id)
+        return ingestion_metrics(conn, tenant_id, effective)
+
+
+class HesSettingsRequest(BaseModel):
+    stale_after_seconds: int
+
+
+@app.get("/settings/hes")
+def get_hes_settings_endpoint(tenant_id: str = Depends(get_tenant_id)) -> dict:
+    """Umbral real de "medidor caído", configurado por el tenant -- `None`
+    si todavía no se configuró (2026-09-15, nunca un valor fijo en código)."""
+    with db_conn() as conn:
+        return get_hes_settings(conn, tenant_id)
+
+
+@app.put("/settings/hes")
+def set_hes_settings_endpoint(body: HesSettingsRequest, tenant_id: str = Depends(get_tenant_id)) -> dict:
+    with db_conn() as conn:
+        try:
+            set_meter_stale_after_seconds(conn, tenant_id, body.stale_after_seconds)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return get_hes_settings(conn, tenant_id)
 
 
 @app.get("/billing-export", response_class=PlainTextResponse)

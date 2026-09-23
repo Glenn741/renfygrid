@@ -17,11 +17,13 @@ import {
   getConsumptionAnomalyRules,
   getCrews,
   getFailureCodes,
+  getHesSettings,
   getProtectedMeters,
   getProtocolMappings,
   getSlaPolicies,
   getVeeRules,
   markMeterProtection,
+  setHesSettings,
   setSlaPolicy,
 } from "../api";
 import { StagePage, EmptyState } from "../components/StagePage";
@@ -35,6 +37,7 @@ import { NavSection, SectionNav } from "../components/SectionNav";
 // pegajosa arriba, cada `SectionCard` con su propio `id` para saltar
 // directo.
 const SECTIONS = [
+  { id: "hes-settings", label: "HES" },
   { id: "vee-rules", label: "Reglas VEE" },
   { id: "consumption-rules", label: "Reglas de consumo" },
   { id: "approval-levels", label: "Aprobación (SCR)" },
@@ -556,6 +559,53 @@ function ProtectedAccountsSection() {
   );
 }
 
+function HesSettingsSection() {
+  const queryClient = useQueryClient();
+  const { data } = useQuery({ queryKey: ["hes-settings"], queryFn: getHesSettings });
+  const [hours, setHours] = useState("6");
+  const [error, setError] = useState<string | null>(null);
+
+  const saveMutation = useMutation({
+    mutationFn: () => setHesSettings(Math.round(Number(hours) * 3600)),
+    onSuccess: () => {
+      setError(null);
+      queryClient.invalidateQueries({ queryKey: ["hes-settings"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-overview"] });
+      queryClient.invalidateQueries({ queryKey: ["ingestion-metrics"] });
+      queryClient.invalidateQueries({ queryKey: ["fleet-summary"] });
+      queryClient.invalidateQueries({ queryKey: ["meters-geojson"] });
+    },
+    onError: (err) => setError(err instanceof ApiError ? err.message : "No se pudo guardar el umbral."),
+  });
+
+  const configuredHours = data?.stale_after_seconds != null ? (data.stale_after_seconds / 3600).toFixed(1) : null;
+
+  return (
+    <SectionCard
+      title="HES — Umbral de medidor caído"
+      description="Cuánto tiempo sin una lectura real cuenta como 'medidor caído' -- depende de la cadencia de reporte real de tu flota (un medidor de agua que reporta cada 4h nunca debe compararse contra una ventana de 1h). Sin configurar, el Portal muestra 'sin umbral configurado' en vez de adivinar -- nunca un valor fijo en el código."
+    >
+      <div className="flex flex-wrap items-end gap-3 mb-3">
+        <div>
+          <label className="block text-xs font-medium text-slate-500 mb-1">Horas sin reportar = caído</label>
+          <input type="number" step="0.5" min="0.5" className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm w-32" value={hours} onChange={(e) => setHours(e.target.value)} />
+        </div>
+        <button
+          onClick={() => saveMutation.mutate()}
+          disabled={saveMutation.isPending || !hours}
+          className="rounded-lg bg-indigo-600 text-white text-sm font-semibold px-4 py-1.5 hover:bg-indigo-700 disabled:opacity-50"
+        >
+          Guardar
+        </button>
+      </div>
+      {error && <p className="text-sm text-red-600 mb-2">{error}</p>}
+      <p className="text-xs text-slate-500">
+        Valor actual: {configuredHours !== null ? <strong className="text-slate-700">{configuredHours}h</strong> : <span className="text-amber-700 font-semibold">sin configurar todavía</span>}
+      </p>
+    </SectionCard>
+  );
+}
+
 function SlaPoliciesSection() {
   const queryClient = useQueryClient();
   const { data } = useQuery({ queryKey: ["sla-policies"], queryFn: getSlaPolicies });
@@ -698,6 +748,7 @@ export function ConfigurationPage() {
   return (
     <StagePage title="Configuración">
       <SectionNav items={SECTIONS} />
+      <NavSection id="hes-settings"><HesSettingsSection /></NavSection>
       <NavSection id="vee-rules"><VeeRulesSection /></NavSection>
       <NavSection id="consumption-rules"><ConsumptionAnomalyRulesSection /></NavSection>
       <NavSection id="approval-levels"><ApprovalLevelsSection /></NavSection>

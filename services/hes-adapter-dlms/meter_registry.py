@@ -53,14 +53,24 @@ def register_meter(
     protocol: str,
     model: str | None = None,
     location: dict[str, Any] | None = None,
+    meter_type: str = "micro",
+    zone_id: str | None = None,
+    geometry: dict[str, Any] | None = None,
 ) -> str:
+    """`meter_type` (migracion 0020): 'micro' (medidor de cliente/inmueble
+    individual, DEFAULT -- la inmensa mayoria de los medidores reales de
+    cualquier utility) o 'macro' (medidor de bloque en la entrada de un
+    sector hidraulico/DMA, mide el inflow TOTAL del sector -- se declara
+    EXPLICITO al crearlo, nunca por default). `zone_id` vincula el
+    medidor a su sector hidraulico real (`network_zone`); `geometry` es
+    un Point GeoJSON real para el mapa de medidores -- ambos opcionales."""
     with conn.transaction():
         with tenant_scope(conn, tenant_id):
             with conn.cursor() as cur:
                 cur.execute(
                     "INSERT INTO meter "
-                    "(tenant_id, account_number, serial_number, brand, model, protocol, location) "
-                    "VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id",
+                    "(tenant_id, account_number, serial_number, brand, model, protocol, location, meter_type, zone_id, geometry) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
                     (
                         tenant_id,
                         account_number,
@@ -69,6 +79,9 @@ def register_meter(
                         model,
                         protocol,
                         psycopg.types.json.Json(location) if location else None,
+                        meter_type,
+                        zone_id,
+                        psycopg.types.json.Json(geometry) if geometry else None,
                     ),
                 )
                 (meter_id,) = cur.fetchone()

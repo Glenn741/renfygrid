@@ -4,7 +4,12 @@ medidor + alertas de caida (un medidor que dejo de reportar).
 Nada de umbral fijo: `stale_after_seconds` (cuanto tiempo sin una lectura
 cuenta como "caido") llega por parametro -- distinto para un medidor que
 deberia reportar cada 15 minutos que para uno que reporta cada hora.
-"""
+
+`stale_after_seconds=None` (2026-09-15, `tenant_settings.py`): el tenant
+todavia no configuro este umbral real -- nunca se asume uno (ni 3600 ni
+ningun otro). Sin umbral, `is_stale` es `None` (desconocido) para TODOS
+los medidores, y no se genera ninguna alerta -- "no se puede saber" es
+honesto, "todo esta bien" seria un falso negativo fabricado."""
 
 from __future__ import annotations
 
@@ -20,7 +25,7 @@ import psycopg  # noqa: E402
 from renmeter_common.db import tenant_scope  # noqa: E402
 
 
-def ingestion_metrics(conn: psycopg.Connection, tenant_id: str, stale_after_seconds: int) -> dict:
+def ingestion_metrics(conn: psycopg.Connection, tenant_id: str, stale_after_seconds: int | None) -> dict:
     """Por medidor: cuantas lecturas reales llegaron en las ultimas 24h,
     cuando fue la ultima, y si esta "caido" (sin lectura hace mas de
     `stale_after_seconds`). Un medidor sin ninguna lectura nunca (nuevo,
@@ -51,7 +56,10 @@ def ingestion_metrics(conn: psycopg.Connection, tenant_id: str, stale_after_seco
     meters = []
     alerts = []
     for meter_id, account_number, brand, model, gateway_name, readings_24h, last_reading_at, failures_24h in rows:
-        is_stale = last_reading_at is not None and (now - last_reading_at).total_seconds() > stale_after_seconds
+        if stale_after_seconds is None:
+            is_stale = None
+        else:
+            is_stale = last_reading_at is not None and (now - last_reading_at).total_seconds() > stale_after_seconds
         meter_metrics = {
             "meter_id": str(meter_id),
             "account_number": account_number,
@@ -64,7 +72,7 @@ def ingestion_metrics(conn: psycopg.Connection, tenant_id: str, stale_after_seco
             "is_stale": is_stale,
         }
         meters.append(meter_metrics)
-        if is_stale:
+        if is_stale is True:
             alerts.append(
                 {
                     "meter_id": str(meter_id),

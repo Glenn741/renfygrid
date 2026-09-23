@@ -2,29 +2,203 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ApiError,
+  getConsumptionDistribution,
+  getExceptionRateByBrand,
   getFleetSummary,
   getGateways,
   getHesEventSummary,
   getIngestionMetrics,
   getMeterEvents,
+  getMetersGeojson,
   getRetryQueue,
+  getSectorSummary,
   readMeterNow,
   type MeterEvent,
 } from "../api";
 import { StagePage, EmptyState } from "../components/StagePage";
 import { SectionNav } from "../components/SectionNav";
+import { NetworkMap } from "../components/NetworkMap";
 
 // Pulido de usabilidad (2026-09-14): 5 secciones reales apiladas (flota,
 // concentradores, cola de reintentos, eventos/alarmas, medidores) sin
 // forma de saltar entre ellas -- mismo patron de barra de secciones que
 // el resto del portal (ver Configuration.tsx).
+//
+// Mapa de medidores + distribucion estadistica + sectores hidraulicos
+// (2026-09-15, a pedido explicito del usuario): un medidor puede ser
+// MICRO (cliente/inmueble individual) o MACRO (medidor de bloque en la
+// entrada de un sector hidraulico/DMA, junto a la valvula reguladora de
+// presion -- mide el inflow TOTAL, la diferencia contra el consumo micro
+// sumado es el NRW real de ese sector). Grounded en el estandar real de
+// DMA/smart metering (KROHNE, McCrometer -- ver docs/05-ejecucion.md).
 const SECTIONS = [
+  { id: "map", label: "Mapa de medidores" },
+  { id: "distribution", label: "Distribución estadística" },
   { id: "fleet", label: "Flota" },
   { id: "gateways", label: "Concentradores" },
   { id: "retry-queue", label: "Cola de reintentos" },
   { id: "events", label: "Eventos y alarmas" },
   { id: "meters-list", label: "Medidores" },
 ];
+
+const METER_TYPE_LABEL: Record<string, string> = { micro: "Micro (cliente)", macro: "Macro (sector)" };
+const METER_TYPE_COLOR: Record<string, string> = { micro: "#0ea5e9", macro: "#7c3aed" };
+const STALE_COLOR = { online: "#10b981", offline: "#ef4444", unknown: "#94a3b8" };
+
+type MapLayer = "status" | "type" | "brand";
+
+const BRAND_PALETTE = ["#0ea5e9", "#f59e0b", "#10b981", "#ef4444", "#7c3aed", "#64748b", "#ec4899", "#14b8a6"];
+function brandColor(brand: string | null): string {
+  if (!brand) return "#94a3b8";
+  let hash = 0;
+  for (let i = 0; i < brand.length; i++) hash = (hash * 31 + brand.charCodeAt(i)) % BRAND_PALETTE.length;
+  return BRAND_PALETTE[hash];
+}
+
+function MetersMapSection() {
+  const [layer, setLayer] = useState<MapLayer>("status");
+  const { data: geojson, isLoading } = useQuery({ queryKey: ["meters-geojson"], queryFn: getMetersGeojson, refetchInterval: 30_000 });
+
+  const colorFor = (p: Record<string, unknown>): string => {
+    if (layer === "type") return METER_TYPE_COLOR[p.meter_type as string] ?? "#94a3b8";
+    if (layer === "brand") return brandColor(p.brand as string | null);
+    // layer === "status"
+    if (p.is_stale === null || p.is_stale === undefined) return STALE_COLOR.unknown;
+    return p.is_stale ? STALE_COLOR.offline : STALE_COLOR.online;
+  };
+
+  return (
+    <>
+      <div className="mb-2 flex items-center justify-between flex-wrap gap-2">
+        <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide">Mapa de medidores</h2>
+        <div className="flex gap-2">
+          {([["status", "Estado"], ["type", "Tipo (micro/macro)"], ["brand", "Marca"]] as [MapLayer, string][]).map(([value, label]) => (
+            <button
+              key={value}
+              onClick={() => setLayer(value)}
+              className={`rounded-full px-3 py-1 text-xs font-semibold border ${layer === value ? "bg-indigo-600 text-white border-indigo-600" : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+      {isLoading && <p className="text-sm text-slate-500 mb-2">Cargando...</p>}
+      <NetworkMap
+        geojson={geojson}
+        height={360}
+        emptyMessage="Ningún medidor tiene coordenadas cargadas todavía."
+        pointColor={colorFor}
+        pointRadius={(p) => (p.meter_type === "macro" ? 11 : 6)}
+        popupHtml={(p) => {
+          const statusText = p.is_stale === null || p.is_stale === undefined ? "sin umbral configurado" : p.is_stale ? "caído" : "en línea";
+          return `<div style="font-size:12px"><strong>${p.account_number}</strong> (${METER_TYPE_LABEL[p.meter_type as string] ?? p.meter_type})<br/>` +
+            `${p.brand ?? "—"} ${p.model ?? ""}<br/>Sector: ${p.zone_name ?? "sin asignar"}<br/>Estado: ${statusText}` +
+            `${(p.invalid_count as number) > 0 ? `<br/><span style="color:#b45309">${p.invalid_count} excepción(es) pendiente(s)</span>` : ""}</div>`;
+        }}
+      />
+      <div className="mt-2 flex flex-wrap gap-4 text-xs text-slate-500">
+        {layer === "status" && (
+          <>
+            <span><span className="inline-block w-2.5 h-2.5 rounded-full mr-1" style={{ background: STALE_COLOR.online }} />En línea</span>
+            <span><span className="inline-block w-2.5 h-2.5 rounded-full mr-1" style={{ background: STALE_COLOR.offline }} />Caído</span>
+            <span><span className="inline-block w-2.5 h-2.5 rounded-full mr-1" style={{ background: STALE_COLOR.unknown }} />Umbral sin configurar</span>
+          </>
+        )}
+        {layer === "type" && (
+          <>
+            <span><span className="inline-block w-2.5 h-2.5 rounded-full mr-1" style={{ background: METER_TYPE_COLOR.micro }} />Micro (cliente)</span>
+            <span><span className="inline-block w-3 h-3 rounded-full mr-1" style={{ background: METER_TYPE_COLOR.macro }} />Macro (sector, círculo más grande)</span>
+          </>
+        )}
+        {layer === "brand" && <span>Color por marca — ver el detalle al hacer clic en cada punto.</span>}
+      </div>
+    </>
+  );
+}
+
+function Histogram({ buckets, max }: { buckets: { label: string; count: number }[]; max: number }) {
+  return (
+    <div className="flex items-end gap-2 h-32">
+      {buckets.map((b) => (
+        <div key={b.label} className="flex-1 flex flex-col items-center gap-1" title={`${b.label}: ${b.count} medidor(es)`}>
+          <div className="w-full flex items-end h-24">
+            <div className="w-full bg-indigo-400 rounded-t" style={{ height: `${max > 0 ? (b.count / max) * 100 : 0}%`, minHeight: b.count > 0 ? 3 : 0 }} />
+          </div>
+          <span className="text-[9px] text-slate-400 text-center leading-tight">{b.label}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function DistributionSection() {
+  const { data: dist } = useQuery({ queryKey: ["consumption-distribution"], queryFn: getConsumptionDistribution, refetchInterval: 60_000 });
+  const { data: byBrand } = useQuery({ queryKey: ["exception-rate-by-brand"], queryFn: getExceptionRateByBrand, refetchInterval: 60_000 });
+  const { data: sectors } = useQuery({ queryKey: ["sector-summary"], queryFn: getSectorSummary, refetchInterval: 60_000 });
+
+  const maxBucket = Math.max(1, ...(dist?.buckets.map((b) => b.count) ?? [0]));
+  const maxExceptionRate = Math.max(1, ...((byBrand ?? []).map((b) => b.exception_rate_pct ?? 0)));
+
+  return (
+    <>
+      <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-2">Distribución estadística de la medición</h2>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+        <div className="rounded-xl border border-slate-200 bg-white p-4">
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-xs font-medium text-slate-500">Consumo por medidor micro — últimos {dist?.window_days ?? 30} días</div>
+            {dist && <div className="text-xs text-slate-400">prom. {dist.avg_m3 ?? "—"} m³ ({dist.meters_with_data} medidores)</div>}
+          </div>
+          {dist && dist.buckets.length > 0 ? <Histogram buckets={dist.buckets} max={maxBucket} /> : <p className="text-sm text-slate-400 h-32 flex items-center">Sin datos suficientes todavía.</p>}
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-4">
+          <div className="text-xs font-medium text-slate-500 mb-2">Tasa de excepción real por marca</div>
+          {byBrand && byBrand.length > 0 ? (
+            <div className="space-y-2">
+              {byBrand.map((b) => (
+                <div key={b.brand}>
+                  <div className="flex justify-between text-xs text-slate-600 mb-0.5">
+                    <span>{b.brand}</span>
+                    <span className="tabular-nums font-semibold">{b.exception_rate_pct === null ? "—" : `${b.exception_rate_pct}%`}</span>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                    <div className="h-full bg-amber-500" style={{ width: `${((b.exception_rate_pct ?? 0) / maxExceptionRate) * 100}%` }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-slate-400 h-32 flex items-center">Sin datos todavía.</p>
+          )}
+        </div>
+      </div>
+
+      <div className="text-xs font-medium text-slate-500 mb-2">Sectores hidráulicos — macro vs. micro medición</div>
+      {sectors && sectors.filter((s) => s.micro_count > 0 || s.macro_meter_id).length === 0 && (
+        <EmptyState message="Sin sectores hidráulicos con medidores clasificados todavía." />
+      )}
+      {sectors && sectors.filter((s) => s.micro_count > 0 || s.macro_meter_id).length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {sectors.filter((s) => s.micro_count > 0 || s.macro_meter_id).map((s) => (
+            <div key={s.zone_id} className="rounded-xl border border-slate-200 bg-white p-4">
+              <div className="text-sm font-bold text-slate-900 mb-1">{s.zone_name}</div>
+              <div className="text-xs text-slate-500 mb-2">{s.micro_count} micro-medidores{s.macro_meter_id ? " · 1 macro-medidor" : " · sin macro-medidor"}</div>
+              {s.nrw_pct !== null ? (
+                <>
+                  <div className={`text-2xl font-bold ${s.nrw_pct > 30 ? "text-red-700" : s.nrw_pct > 20 ? "text-amber-700" : "text-emerald-700"}`}>{s.nrw_pct}%</div>
+                  <div className="text-xs text-slate-500">NRW operativo ({s.window})</div>
+                  <div className="mt-2 text-xs text-slate-500">Macro: {s.macro_volume_m3} m³ · Micro: {s.micro_total_m3} m³</div>
+                </>
+              ) : (
+                <div className="text-sm text-slate-400">Sin datos suficientes para NRW todavía.</div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
 
 // HES / Ingesta (Sprint C7/C8, `docs/06-benchmark-e2e-y-brechas.md` G4/G5,
 // mas Sprint C11-4): el benchmark E2E encontro que faltaban flota por
@@ -148,6 +322,15 @@ export function MetersPage() {
   return (
     <StagePage title="Medidores / HES / Ingesta">
       <SectionNav items={SECTIONS} />
+
+      <div id="map" className="scroll-mt-24 mb-8">
+        <MetersMapSection />
+      </div>
+
+      <div id="distribution" className="scroll-mt-24 mb-8">
+        <DistributionSection />
+      </div>
+
       {/* KPIs generales del modulo -- alarmas, salud de comunicacion y cola
           de reintentos, lo que un HES de referencia llama "communication
           statistics" + "alarm management" (Sprint C11-4). */}
@@ -203,16 +386,18 @@ export function MetersPage() {
                 <span
                   className={`rounded-full px-2 py-0.5 text-xs font-semibold ${ratePillClass(row.reporting_pct)}`}
                 >
-                  {row.reporting_pct}% reportando
+                  {row.reporting_pct === null ? "sin umbral configurado" : `${row.reporting_pct}% reportando`}
                 </span>
               </div>
               <div className="mt-3 h-2 rounded-full bg-slate-100 overflow-hidden">
-                <div
-                  className={`h-full ${
-                    row.reporting_pct >= 90 ? "bg-emerald-500" : row.reporting_pct >= 60 ? "bg-amber-500" : "bg-red-500"
-                  }`}
-                  style={{ width: `${row.reporting_pct}%` }}
-                />
+                {row.reporting_pct !== null && (
+                  <div
+                    className={`h-full ${
+                      row.reporting_pct >= 90 ? "bg-emerald-500" : row.reporting_pct >= 60 ? "bg-amber-500" : "bg-red-500"
+                    }`}
+                    style={{ width: `${row.reporting_pct}%` }}
+                  />
+                )}
               </div>
               <div className="mt-2 flex justify-between text-xs text-slate-500">
                 <span>{row.total} medidores</span>
@@ -437,7 +622,9 @@ export function MetersPage() {
                   </td>
                   <td className="px-4 py-3 text-slate-600">{meter.gateway_name ?? "—"}</td>
                   <td className="px-4 py-3">
-                    {meter.is_stale ? (
+                    {meter.is_stale === null ? (
+                      <span className="text-slate-400" title="Configura el umbral en Configuración → HES">Sin umbral</span>
+                    ) : meter.is_stale ? (
                       <span className="text-amber-700">⚠ Caído</span>
                     ) : (
                       <span className="text-slate-500">Activo</span>

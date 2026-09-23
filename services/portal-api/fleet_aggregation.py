@@ -30,11 +30,28 @@ import psycopg  # noqa: E402
 from renmeter_common.db import tenant_scope  # noqa: E402
 
 
-def fleet_summary(conn: psycopg.Connection, tenant_id: str, stale_after_seconds: int = 3600) -> list[dict]:
+def fleet_summary(conn: psycopg.Connection, tenant_id: str, stale_after_seconds: int | None) -> list[dict]:
     """Por marca/modelo (G4): total de medidores, cuantos estan `active`
     (status), y de esos cuantos reportaron dentro de `stale_after_seconds`
     -- mismo criterio de "caido" que `observability.ingestion_metrics`
-    (F34), no uno inventado aparte."""
+    (F34), no uno inventado aparte. `stale_after_seconds=None` (tenant sin
+    configurar, ver `tenant_settings.py`): `reporting`/`reporting_pct`
+    quedan `None` -- no hay ventana real contra la cual contar, "0
+    reportando" seria un falso negativo fabricado."""
+    if stale_after_seconds is None:
+        with conn.transaction():
+            with tenant_scope(conn, tenant_id):
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT m.brand, m.model, count(*) AS total, count(*) FILTER (WHERE m.status = 'active') AS active_status "
+                        "FROM meter m GROUP BY m.brand, m.model ORDER BY m.brand, m.model"
+                    )
+                    rows_no_window = cur.fetchall()
+        return [
+            {"brand": brand, "model": model, "total": total, "active": active_status, "reporting": None, "reporting_pct": None}
+            for brand, model, total, active_status in rows_no_window
+        ]
+
     with conn.transaction():
         with tenant_scope(conn, tenant_id):
             with conn.cursor() as cur:
