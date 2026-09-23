@@ -282,3 +282,69 @@ BayForce" como única pieza pendiente):**
   columna vertebral del módulo.
 
 Pendiente de implementar — siguiente sesión/ronda de trabajo sobre Mantenimiento.
+
+## 11. Track D — Prestadores comunitarios / juntas de agua (aprobado 2026-09-23)
+
+**Origen.** El usuario compartió las Guías 3 y 4 del Proyecto Municipios Azules (Corporación
+Agua Para Todos, Ecuador): capacitación para las JAAPS (Juntas Administradoras de Agua Potable
+y Saneamiento). Guía 3 = operación y mantenimiento técnico; Guía 4 = administración, finanzas
+y tarifa. Cada guía termina en formatos concretos que la junta debe llevar (7A-7H, 4A-4B) y
+que alimentan un Plan de Mejora (Guía 6). Esos formatos son la especificación de este track.
+
+**Por qué es un track aparte.** Los tracks A-C suponen una empresa de acueducto con medición
+inteligente (DLMS), SIG y modelo EPANET. La junta típica de los ejemplos de la guía (ficticios,
+pero representativos) tiene 80-120 conexiones, tarifa de USD 5-7/mes, presupuesto de ~USD
+7.000/año, muchas sin medidores (tarifa plana), sistemas por gravedad, energía limitada y
+registros en papel. Sin este track, RenfyGrid no le sirve a ese segmento.
+
+**Decisiones aprobadas por el usuario (2026-09-23):**
+1. Se agrega este track al roadmap.
+2. La capa administrativa/financiera (padrón, libro de caja, tarifa, morosidad, POA,
+   presupuesto, rendición de cuentas, asambleas) **se construye sobre el motor `renfy_pool`**
+   (el de Renfy Home: cuotas, cartera, asambleas), no dentro de RenfyGrid. Una junta de agua
+   funciona igual que una copropiedad: asamblea, directiva, tesorería, cuota mensual,
+   morosidad, reglamento interno. `renfy_pool` lo trabaja otro agente/sesión — **coordinar por
+   el buzón antes de tocarlo** (tema `RENFY_POOL`).
+3. **Excepción a la regla "RenfyGrid no construye app móvil" (§9 de este documento y `03-diseno.md`):** para
+   este segmento se construye una app ligera del operador (PWA, **funciona sin conexión** y
+   sincroniza al volver la señal). No es despacho ni ruteo (eso sigue siendo BayForce): son
+   formularios de bitácora, lectura, cloro e inspección. Patrón de referencia en el
+   portafolio: la PWA residente de `renfy_pool` (PLT-04).
+4. Se preparan briefs propios para juntas y para programas/GAD (en el repo `rnsftlbs`).
+
+**Principios del track:**
+- Lenguaje sencillo, el mismo de las guías (operador, directiva, minga, bitácora, semáforo).
+- Umbrales y reglas como **catálogo por país** (tabla semilla, nunca en código): Ecuador
+  (NTE INEN 1108, lineamientos de ARCA), Colombia, etc. Los valores de referencia de la guía
+  (cloro residual 0,3-1,5 mg/L en red, turbiedad ≤ 5 UTN, pH 6,5-8,5) son la semilla de
+  Ecuador, marcados como "referencia operativa", no como la norma completa.
+- Cada formato de la guía = una pantalla o un reporte exportable con el mismo nombre, para
+  que lo aprendido en el taller se reconozca en la herramienta.
+- Mensajería a la comunidad (avisos de emergencia, recordatorios de pago) por WhatsApp vía
+  Renfy Vox, no un canal propio.
+
+**Sprints propuestos (orden de valor para un piloto):**
+
+| Sprint | Épica | Qué entrega | Formatos de la guía que cubre |
+|---|---|---|---|
+| **D1** | E22 Operación sin medición inteligente | Lectura manual (app del operador y carga por planilla), macromedidor del reservorio, balance simple agua producida vs. facturada por sector; modo tarifa plana (sin micromedición, consumo estimado) | Mapa técnico (Act. 1), base del cálculo de tarifa por consumo (G4) |
+| **D2** | E23 Calidad del agua | Registro de cloro residual por punto (salida de tanque, punto medio, punto lejano/crítico) con interpretación automática bajo/adecuado/alto y alerta; turbiedad, pH, color; resultados de laboratorio (E. coli); calendario de muestreo | 7B, 7C (parte de calidad), 7G (análisis) |
+| **D3** | E24 O&M comunitario | Sobre el CMMS existente: tipos preventivo/correctivo/emergente, componentes del sistema (captación → conducción → tratamiento → reservorio → red, y saneamiento), bitácora diaria, listas de inspección con semáforo verde/amarillo/rojo, calendario anual, mingas como recurso, bodega y EPP | 7A, 7C, 7D, 7G, 7G.1, semáforo (Act. 2) |
+| **D4** | E25 Emergencias | Plantilla de plan de emergencia (lluvias, sequía, rotura, contaminación, rebose), activación, mensaje a la comunidad por WhatsApp e institución a notificar | Act. 6 |
+| **D5** | E26 Saneamiento | Fosas, cajas de revisión, redes, PTAR, extracción de lodos con destino seguro, descargas productivas (queseras, chancheras, camales) | 7E, 7F, Act. 5 |
+| **D6** | E27 Administración y tarifa (en `renfy_pool`) | Padrón de usuarios, libro de caja con comprobantes, costos reales (operación / mantenimiento preventivo / correctivo / administración / reserva, agua y saneamiento por separado), calculadora de tarifa (plana y cargo fijo + variable por bloques, con la fórmula de la guía), morosidad escalonada (1 / 2 / 3 / >3 meses), POA por área de gestión, presupuesto, informe de rendición de cuentas | 4A, 4B, productos finales de la Guía 4 |
+| **D7** | E28 Plan de Mejora | Exporta la ficha de insumos para la Guía 6 desde los hallazgos de D1-D6 (problema, evidencia, acción, qué hace la junta, apoyo requerido, costo, plazo) | 7G.2, 7H |
+
+**Modelo comercial (hipótesis a validar en el piloto).** La junta no compra software con un
+presupuesto de ~USD 7.000/año. Paga el programa o el territorio: Corporación Agua Para Todos /
+Municipios Azules, GAD municipales, ARCA o cooperación (CAF y GIZ aparecen en la bibliografía de
+la Guía 4). Licencia por programa/GAD que cubre N juntas; la junta usa la herramienta sin costo.
+
+**Criterio de éxito del piloto (3-5 juntas de un mismo programa).** Que el operador registre
+cloro y bitácora desde el celular sin conexión, que la directiva vea el semáforo y el calendario
+cumplidos, y que la tesorería llegue a la asamblea con la tarifa calculada y la rendición de
+cuentas generada por la herramienta, no en papel.
+
+**Pendiente de verificar antes de construir:** cuántas JAAPS hay en Ecuador y en qué programas
+están (no se cita cifra sin fuente); el plan de muestreo vigente de ARCA por categoría
+poblacional; contacto real en Corporación Agua Para Todos. Estado: **aprobado, sin iniciar**.
