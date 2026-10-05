@@ -74,6 +74,10 @@ CREATE TABLE checklist_template (
     items      jsonb NOT NULL
 );
 
+-- GRANT explicito (no se confia en ALTER DEFAULT PRIVILEGES de 0002: en
+-- produccion las migraciones corren como `postgres`, cuyos objetos no
+-- heredan esos defaults -- mismo hallazgo de la 0019, ver bitacora).
+GRANT SELECT ON pack, component_type, parameter, parameter_rule, checklist_template TO renfygrid_app;
 REVOKE INSERT, UPDATE, DELETE ON pack, component_type, parameter, parameter_rule, checklist_template FROM renfygrid_app;
 
 -- ── Tablas por tenant ─────────────────────────────────────────────────
@@ -151,6 +155,8 @@ CREATE POLICY finding_tenant_isolation ON finding
     USING (tenant_id = current_setting('app.tenant_id', true)::uuid)
     WITH CHECK (tenant_id = current_setting('app.tenant_id', true)::uuid);
 CREATE INDEX finding_tenant_status_idx ON finding (tenant_id, status);
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON tenant_pack, checklist_run, checklist_answer, finding TO renfygrid_app;
 
 -- ── Semillas ──────────────────────────────────────────────────────────
 
