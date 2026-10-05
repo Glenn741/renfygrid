@@ -323,17 +323,184 @@ registros en papel. Sin este track, RenfyGrid no le sirve a ese segmento.
 - Mensajería a la comunidad (avisos de emergencia, recordatorios de pago) por WhatsApp vía
   Renfy Vox, no un canal propio.
 
-**Sprints propuestos (orden de valor para un piloto):**
+### 11.1 Revisión del plan tras leer las guías completas (2026-10-05)
 
-| Sprint | Épica | Qué entrega | Formatos de la guía que cubre |
+Fuente: `C:\PCGM\RENSOFTLABS\Clientes\ARCA\Guia3_digital.pdf` (67 págs., texto hasta la 57) y
+`Guia4_digital.pdf` (48 págs., texto hasta la 38). La versión del 23-sep se armó con un resumen
+de las guías; esta revisión es contra el texto completo. Lo que cambió:
+
+**Hallazgos de la Guía 3 (operación y mantenimiento) que el plan anterior no tenía:**
+1. **Los productos salen de las 6 actividades participativas, no solo de los formatos 7A-7H.**
+   El ítem 7H enumera 13 productos finales: mapa técnico (AP1), semáforo técnico (AP2), revisión
+   del tren de tratamiento (AP3), cloro (AP4 + 7B), bitácora (7C), plan de mantenimiento (7D +
+   7G), saneamiento (AP5 + 7E), lodos (7F), bodega (7G.1), plan de emergencia (AP6), **plan
+   mínimo de O&M** (sección 4), insumos para la Guía 6 (7G.2) y calendario de calidad (7G). El
+   plan anterior omitía el tren de tratamiento, el plan mínimo de O&M y el tablero 7H.
+2. **Componentes comunitarios ≠ `network_asset.type`.** El tipo actual de `network_asset` es
+   urbano (`pipe|valve|tank|pump|meter|sensor`). La guía organiza el sistema así:
+   - Agua: fuente → captación → desarenador → conducción (cámaras, pasos elevados, cruces de
+     quebrada) → etapas de tratamiento → reservorio → red.
+   - Saneamiento: baños/letrinas → cajas de revisión → red sanitaria → trampa de grasa → fosa
+     séptica → PTAR → punto de descarga.
+   - Más bodega/EPP y bitácoras, que también son "componentes" del semáforo.
+
+   Se modela como **catálogo de tipos de componente** (semilla, no un enum en código).
+3. **Mantenimiento disparado por evento.** La tabla de frecuencias de la guía dice "semanal *y
+   después de lluvias*", "mensual *y después de movimientos de tierra*", "mensual *y ante
+   quejas*". `maintenance_pm_plan` hoy solo tiene `interval_days`; hace falta un disparador por
+   evento (el operador o la directiva registra "lluvia fuerte" y se generan las órdenes de los
+   planes ligados a ese evento).
+4. **El tipo "emergente"** (preventivo / correctivo / emergente) no existe en
+   `maintenance_order.type` (`preventive|corrective|inspection`). La prioridad `emergency` no
+   lo reemplaza: en la guía es un tipo de trabajo, no una urgencia.
+5. **Calculadora de dosificación de cloro**, con su fórmula explícita:
+   `g/día = (Q [L/s] × 86.400 × dosis [mg/L]) ÷ (% cloro activo × 10)`. Verificada contra la
+   tabla de la guía: 0,1 L/s a 1,5 mg/L con hipoclorito al 65 % → 19,9 g/día. Las guardas
+   también son explícitas: "nunca aumentar la dosis por intuición ni para compensar agua
+   turbia". Si turbiedad > 5 UTN y el cloro sale bajo, la herramienta debe decir "revisar
+   desarenador/filtros", no "subir dosis". Es una sugerencia orientativa, marcada como tal.
+6. **Rutina diaria en 5 momentos** (inicio, mañana, durante el día, tarde, cierre), cada uno
+   con qué revisar y qué registrar. La bitácora 7C registra 3 tomas (06:00, 12:00, 18:00):
+   nivel del tanque en %, cloro aplicado, cloro residual, color/turbiedad (clara / turbia /
+   color) y estado (bueno / alerta).
+7. **Bodega como inventario real**: químicos con vencimiento, repuestos por diámetro,
+   herramientas, EPP; entradas y salidas; lista mensual 7G.1 donde cada "No" o "En proceso"
+   genera una acción con responsable y fecha. El CMMS hoy solo anota materiales al cerrar la
+   orden, no lleva existencias.
+8. **Saneamiento tiene registros propios.** Descargas productivas (quesera, chanchera, camal,
+   textilera, conexiones clandestinas) con seguimiento; destino seguro de los lodos (quién los
+   retiró y adónde); DBO/DQO como resultados de laboratorio que interpreta un técnico, nunca la
+   herramienta.
+9. **Plan de emergencia con 6 tipos semilla**: lluvias, sequía, rotura principal,
+   contaminación, rebose de aguas residuales, colapso de fosa/planta. Cada uno con señales,
+   primera acción, a quién avisar (directiva, GAD, ARCA, MSP, COE cantonal, ECU 911) y mensaje a
+   la comunidad. Un E. coli positivo debe activar automáticamente el plan de contaminación.
+10. **"Evaluar antes de comprar" + exigencia mínima a proveedores** (manual, capacitación,
+    costos, repuestos, energía, lodos, garantía). Se vuelven campos de la ficha del componente
+    y del proveedor.
+
+**Hallazgos de la Guía 4 (administración, finanzas y tarifa):**
+11. **Control dual del gasto.** Nadie autoriza y paga solo: presidencia autoriza, tesorería
+    registra, comprobante archivado. Es un flujo de aprobación, no solo un registro.
+12. **Siete tipos de movimiento**, cada uno con su documento de soporte y quién lo guarda:
+    tarifa, acometidas nuevas, reconexiones, multas, venta de materiales, aportes/convenios con
+    el GAD y gastos.
+13. **La planilla de costos** clasifica por servicio (agua / saneamiento / compartido) × tipo
+    (operación, preventivo, correctivo, administración, reserva) × frecuencia → costo mensual
+    equivalente. **Los costos de O&M que ya registra RenfyGrid (horas, materiales, análisis,
+    cloro consumido) deben alimentar esa planilla.** Es el punto de integración RenfyGrid →
+    `renfy_pool`.
+14. **Tarifa: 4 modalidades** (plana, por consumo, diferenciada para familias vulnerables, cargo
+    fijo + variable). Se calcula por servicio y se suma, se le agrega un % de reserva acordado,
+    se compara con la tarifa actual (con opción de ajuste gradual) y la aprueba la asamblea con
+    fecha de vigencia. **Los ejemplos de la guía son casos de prueba verificables:**
+    - Tarifa plana: 460 ÷ 80 = 5,75 + 10 % = 6,33 (agua); 80 ÷ 80 = 1,00 + 10 % = 1,10
+      (saneamiento); total **USD 7,43**.
+    - Bloques: cargo fijo 4,50 con 0-15 m³ incluidos, 16-25 m³ a 0,30, más de 25 m³ a 0,50.
+      Para 20 m³ → **USD 6,00**.
+    - Planilla de costos del ejemplo: agua 730 + saneamiento 35 + compartidos 135 = 900/mes.
+15. **Morosidad escalonada** (1 / 2 / 3 / >3 meses), con acción, responsable e instrumento
+    (Reglamento Interno / Estatuto). Las medidas las aprueba la asamblea y respetan el
+    **derecho humano al agua**: la herramienta no corta sola.
+16. **POA por áreas de gestión** (ecológica, operativa, administrativa-financiera,
+    socioorganizativa, institucional), con responsable, cuándo, recursos y "quién puede apoyar"
+    (MAATE, GAD, MSP, cooperación). El presupuesto se arma desde el POA, y el resultado
+    (superávit / equilibrio / déficit) lleva una decisión recomendada.
+17. **El informe de rendición de cuentas tiene 9 contenidos**, todos derivables de datos ya
+    registrados: padrón, cumplimiento del POA, ingresos, gastos, comprobantes, morosidad, fondo
+    de reserva, logros/pendientes y plan del próximo año.
+18. **Los cargos varían por territorio** (p. ej., los gobiernos comunitarios de Santa Elena).
+    Los roles van como catálogo configurable; lo obligatorio es la separación de funciones, no
+    el nombre del cargo.
+
+**Hallazgo transversal: autodiagnóstico de madurez.** Ambas guías abren con una verificación
+inicial (Sí / Más o menos / No) y cierran con autoevaluación. A eso se suman las listas 4A
+(administración, 9 ítems) y 4B (transparencia, 6 ítems) y los productos finales (7H y el
+producto final de la Guía 4). Juntos dan un **índice de madurez por junta**, medible antes y
+después. Esa vista es la que compra el programa/GAD según el modelo comercial de abajo, así que
+pasa a ser un sprint propio.
+
+**Normativa citada por las guías** (semilla del catálogo de Ecuador, por verificar vigencia):
+- NTE INEN 1108 (2014), requisitos del agua potable.
+- DIR-ARCA-RG-012-2022 y ARCA-DE-016-2022, control de calidad y anexos de muestreo.
+- DIR-ARCA-RG-011-2022, uso eficiente.
+- AM 097-A, Anexo 1 Libro VI TULSMA, descargas de efluentes.
+
+**Reuso confirmado en el código actual:** `network_asset` + `network_zone` + mapa por sector
+(`meter_geo`) para el mapa técnico; CMMS Fase 1 (`maintenance_order`, `maintenance_pm_plan`,
+cuadrillas, códigos de falla, KPIs) para O&M; estimación VEE para consumo sin medidor. En
+`renfy_pool`: cuotas, cartera, asambleas/actas, presupuesto, plan de compras, contabilidad. **Antes
+de D8-D11 hay que cruzar cada ítem contra lo que `renfy_pool` ya tiene**, para no duplicar.
+Ojo: la contabilidad está montada sobre PUC colombiano y la junta ecuatoriana lleva libro de
+caja simple en USD.
+
+### 11.2 Sprints revisados (orden de valor para un piloto)
+
+| Sprint | Dónde | Qué entrega | Productos de la guía que cubre |
 |---|---|---|---|
-| **D1** | E22 Operación sin medición inteligente | Lectura manual (app del operador y carga por planilla), macromedidor del reservorio, balance simple agua producida vs. facturada por sector; modo tarifa plana (sin micromedición, consumo estimado) | Mapa técnico (Act. 1), base del cálculo de tarifa por consumo (G4) |
-| **D2** | E23 Calidad del agua | Registro de cloro residual por punto (salida de tanque, punto medio, punto lejano/crítico) con interpretación automática bajo/adecuado/alto y alerta; turbiedad, pH, color; resultados de laboratorio (E. coli); calendario de muestreo | 7B, 7C (parte de calidad), 7G (análisis) |
-| **D3** | E24 O&M comunitario | Sobre el CMMS existente: tipos preventivo/correctivo/emergente, componentes del sistema (captación → conducción → tratamiento → reservorio → red, y saneamiento), bitácora diaria, listas de inspección con semáforo verde/amarillo/rojo, calendario anual, mingas como recurso, bodega y EPP | 7A, 7C, 7D, 7G, 7G.1, semáforo (Act. 2) |
-| **D4** | E25 Emergencias | Plantilla de plan de emergencia (lluvias, sequía, rotura, contaminación, rebose), activación, mensaje a la comunidad por WhatsApp e institución a notificar | Act. 6 |
-| **D5** | E26 Saneamiento | Fosas, cajas de revisión, redes, PTAR, extracción de lodos con destino seguro, descargas productivas (queseras, chancheras, camales) | 7E, 7F, Act. 5 |
-| **D6** | E27 Administración y tarifa (en `renfy_pool`) | Padrón de usuarios, libro de caja con comprobantes, costos reales (operación / mantenimiento preventivo / correctivo / administración / reserva, agua y saneamiento por separado), calculadora de tarifa (plana y cargo fijo + variable por bloques, con la fórmula de la guía), morosidad escalonada (1 / 2 / 3 / >3 meses), POA por área de gestión, presupuesto, informe de rendición de cuentas | 4A, 4B, productos finales de la Guía 4 |
-| **D7** | E28 Plan de Mejora | Exporta la ficha de insumos para la Guía 6 desde los hallazgos de D1-D6 (problema, evidencia, acción, qué hace la junta, apoyo requerido, costo, plazo) | 7G.2, 7H |
+| **D0** Motor de paquetes + base comunitaria | RenfyGrid | **Las piezas genéricas del motor** (ver §11.3): catálogo de tipos de componente, parámetros y reglas con fuente y vigencia, listas de verificación con acción por hallazgo, documentos con plantilla, jerarquía entidad → prestador y nivel de instrumentación por módulo. **Sobre ellas, el paquete Ecuador + Municipios Azules cargado como datos:** el sistema como recorrido encadenado, **mapa técnico** con puntos críticos, **semáforo por componente**, **revisión del tren de tratamiento**, verificación inicial de las dos guías | AP1, AP2, AP3, verificación inicial G3/G4 |
+| **D1** Operación diaria (PWA sin conexión) | RenfyGrid | App del operador: rutina en 5 momentos; **bitácora 7C** (3 tomas/día); **cloro 7B** por punto (salida de tanque, medio, lejano, crítico) con rotación semanal e interpretación bajo/adecuado/alto según el catálogo del país; turbiedad, pH, color; **calculadora de dosificación** con guardas; alertas a la directiva; lectura manual de micro y macromedidor | 7B, 7C, AP4, sección 3.3-3.5 |
+| **D2** Calidad y laboratorio | RenfyGrid | Resultados de laboratorio (E. coli, coliformes, químicos por catálogo); E. coli positivo → alerta crítica y activación del plan de contaminación (D5); plan de muestreo por categoría poblacional (requiere el documento de ARCA); calendario de calidad | 7G (calidad), sección 3.4 |
+| **D3** O&M comunitario | RenfyGrid (CMMS) | Tipo **emergente**; **planes por evento** (lluvia, movimiento de tierra, quejas) además de por tiempo; los 5 pasos del mantenimiento como checklist de cierre; **7A** y **7D**; mingas como recurso (participantes, horas donadas); **calendario anual 7G** con % de cumplimiento; ficha de proveedor/equipo ("evaluar antes de comprar"); timer systemd de `generate_due_pm_orders` (pendiente ya conocido) | 7A, 7D, 7G, sección 3.6 |
+| **D4** Bodega y EPP | RenfyGrid | Inventario (químicos con vencimiento, repuestos, herramientas, EPP); entradas y salidas; cruce entre el cloro aplicado (bitácora) y las salidas de bodega; **lista 7G.1** mensual donde cada hallazgo genera una acción | 7G.1, sección 3.9 |
+| **D5** Emergencias | RenfyGrid | Plan con los 6 tipos semilla, editable; contactos institucionales; activación manual o automática (por E. coli, turbiedad extrema o rebose); mensaje a la comunidad por WhatsApp vía Renfy Vox; revisión anual antes de lluvias | AP6, sección 3.11 |
+| **D6** Saneamiento | RenfyGrid | Componentes de saneamiento; **7E**; **7F** con destino seguro de lodos; registro de descargas productivas con seguimiento; DBO/DQO como resultado de laboratorio; frecuencias propias (lodos al menos anual) | 7E, 7F, AP5, secciones 3.7-3.8 |
+| **D7** Plan mínimo y Plan de Mejora | RenfyGrid | **Plan mínimo de O&M** (8 filas, precargado con los hallazgos); **ficha 7G.2** generada desde la evidencia: semáforo rojo, cloro bajo repetido en el punto lejano, "No" de 7A/7E/7G.1, etc.; **tablero 7H** de productos completos/pendientes | Sección 4, 7G.2, 7H |
+| **D8** Padrón y caja | `renfy_pool` | Padrón con los campos de la guía, ligado a las conexiones de RenfyGrid; libro de caja con los 7 tipos de movimiento y su soporte; **control dual** (autoriza / registra / comprobante); recibos numerados; conciliación caja vs. banco | AP padrón, AP caja |
+| **D9** Costos y tarifa | `renfy_pool` + integración | **Planilla de costos** (servicio × tipo × frecuencia → mensual), alimentada con los costos de O&M de RenfyGrid; **calculadora de tarifa** con las 4 modalidades (los ejemplos de la guía como pruebas); comparación con la tarifa actual y ajuste gradual; propuesta para la asamblea y vigencia | Planilla de costos, cálculo de tarifa |
+| **D10** Recaudación y morosidad | `renfy_pool` | Día fijo de cobro; escalera 1/2/3/>3 meses configurable desde el reglamento; acuerdos de pago; incentivos aprobados por la asamblea; recordatorios por WhatsApp; sin corte automático | Sección de recaudación |
+| **D11** POA, presupuesto y rendición | `renfy_pool` | POA por áreas de gestión; presupuesto desde el POA con superávit/déficit y decisión recomendada; **informe de rendición de cuentas** generado (9 contenidos); listas **4A** y **4B** | POA, presupuesto, rendición, 4A, 4B |
+| **D12** Tablero del programa/GAD | RenfyGrid (vista multi-tenant) | Para Agua Para Todos o un GAD que acompaña N juntas: índice de madurez inicial vs. actual, productos 7H y de la Guía 4 completados, alertas de calidad abiertas, cumplimiento del calendario, morosidad agregada | Verificaciones inicial/final de G3 y G4 |
+
+**Orden sugerido:** D0 → D1 → D2 → D3 → D12 mínimo (para mostrar al programa) → D5 → D4 → D6
+→ D7. D8-D11 van en paralelo en `renfy_pool`, después de cruzarlos con lo que ya existe allí.
+D9 depende de D3 para que los costos de O&M reales lleguen a la planilla.
+
+### 11.3 Diseño agnóstico (2026-10-05)
+
+Diseño funcional completo publicado para el asesor de negocio en
+`https://renfygrid.rensoftlabs.com/plan/mapa-funcional.html` (fuente: `site/mapa-funcional.html`).
+Parte de los briefs de rensoftlabs.com (`renfygrid-brief.html`,
+`renfygrid-programas-brief.html`, `renfygrid-juntas-brief.html`) y de las Guías 3 y 4. El
+cliente ya vio los briefs y la idea le suena; este diseño la vuelve funcionalidad. Requisito
+del usuario: **debe servir para ARCA y también para otra entidad en otro país.**
+
+**Tres fuentes de configuración sobre un motor único:**
+1. **Motor común** (se programa una vez): componentes y su recorrido, puntos de control,
+   parámetros con reglas, listas de verificación, registros de campo sin conexión, órdenes y
+   planes por tiempo o evento, movimientos financieros con soporte, indicadores, alertas con
+   canal y documentos generados desde plantilla.
+2. **Paquete normativo, por país o regulador:** umbrales con fuente y vigencia, parámetros de
+   laboratorio, plan de muestreo por población e instituciones a notificar. El paquete
+   Ecuador/ARCA es el primero.
+3. **Paquete de programa, por entidad:** nombres de los formatos, listas de verificación,
+   autodiagnóstico de madurez, productos esperados y plantillas de informe y plan de mejora.
+   El paquete Municipios Azules es el primero.
+
+**Consecuencias para la construcción:**
+- **Ningún formato de la guía se programa como pantalla propia.** 7A, 7E, 7G.1, 4A y 4B son
+  la misma pieza (lista de verificación) con distinto contenido. 7G.2 y la rendición de cuentas
+  son documentos con plantilla. Si una funcionalidad solo sirve con el nombre de un formato
+  ecuatoriano, está mal ubicada.
+- **Jerarquía:** entidad (regulador, programa, GAD o cooperación) → prestador → sistema (agua
+  y/o saneamiento) → componente. Un prestador puede estar bajo varias entidades a la vez (p.
+  ej., su GAD y el regulador). Hoy el aislamiento por RLS es por tenant; la vista de la entidad
+  sobre varios tenants es nueva y debe diseñarse sin abrir el aislamiento entre prestadores.
+- **Un producto con niveles, no dos productos.** Cada módulo tiene nivel básico (sin
+  medidores), intermedio (macromedidor y lectura manual) y avanzado (telemedida, SIG,
+  EPANET), configurable por prestador. Lo construido en los Tracks A–C es el nivel avanzado.
+- **Una sola experiencia para la junta:** cobro y finanzas siguen en el motor de `renfy_pool`,
+  integrados por debajo, sin que la junta vea dos aplicaciones.
+- **El tablero de la entidad (D12) va temprano** en versión mínima, porque es lo que compra el
+  cliente (licencia por entidad; la junta no paga).
+
+**Decisiones abiertas:**
+- **Quién es el cliente:** ARCA como regulador, Corporación Agua Para Todos como programa o un
+  GAD.
+- **Guías 1, 2, 5 y 6.**
+- **Plan de muestreo vigente de ARCA.**
+- **Contabilidad:** si cada paquete de país trae su plan de cuentas. El motor de `renfy_pool`
+  usa el PUC colombiano; la junta lleva libro de caja en USD.
 
 **Modelo comercial (hipótesis a validar en el piloto).** La junta no compra software con un
 presupuesto de ~USD 7.000/año. Paga el programa o el territorio: Corporación Agua Para Todos /
@@ -345,6 +512,15 @@ cloro y bitácora desde el celular sin conexión, que la directiva vea el semáf
 cumplidos, y que la tesorería llegue a la asamblea con la tarifa calculada y la rendición de
 cuentas generada por la herramienta, no en papel.
 
-**Pendiente de verificar antes de construir:** cuántas JAAPS hay en Ecuador y en qué programas
-están (no se cita cifra sin fuente); el plan de muestreo vigente de ARCA por categoría
-poblacional; contacto real en Corporación Agua Para Todos. Estado: **aprobado, sin iniciar**.
+**Pendiente de verificar antes de construir:**
+- Cuántas JAAPS hay en Ecuador y en qué programas están (no se cita cifra sin fuente).
+- El plan de muestreo vigente de ARCA por categoría poblacional (anexos de ARCA-DE-016-2022).
+- Contacto real en Corporación Agua Para Todos.
+- **Guías 1, 2, 5 y 6 de la serie (no están en `Clientes\ARCA`).** Las guías 3 y 4 dependen de
+  ellas: el mapa y los usuarios salen de la G1; los roles, el Estatuto y el Reglamento Interno
+  (que gobiernan la morosidad) de la G2; la matriz del Plan de Mejora que alimenta D7 es de la
+  G6.
+- Págs. 58-67 (G3) y 39-48 (G4) no tienen texto extraíble; probablemente son imágenes o
+  contraportada. Revisarlas visualmente.
+
+Estado: **aprobado, plan revisado 2026-10-05, sin iniciar**.

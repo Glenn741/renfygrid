@@ -1,0 +1,439 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>Mapa funcional RenfyGrid</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: documento de una columna (máx. 1080px) con bandas por sección; diagramas y tablas en contenedores con scroll propio. Paleta de los briefs de rensoftlabs.com. */
+:root{
+  --bg:#F8FAFC; --surface:#FFFFFF; --ink:#0F172A; --muted:#5B6478; --line:#E2E8F0; --soft:#EEF2FF;
+  --accent:#4F46E5; --accent-ink:#3730A3; --accent2:#0891B2;
+  --ok:#047857; --ok-bg:#ECFDF5; --warn:#B45309; --warn-bg:#FFFBEB; --bad:#B91C1C; --bad-bg:#FEF2F2;
+  --font:"Inter",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+  --r:14px; --r-sm:8px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0A0F1E; --surface:#111831; --ink:#E5E9F2; --muted:#98A2B8; --line:#243049; --soft:#1A2147;
+  --accent:#8B93FA; --accent-ink:#C7CBFF; --accent2:#22D3EE;
+  --ok:#34D399; --ok-bg:#0B2A22; --warn:#FBBF24; --warn-bg:#2E230A; --bad:#F87171; --bad-bg:#331414;
+  color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0A0F1E; --surface:#111831; --ink:#E5E9F2; --muted:#98A2B8; --line:#243049; --soft:#1A2147;
+  --accent:#8B93FA; --accent-ink:#C7CBFF; --accent2:#22D3EE;
+  --ok:#34D399; --ok-bg:#0B2A22; --warn:#FBBF24; --warn-bg:#2E230A; --bad:#F87171; --bad-bg:#331414;
+  color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--font);font-size:15px;line-height:1.6;padding-inline:16px;padding-block:0 64px}
+.wrap{max-width:1080px;margin:0 auto}
+h1,h2,h3{text-wrap:balance;line-height:1.2;margin:0}
+h1{font-size:clamp(28px,4.4vw,42px);font-weight:800;letter-spacing:-.02em}
+h2{font-size:clamp(21px,2.8vw,27px);font-weight:750;letter-spacing:-.01em}
+h3{font-size:16px;font-weight:700}
+p{margin:0}
+.eyebrow{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+.lead{font-size:17px;color:var(--muted);max-width:68ch}
+.muted{color:var(--muted)}
+.mono{font-family:var(--mono);font-size:.9em}
+section{padding-block:44px 8px;display:grid;gap:18px}
+section>header{display:grid;gap:8px;max-width:72ch}
+.hero{padding-block:48px 12px;display:grid;gap:16px;border-bottom:1px solid var(--line);padding-bottom:32px}
+.thesis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:8px}
+.thesis div{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px;display:grid;gap:4px}
+.thesis b{font-size:15px}
+.thesis span{color:var(--muted);font-size:14px}
+.nav{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
+.nav a{font-size:13px;color:var(--accent-ink);background:var(--soft);padding:5px 11px;border-radius:999px;text-decoration:none}
+.nav a:hover,.nav a:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+
+/* Capas */
+.layers{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:16px}
+.stack{display:grid;gap:10px}
+.tier{border:1px solid var(--line);border-radius:var(--r);background:var(--surface);padding:14px 16px;display:grid;gap:4px;position:relative}
+.tier .k{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.tier.t1{margin-left:0}.tier.t2{margin-left:22px}.tier.t3{margin-left:44px}.tier.t4{margin-left:66px}
+.tier.t2::before,.tier.t3::before,.tier.t4::before{content:"";position:absolute;left:-14px;top:-11px;height:30px;width:10px;border-left:2px solid var(--line);border-bottom:2px solid var(--line);border-bottom-left-radius:6px}
+.packs{display:grid;gap:10px;align-content:start}
+.pack{border-radius:var(--r);padding:14px 16px;display:grid;gap:6px;border:1px dashed var(--accent);background:var(--soft)}
+.pack.engine{border-style:solid;border-color:var(--ink);background:var(--surface)}
+.pack ul{margin:0;padding-left:18px;font-size:14px}
+.pack .k{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--accent-ink)}
+.pack.engine .k{color:var(--ink)}
+
+/* Tablas */
+.tbl{overflow-x:auto;border:1px solid var(--line);border-radius:var(--r);background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);font-weight:700;background:var(--bg)}
+tr:last-child td{border-bottom:0}
+td.num{font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+.tbl.wide table{min-width:760px}
+
+/* Niveles */
+.lvl{display:inline-block;min-width:20px;text-align:center;font-weight:700;font-size:12px;border-radius:6px;padding:1px 6px}
+.l-b{background:var(--ok-bg);color:var(--ok)}
+.l-i{background:var(--warn-bg);color:var(--warn)}
+.l-a{background:var(--soft);color:var(--accent-ink)}
+
+/* Módulos */
+.mods{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
+.mod{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px;display:grid;gap:8px;align-content:start;min-width:0}
+.mod .top{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}
+.mod p{font-size:14px;color:var(--muted)}
+.mod .who{display:flex;flex-wrap:wrap;gap:6px}
+.mod .who span{font-size:11.5px;border:1px solid var(--line);border-radius:999px;padding:1px 8px;color:var(--muted)}
+.mod .base{font-size:12.5px;border-top:1px solid var(--line);padding-top:8px;color:var(--muted)}
+.mod .base b{color:var(--ink);font-weight:600}
+.chip{font-size:11.5px;font-weight:700;border-radius:999px;padding:2px 9px;white-space:nowrap}
+.c-ok{background:var(--ok-bg);color:var(--ok)}
+.c-part{background:var(--warn-bg);color:var(--warn)}
+.c-new{background:var(--soft);color:var(--accent-ink)}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:13px;color:var(--muted);align-items:center}
+
+/* Vistas por rol */
+.views{display:grid;grid-template-columns:minmax(0,300px) minmax(0,1fr);gap:16px;align-items:start}
+.phone{background:var(--surface);border:2px solid var(--ink);border-radius:28px;padding:14px 14px 18px;display:grid;gap:10px;max-width:300px;width:100%;justify-self:center}
+.phone .bar{display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted)}
+.phone .offline{font-size:12px;background:var(--warn-bg);color:var(--warn);border-radius:8px;padding:6px 10px;font-weight:600}
+.phone h3{font-size:15px}
+.reading{display:grid;grid-template-columns:1fr auto;gap:2px 8px;border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-size:13px}
+.reading .v{font-family:var(--mono);font-weight:500;text-align:right}
+.reading .s{grid-column:1/-1;display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--muted)}
+.reading.bad{border-color:var(--bad);background:var(--bad-bg)}
+.phone .act{font-size:12.5px;background:var(--bad-bg);color:var(--bad);border-radius:8px;padding:8px 10px}
+.panels{display:grid;gap:12px;min-width:0}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px;display:grid;gap:10px;min-width:0}
+.panel .k{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.calc{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.calc div{border:1px solid var(--line);border-radius:10px;padding:10px 12px;display:grid;gap:2px}
+.calc .big{font-size:22px;font-weight:800;font-variant-numeric:tabular-nums}
+.calc small{color:var(--muted);font-size:12px}
+.calc .hl{border-color:var(--accent);background:var(--soft)}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;vertical-align:middle}
+.d-ok{background:var(--ok)}.d-warn{background:var(--warn)}.d-bad{background:var(--bad)}
+.example{font-size:12px;color:var(--muted);font-style:italic}
+
+/* Flujo */
+.flow{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;counter-reset:s}
+.step{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px;display:grid;gap:6px;align-content:start;position:relative;min-width:0}
+.step::before{counter-increment:s;content:counter(s);font-family:var(--mono);font-size:12px;font-weight:500;color:var(--accent);}
+.step b{font-size:14px}
+.step span{font-size:13px;color:var(--muted)}
+.step .tag{font-size:11px;color:var(--accent-ink);background:var(--soft);border-radius:6px;padding:1px 6px;justify-self:start}
+
+/* Abiertos */
+.open{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.open div{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--warn);border-radius:var(--r-sm);padding:12px 14px;display:grid;gap:4px;font-size:14px}
+.open b{font-size:14.5px}
+footer{margin-top:40px;padding-top:16px;border-top:1px solid var(--line);font-size:13px;color:var(--muted)}
+
+@media (max-width:860px){
+  .layers,.views{grid-template-columns:minmax(0,1fr)}
+  .flow{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .thesis{grid-template-columns:minmax(0,1fr)}
+}
+@media (max-width:520px){
+  .open,.calc{grid-template-columns:minmax(0,1fr)}
+  .flow{grid-template-columns:minmax(0,1fr)}
+  .tier.t2{margin-left:12px}.tier.t3{margin-left:24px}.tier.t4{margin-left:36px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+<style>body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+</head>
+<body>
+
+
+<div class="wrap">
+
+<header class="hero">
+  <div class="eyebrow">RenfyGrid · Diseño funcional · 5 de octubre de 2026</div>
+  <h1>Una sola plataforma para el prestador grande y para la junta pequeña</h1>
+  <p class="lead">Así quedaría RenfyGrid al llevar a funcionalidad lo que prometen los briefs de empresas, programas y juntas. El motor es el mismo para todos. Lo que cambia de un cliente a otro se configura: la norma del país, la metodología del programa que acompaña y el nivel de instrumentación de cada prestador.</p>
+  <div class="thesis">
+    <div><b>El motor no sabe de Ecuador</b><span>Sabe de componentes, puntos de control, reglas, órdenes, movimientos e indicadores.</span></div>
+    <div><b>ARCA y Municipios Azules son paquetes</b><span>Umbrales de la NTE INEN 1108, formatos 7A–7H y 4A–4B, cargados como configuración.</span></div>
+    <div><b>Otra entidad trae su paquete</b><span>Sus normas, sus formatos con sus nombres y su lista de madurez. El código no cambia.</span></div>
+  </div>
+  <nav class="nav" aria-label="Secciones">
+    <a href="#capas">Capas</a><a href="#configura">Qué se configura</a><a href="#niveles">Niveles</a><a href="#modulos">Módulos</a><a href="#vistas">Vistas por rol</a><a href="#flujo">Un dato de punta a punta</a><a href="#guias">Guías → funciones</a><a href="#plan">Qué cambia en el plan</a><a href="#abierto">Decisiones abiertas</a>
+  </nav>
+</header>
+
+<section id="capas">
+  <header>
+    <div class="eyebrow">Arquitectura funcional</div>
+    <h2>Quién usa la plataforma y qué la parametriza</h2>
+    <p class="muted">A la izquierda, la jerarquía de lo que se gestiona. A la derecha, las tres fuentes de configuración. El motor se escribe una vez; los paquetes se cargan por cliente.</p>
+  </header>
+  <div class="layers">
+    <div class="stack" aria-label="Jerarquía">
+      <div class="tier t1"><span class="k">Entidad que supervisa o acompaña</span><b>Regulador, programa, GAD o cooperación</b><span class="muted">ARCA, Corporación Agua Para Todos, un municipio. Ve a sus prestadores en un tablero. Una junta puede estar bajo dos entidades a la vez (su GAD y el regulador).</span></div>
+      <div class="tier t2"><span class="k">Prestador</span><b>Junta de agua o empresa de acueducto</b><span class="muted">Cada uno es un espacio aislado con sus datos, usuarios, roles y nivel de instrumentación.</span></div>
+      <div class="tier t3"><span class="k">Sistema</span><b>Agua potable y/o saneamiento</b><span class="muted">Un prestador puede operar varios sistemas, cada uno con sus sectores.</span></div>
+      <div class="tier t4"><span class="k">Componente</span><b>Captación, desarenador, reservorio, red, fosa, PTAR…</b><span class="muted">Encadenados en el recorrido del agua. El tipo sale de un catálogo, no del código.</span></div>
+    </div>
+    <div class="packs">
+      <div class="pack engine"><span class="k">Motor común (se programa una vez)</span>
+        <ul><li>Componentes y su recorrido</li><li>Puntos de control y parámetros con reglas</li><li>Listas de verificación con acción por hallazgo</li><li>Registros de campo sin conexión</li><li>Órdenes y planes por tiempo o por evento</li><li>Movimientos financieros con soporte</li><li>Indicadores, alertas y documentos generados</li></ul></div>
+      <div class="pack"><span class="k">Paquete normativo · por país o regulador</span>
+        <span>Umbrales con su fuente y vigencia, parámetros de laboratorio, plan de muestreo por población, instituciones a notificar.</span></div>
+      <div class="pack"><span class="k">Paquete de programa · por entidad</span>
+        <span>Nombres de los formatos, listas de verificación, autodiagnóstico de madurez, productos esperados, plantillas de informe y de plan de mejora.</span></div>
+    </div>
+  </div>
+</section>
+
+<section id="configura">
+  <header>
+    <div class="eyebrow">Agnóstico en la práctica</div>
+    <h2>Qué es fijo y qué se configura</h2>
+    <p class="muted">La columna del medio es la que ya existe gracias a las guías. La de la derecha muestra lo que tendría que traer otro cliente.</p>
+  </header>
+  <div class="tbl wide"><table>
+    <thead><tr><th>Elemento</th><th>Lo pone el motor</th><th>Paquete Ecuador · ARCA + Municipios Azules</th><th>Otra entidad, otro país</th></tr></thead>
+    <tbody>
+      <tr><td><b>Umbral de cloro residual</b></td><td>Evaluar cada lectura contra una regla con rango, fuente y vigencia</td><td>0,3 a 1,5 mg/L en red, referencia operativa (Guía 3, NTE INEN 1108)</td><td>El rango que fije su norma, con su cita</td></tr>
+      <tr><td><b>Otros parámetros</b></td><td>Parámetro, unidad, quién lo mide (campo o laboratorio), regla</td><td>Turbiedad ≤ 5 UTN, pH 6,5–8,5, E. coli ausente</td><td>Su lista de parámetros y límites</td></tr>
+      <tr><td><b>Plan de muestreo</b></td><td>Frecuencia por categoría de población y calendario de cumplimiento</td><td>Lineamientos de ARCA (DIR-ARCA-RG-012-2022), documento pendiente</td><td>Su regulador</td></tr>
+      <tr><td><b>Tipos de componente</b></td><td>Catálogo con agua y saneamiento y orden en el recorrido</td><td>Captación, desarenador, conducción, etapas de tratamiento, reservorio, red; fosa, caja, trampa de grasa, PTAR, descarga</td><td>Mismos tipos o los suyos</td></tr>
+      <tr><td><b>Nombre de cada formato</b></td><td>Lista de verificación, registro, orden, documento</td><td>7A, 7B, 7C, 7D, 7E, 7F, 7G, 7G.1, 7G.2, 7H, 4A, 4B</td><td>Sus códigos y nombres</td></tr>
+      <tr><td><b>Cargos de la directiva</b></td><td>Roles configurables con separación de funciones obligatoria</td><td>Presidencia, tesorería, secretaría, vocal de fiscalización, operador/a</td><td>Su estructura (p. ej., gobiernos comunitarios)</td></tr>
+      <tr><td><b>Tarifa</b></td><td>Plana, por consumo, diferenciada, cargo fijo + variable por bloques; reserva en %</td><td>Fórmula de la Guía 4: costos ÷ conexiones activas + reserva</td><td>Su metodología, si el regulador fija una</td></tr>
+      <tr><td><b>Morosidad</b></td><td>Escalera de tramos con acción, responsable e instrumento; nunca corta sola</td><td>1 / 2 / 3 / más de 3 meses, según Reglamento Interno</td><td>Sus tramos y medidas</td></tr>
+      <tr><td><b>Emergencias</b></td><td>Tipo, señales, primera acción, mensaje, contactos, disparadores automáticos</td><td>6 tipos de la Guía 3; GAD, ARCA, MSP, COE cantonal, ECU 911</td><td>Sus tipos y sus instituciones</td></tr>
+      <tr><td><b>Moneda e idioma</b></td><td>Por prestador</td><td>USD, español</td><td>La suya</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="niveles">
+  <header>
+    <div class="eyebrow">Una plataforma, tres niveles</div>
+    <h2>El mismo módulo sirve con cuaderno o con medidores inteligentes</h2>
+    <p class="muted">El nivel se define por prestador y por módulo. Una junta empieza en básico y sube cuando instala un macromedidor, sin migrar a otro producto. La empresa del brief ejecutivo opera en avanzado.</p>
+  </header>
+  <div class="legend"><span><span class="lvl l-b">B</span> Básico · junta sin medidores</span><span><span class="lvl l-i">I</span> Intermedio · macromedidor y lectura manual</span><span><span class="lvl l-a">A</span> Avanzado · telemedida, SIG y modelo hidráulico</span></div>
+  <div class="tbl wide"><table>
+    <thead><tr><th>Módulo</th><th><span class="lvl l-b">B</span> Básico</th><th><span class="lvl l-i">I</span> Intermedio</th><th><span class="lvl l-a">A</span> Avanzado</th></tr></thead>
+    <tbody>
+      <tr><td><b>Medición</b></td><td>Consumo estimado, tarifa plana</td><td>Macromedidor del reservorio; lectura manual en app o planilla</td><td>Lectura DLMS multimarca, concentradores, reintentos</td></tr>
+      <tr><td><b>Balance de agua</b></td><td>No aplica, o volumen producido estimado</td><td>Producida frente a facturada por sector</td><td>Balance IWA top-down y bottom-up, caudal mínimo nocturno</td></tr>
+      <tr><td><b>Calidad</b></td><td>Kit de cloro, observación de color y turbiedad</td><td>Turbidímetro, pH, laboratorio programado</td><td>Sensores en línea (futuro)</td></tr>
+      <tr><td><b>Mantenimiento</b></td><td>Calendario anual, mingas, semáforo</td><td>Órdenes con prioridad y planes por evento</td><td>SLA, códigos de falla, MTTR, órdenes desde anomalías</td></tr>
+      <tr><td><b>Red</b></td><td>Mapa técnico dibujado con puntos críticos</td><td>Componentes con ubicación por sector</td><td>Gemelo digital desde SIG, modelo EPANET calibrado</td></tr>
+      <tr><td><b>Cobro</b></td><td>Padrón, recibo numerado, cuota fija</td><td>Cobro por consumo con lectura manual</td><td>Consumo validado entregado al sistema comercial (CIS); corte con aprobación</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="modulos">
+  <header>
+    <div class="eyebrow">Módulos</div>
+    <h2>Doce módulos, con lo que ya existe y lo que falta</h2>
+    <p class="muted">Cada módulo indica para quién es y sobre qué pieza construida se apoya. Lo construido es real y está en producción en renfygrid.rensoftlabs.com o en el motor de Renfy Home.</p>
+  </header>
+  <div class="legend"><span class="chip c-ok">En producción</span><span class="chip c-part">Parcial</span><span class="chip c-new">Por construir</span></div>
+  <div class="mods">
+    <article class="mod"><div class="top"><h3>Sistema y componentes</h3><span class="chip c-part">Parcial</span></div>
+      <p>Recorrido del agua y del saneamiento, mapa técnico con puntos críticos, semáforo por componente y revisión del tren de tratamiento.</p>
+      <div class="who"><span>Directiva</span><span>Operador</span><span>Entidad</span></div>
+      <div class="base"><b>Se apoya en:</b> activos de red, zonas y mapa por sector (en producción). <b>Falta:</b> catálogo de componentes comunitarios, semáforo, tren de tratamiento.</div></article>
+
+    <article class="mod"><div class="top"><h3>Operación diaria</h3><span class="chip c-new">Por construir</span></div>
+      <p>App del operador sin señal: rutina en cinco momentos, bitácora con hora y foto, novedades de la red. Sincroniza al volver la conexión.</p>
+      <div class="who"><span>Operador</span><span>Directiva</span></div>
+      <div class="base"><b>Patrón probado:</b> PWA residente de Renfy Home.</div></article>
+
+    <article class="mod"><div class="top"><h3>Calidad del agua</h3><span class="chip c-new">Por construir</span></div>
+      <p>Puntos de muestreo, mediciones de campo evaluadas con la regla del paquete, resultados de laboratorio, plan de muestreo y calculadora de dosificación con advertencias.</p>
+      <div class="who"><span>Operador</span><span>Directiva</span><span>Entidad</span></div>
+      <div class="base"><b>Regla clave:</b> con agua turbia, la herramienta manda revisar filtros, no subir el cloro.</div></article>
+
+    <article class="mod"><div class="top"><h3>Medición y balance</h3><span class="chip c-part">Parcial</span></div>
+      <p>Del consumo estimado a la telemedida. Balance de agua producida frente a facturada por sector.</p>
+      <div class="who"><span>Operador</span><span>Directiva</span><span>Empresa</span></div>
+      <div class="base"><b>En producción:</b> lectura DLMS, validación y estimación, balance IWA. <b>Falta:</b> lectura manual en app y carga por planilla.</div></article>
+
+    <article class="mod"><div class="top"><h3>Mantenimiento</h3><span class="chip c-part">Parcial</span></div>
+      <p>Preventivo, correctivo y emergente por componente. Planes por tiempo y por evento (lluvia fuerte, deslizamiento, quejas). Calendario anual con cumplimiento y mingas.</p>
+      <div class="who"><span>Operador</span><span>Directiva</span><span>Entidad</span></div>
+      <div class="base"><b>En producción:</b> CMMS con prioridad, SLA, códigos de falla, ciclo de vida y KPIs. <b>Falta:</b> tipo emergente, disparo por evento, mingas, vista de calendario.</div></article>
+
+    <article class="mod"><div class="top"><h3>Bodega e insumos</h3><span class="chip c-new">Por construir</span></div>
+      <p>Existencias de químicos con vencimiento, repuestos, herramientas y EPP. Cruce entre el cloro aplicado en la bitácora y lo que salió de bodega.</p>
+      <div class="who"><span>Operador</span><span>Tesorería</span></div>
+      <div class="base"><b>Se conecta con:</b> órdenes de mantenimiento (materiales) y costos.</div></article>
+
+    <article class="mod"><div class="top"><h3>Saneamiento</h3><span class="chip c-new">Por construir</span></div>
+      <p>Fosas, cajas, trampas de grasa, PTAR y descargas. Limpieza y extracción de lodos con destino seguro obligatorio. Seguimiento de descargas productivas.</p>
+      <div class="who"><span>Operador</span><span>Directiva</span></div>
+      <div class="base"><b>Reusa:</b> componentes, mantenimiento y laboratorio. No es un módulo aparte en el motor.</div></article>
+
+    <article class="mod"><div class="top"><h3>Emergencias y avisos</h3><span class="chip c-new">Por construir</span></div>
+      <p>Plan por tipo de emergencia con primera acción y contactos. Se activa a mano o sola (E. coli positivo, turbiedad extrema, rebose). Aviso a la comunidad por WhatsApp.</p>
+      <div class="who"><span>Directiva</span><span>Comunidad</span><span>Entidad</span></div>
+      <div class="base"><b>Canal:</b> Renfy Vox, no un canal propio.</div></article>
+
+    <article class="mod"><div class="top"><h3>Usuarios y cobro</h3><span class="chip c-part">Parcial</span></div>
+      <p>Padrón ligado a las conexiones, recibos numerados, cartera por antigüedad, morosidad escalonada, acuerdos de pago y recordatorios.</p>
+      <div class="who"><span>Tesorería</span><span>Secretaría</span></div>
+      <div class="base"><b>En producción en Renfy Home:</b> cuotas, cartera, recaudo. <b>Falta:</b> vínculo con la conexión y la lectura, y la escalera de mora configurable.</div></article>
+
+    <article class="mod"><div class="top"><h3>Finanzas y tarifa</h3><span class="chip c-part">Parcial</span></div>
+      <p>Libro de caja con soporte y control dual, planilla de costos por servicio, calculadora de tarifa, POA, presupuesto e informe de rendición de cuentas.</p>
+      <div class="who"><span>Tesorería</span><span>Presidencia</span><span>Asamblea</span></div>
+      <div class="base"><b>En producción en Renfy Home:</b> presupuesto, asambleas y actas. <b>Falta:</b> costos, tarifa, POA por áreas, informe generado.</div></article>
+
+    <article class="mod"><div class="top"><h3>Planificación y mejora</h3><span class="chip c-new">Por construir</span></div>
+      <p>Autodiagnóstico de madurez al inicio y al cierre, plan mínimo de operación y mantenimiento, ficha de insumos para el plan de mejora generada desde la evidencia.</p>
+      <div class="who"><span>Directiva</span><span>Entidad</span></div>
+      <div class="base"><b>Depende de:</b> las Guías 1, 2, 5 y 6, que todavía no tenemos.</div></article>
+
+    <article class="mod"><div class="top"><h3>Tablero de la entidad</h3><span class="chip c-new">Por construir</span></div>
+      <p>Todos los prestadores de la entidad en una vista: calidad, mantenimiento, agua no facturada, tarifa frente a costos, morosidad y madurez. Prioriza visitas técnicas por alertas.</p>
+      <div class="who"><span>Regulador</span><span>Programa</span><span>GAD</span></div>
+      <div class="base"><b>Es lo que compra el cliente:</b> la licencia es por entidad; la junta no paga.</div></article>
+  </div>
+  <p class="muted" style="font-size:14px">Además siguen disponibles, para el nivel avanzado: gemelo digital y modelo EPANET, corte y reconexión con aprobación y firma, e integración con el sistema comercial. <span class="chip c-ok">En producción</span></p>
+</section>
+
+<section id="vistas">
+  <header>
+    <div class="eyebrow">Cómo se vería</div>
+    <h2>Cuatro vistas, un mismo dato</h2>
+    <p class="example">Ilustración con el caso ficticio de la Guía 3 (mediciones del 15/07/2026) y los ejemplos de tarifa de la Guía 4. Las juntas del tablero son ficticias.</p>
+  </header>
+  <div class="views">
+    <div class="phone" aria-label="App del operador">
+      <div class="bar"><span>06:30</span><span>Junta de ejemplo</span></div>
+      <div class="offline">Sin señal · 3 registros por enviar</div>
+      <h3>Ronda de la mañana</h3>
+      <div class="reading"><span>Captación revisada</span><span class="v">✓</span><span class="s"><span>Rejilla limpia, foto adjunta</span></span></div>
+      <div class="reading"><span>Nivel del reservorio</span><span class="v">80 %</span></div>
+      <div class="reading"><span>Cloro · salida del tanque</span><span class="v">0,8 mg/L</span><span class="s"><span>Rango 0,3–1,5</span><span class="chip c-ok">Adecuado</span></span></div>
+      <div class="reading"><span>Cloro · punto medio</span><span class="v">0,5 mg/L</span><span class="s"><span>Rango 0,3–1,5</span><span class="chip c-ok">Adecuado</span></span></div>
+      <div class="reading bad"><span>Cloro · casa más lejana</span><span class="v">0,2 mg/L</span><span class="s"><span>Rango 0,3–1,5</span><span class="chip" style="background:var(--bad);color:var(--surface)">Bajo</span></span></div>
+      <div class="act"><b>Qué hacer:</b> repetir la muestra, revisar fugas y dosificador. Se avisará a la directiva al sincronizar.</div>
+    </div>
+    <div class="panels">
+      <div class="panel">
+        <span class="k">Directiva · semáforo del sistema</span>
+        <div class="tbl"><table>
+          <thead><tr><th>Componente</th><th>Estado</th><th>Acción acordada</th></tr></thead>
+          <tbody>
+            <tr><td>Captación</td><td><span class="dot d-warn"></span>Amarillo</td><td>Limpiar rejilla y reparar cerco en la minga del sábado</td></tr>
+            <tr><td>Conducción</td><td><span class="dot d-bad"></span>Rojo</td><td>Cerrar válvula del tramo; reparación con apoyo del GAD</td></tr>
+            <tr><td>Reservorio</td><td><span class="dot d-ok"></span>Verde</td><td>Mantener revisión semanal</td></tr>
+            <tr><td>Saneamiento</td><td><span class="dot d-bad"></span>Rojo</td><td>Señalizar rebose de la caja junto a la escuela</td></tr>
+          </tbody>
+        </table></div>
+      </div>
+      <div class="panel">
+        <span class="k">Tesorería · propuesta de tarifa para la asamblea</span>
+        <div class="calc">
+          <div><small>Agua · 460 ÷ 80 conexiones + 10 %</small><span class="big">6,33</span><small>USD/mes</small></div>
+          <div><small>Saneamiento · 80 ÷ 80 + 10 %</small><span class="big">1,10</span><small>USD/mes</small></div>
+          <div class="hl"><small>Tarifa propuesta</small><span class="big">7,43</span><small>USD/mes · hoy se cobra 3,00 por agua</small></div>
+        </div>
+      </div>
+      <div class="panel">
+        <span class="k">Entidad · tablero de prestadores</span>
+        <div class="tbl wide"><table>
+          <thead><tr><th>Junta</th><th>Cloro al día</th><th>Preventivo cumplido</th><th>Tarifa cubre costos</th><th>Mora</th><th>Madurez</th><th>Alerta</th></tr></thead>
+          <tbody>
+            <tr><td>Junta A</td><td class="num">27/30 días</td><td class="num">82 %</td><td>Sí</td><td class="num">6 %</td><td class="num">68 → 81</td><td>—</td></tr>
+            <tr><td>Junta B</td><td class="num">12/30 días</td><td class="num">40 %</td><td>No</td><td class="num">22 %</td><td class="num">35 → 47</td><td><span class="dot d-bad"></span>Cloro bajo en extremo, 3 días</td></tr>
+            <tr><td>Junta C</td><td class="num">30/30 días</td><td class="num">91 %</td><td>Sí</td><td class="num">4 %</td><td class="num">72 → 88</td><td>—</td></tr>
+            <tr><td>Junta D</td><td class="num">sin datos</td><td class="num">—</td><td>Sin calcular</td><td class="num">—</td><td class="num">29 → 29</td><td><span class="dot d-warn"></span>Sin registros hace 9 días</td></tr>
+          </tbody>
+        </table></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="flujo">
+  <header>
+    <div class="eyebrow">Un dato de punta a punta</div>
+    <h2>La lectura de 0,2 mg/L en la casa más lejana</h2>
+    <p class="muted">Un mismo registro alimenta a la directiva, a la entidad y al plan de mejora sin que nadie lo vuelva a digitar. En otro paquete normativo, la lectura se evalúa con el rango que fije esa norma.</p>
+  </header>
+  <div class="flow">
+    <div class="step"><b>Registro en campo</b><span>El operador anota 0,2 mg/L sin señal.</span><span class="tag">Registro de campo</span></div>
+    <div class="step"><b>Evaluación</b><span>Al sincronizar, la regla del paquete Ecuador lo marca como bajo (&lt; 0,3).</span><span class="tag">Parámetro y regla</span></div>
+    <div class="step"><b>Aviso</b><span>La presidencia recibe un WhatsApp con la acción sugerida.</span><span class="tag">Alerta y canal</span></div>
+    <div class="step"><b>Persistencia</b><span>Tres lecturas bajas seguidas abren una orden correctiva en el dosificador.</span><span class="tag">Orden de trabajo</span></div>
+    <div class="step"><b>Tablero</b><span>La entidad ve la alerta sostenida y prioriza la visita técnica.</span><span class="tag">Indicador</span></div>
+    <div class="step"><b>Plan de mejora</b><span>La ficha 7G.2 se precarga con las tres mediciones como evidencia.</span><span class="tag">Documento generado</span></div>
+  </div>
+</section>
+
+<section id="guias">
+  <header>
+    <div class="eyebrow">Paquete Municipios Azules</div>
+    <h2>Cada formato de las guías es una configuración del motor</h2>
+    <p class="muted">La junta reconoce en la herramienta el mismo nombre que vio en el taller. Por debajo, cada formato es una pieza genérica que otra entidad puede usar con otro nombre.</p>
+  </header>
+  <div class="tbl wide"><table>
+    <thead><tr><th>Formato de la guía</th><th>Pieza del motor</th><th>Cómo queda en la plataforma</th></tr></thead>
+    <tbody>
+      <tr><td><b>7A</b> Inspección de agua potable</td><td>Lista de verificación</td><td>11 ítems Sí / En proceso / No; cada "No" genera una acción con responsable</td></tr>
+      <tr><td><b>7B</b> Registro de cloro residual</td><td>Registro de campo + regla</td><td>Punto, hora, resultado, interpretación automática y acción tomada</td></tr>
+      <tr><td><b>7C</b> Bitácora diaria</td><td>Registro de campo</td><td>Tres tomas al día: nivel, cloro aplicado y residual, aspecto del agua, estado</td></tr>
+      <tr><td><b>7D</b> Registro de mantenimiento</td><td>Orden de trabajo cerrada</td><td>Componente, tipo, materiales, responsable, pendiente y comprobante</td></tr>
+      <tr><td><b>7E</b> Inspección de saneamiento</td><td>Lista de verificación</td><td>9 ítems sobre cajas, fosas, lodos, descargas y EPP</td></tr>
+      <tr><td><b>7F</b> Limpieza y lodos</td><td>Orden de trabajo</td><td>Con destino seguro obligatorio y quién retiró los residuos</td></tr>
+      <tr><td><b>7G</b> Calendario anual</td><td>Planes por tiempo o evento</td><td>Calendario con fechas reales, responsables y cumplimiento mensual</td></tr>
+      <tr><td><b>7G.1</b> Bodega y EPP</td><td>Lista + inventario</td><td>Revisión mensual que cruza con existencias y vencimientos</td></tr>
+      <tr><td><b>7G.2</b> Insumos para el Plan de Mejora</td><td>Documento generado</td><td>Problema, evidencia, acción, apoyo, costo y plazo, precargados desde los hallazgos</td></tr>
+      <tr><td><b>7H</b> Productos finales</td><td>Indicador</td><td>13 productos con estado completo o pendiente</td></tr>
+      <tr><td><b>Actividad 2</b> Semáforo técnico</td><td>Lista por componente</td><td>Verde / amarillo / rojo con acción inmediata</td></tr>
+      <tr><td><b>Actividad 6</b> Plan de emergencia</td><td>Plantilla + alerta</td><td>Responsable, primera acción, mensaje a la comunidad y apoyo externo</td></tr>
+      <tr><td><b>Guía 4</b> Planilla de costos y tarifa</td><td>Movimientos + documento</td><td>Costos por servicio y tipo, mensualizados; propuesta para la asamblea</td></tr>
+      <tr><td><b>4A / 4B</b> Administración y transparencia</td><td>Lista de verificación</td><td>15 ítems que suman al índice de madurez</td></tr>
+      <tr><td><b>Guía 4</b> Rendición de cuentas</td><td>Documento generado</td><td>Los 9 contenidos de la guía armados con lo registrado en el año</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="plan">
+  <header>
+    <div class="eyebrow">Consecuencia para el roadmap</div>
+    <h2>Qué cambia en el plan del Track D</h2>
+  </header>
+  <div class="tbl"><table>
+    <thead><tr><th>Antes</th><th>Ahora</th></tr></thead>
+    <tbody>
+      <tr><td>D0 era "base comunitaria" con formatos de Ecuador</td><td>D0 construye el motor de paquetes: catálogos, reglas con fuente y vigencia, listas de verificación y documentos con plantilla. El paquete Ecuador se carga encima como datos.</td></tr>
+      <tr><td>Cada formato se programaba como pantalla</td><td>Cada formato es una configuración. Programar 7A y 7E por separado sería deuda; son la misma pieza.</td></tr>
+      <tr><td>Juntas y empresas parecían dos productos</td><td>Un producto con nivel de instrumentación por módulo. Lo construido en los Tracks A–C es el nivel avanzado.</td></tr>
+      <tr><td>El tablero de la entidad iba al final</td><td>Una versión mínima va temprano, porque es lo que el cliente compra.</td></tr>
+      <tr><td>RenfyGrid y Renfy Home como dos aplicaciones</td><td>Una sola experiencia para la junta. Por debajo, cobro y finanzas siguen en el motor de Renfy Home, integrados.</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="abierto">
+  <header>
+    <div class="eyebrow">Por decidir</div>
+    <h2>Decisiones abiertas antes de construir</h2>
+  </header>
+  <div class="open">
+    <div><b>¿Quién es el cliente?</b><span>ARCA como regulador, Corporación Agua Para Todos como programa o un GAD. Cambia quién ve el tablero y quién firma la licencia.</span></div>
+    <div><b>Guías 1, 2, 5 y 6</b><span>Sin ellas falta el diagnóstico inicial, el Reglamento Interno que gobierna la mora y la matriz del Plan de Mejora.</span></div>
+    <div><b>Plan de muestreo de ARCA</b><span>Necesitamos el documento vigente con las frecuencias por categoría de población.</span></div>
+    <div><b>Contabilidad</b><span>El motor contable de Renfy Home usa el plan de cuentas colombiano. La junta lleva libro de caja en USD. Hay que definir si el paquete de país incluye su plan de cuentas.</span></div>
+  </div>
+</section>
+
+<footer>Rensoft Labs · RenfyGrid · Diseño funcional preparado a partir de los briefs de rensoftlabs.com (empresas, programas y juntas) y de las Guías 3 y 4 del Proyecto Municipios Azules. Los estados "En producción" reflejan lo desplegado en renfygrid.rensoftlabs.com y en el motor de Renfy Home al 5 de octubre de 2026.</footer>
+</div>
+
+</body>
+</html>
