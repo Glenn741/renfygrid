@@ -318,8 +318,13 @@ registros en papel. Sin este track, RenfyGrid no le sirve a ese segmento.
   (NTE INEN 1108, lineamientos de ARCA), Colombia, etc. Los valores de referencia de la guía
   (cloro residual 0,3-1,5 mg/L en red, turbiedad ≤ 5 UTN, pH 6,5-8,5) son la semilla de
   Ecuador, marcados como "referencia operativa", no como la norma completa.
-- Cada formato de la guía = una pantalla o un reporte exportable con el mismo nombre, para
-  que lo aprendido en el taller se reconozca en la herramienta.
+- **La plataforma opera el sistema; la guía es el método** (corrección del usuario,
+  2026-10-05; reemplaza el principio anterior "cada formato = una pantalla"). Las pantallas se
+  organizan por tarea: operar, medir, mantener, cobrar y rendir cuentas. Los formatos de la
+  guía (7A-7H, 4A-4B) salen como reportes o evidencia exportable con su nombre, para el taller,
+  el programa y ARCA. Una junta que no tomó el taller debe poder operar igual. Las páginas de
+  presentación (briefs, `site/mapa-funcional.html`) son material comercial, no especificación
+  de pantallas.
 - Mensajería a la comunidad (avisos de emergencia, recordatorios de pago) por WhatsApp vía
   Renfy Vox, no un canal propio.
 
@@ -417,8 +422,8 @@ de las guías; esta revisión es contra el texto completo. Lo que cambió:
 inicial (Sí / Más o menos / No) y cierran con autoevaluación. A eso se suman las listas 4A
 (administración, 9 ítems) y 4B (transparencia, 6 ítems) y los productos finales (7H y el
 producto final de la Guía 4). Juntos dan un **índice de madurez por junta**, medible antes y
-después. Esa vista es la que compra el programa/GAD según el modelo comercial de abajo, así que
-pasa a ser un sprint propio.
+después. Le sirve a la junta para ver su avance, a la agrupación de juntas para saber cuál
+necesita apoyo y como evidencia ante el ente rector, así que pasa a ser un sprint propio (D12).
 
 **Normativa citada por las guías** (semilla del catálogo de Ecuador, por verificar vigencia):
 - NTE INEN 1108 (2014), requisitos del agua potable.
@@ -450,11 +455,13 @@ caja simple en USD.
 | **D9** Costos y tarifa | `renfy_pool` + integración | **Planilla de costos** (servicio × tipo × frecuencia → mensual), alimentada con los costos de O&M de RenfyGrid; **calculadora de tarifa** con las 4 modalidades (los ejemplos de la guía como pruebas); comparación con la tarifa actual y ajuste gradual; propuesta para la asamblea y vigencia | Planilla de costos, cálculo de tarifa |
 | **D10** Recaudación y morosidad | `renfy_pool` | Día fijo de cobro; escalera 1/2/3/>3 meses configurable desde el reglamento; acuerdos de pago; incentivos aprobados por la asamblea; recordatorios por WhatsApp; sin corte automático | Sección de recaudación |
 | **D11** POA, presupuesto y rendición | `renfy_pool` | POA por áreas de gestión; presupuesto desde el POA con superávit/déficit y decisión recomendada; **informe de rendición de cuentas** generado (9 contenidos); listas **4A** y **4B** | POA, presupuesto, rendición, 4A, 4B |
-| **D12** Tablero del programa/GAD | RenfyGrid (vista multi-tenant) | Para Agua Para Todos o un GAD que acompaña N juntas: índice de madurez inicial vs. actual, productos 7H y de la Guía 4 completados, alertas de calidad abiertas, cumplimiento del calendario, morosidad agregada | Verificaciones inicial/final de G3 y G4 |
+| **D12** Tablero de la agrupación + reporte al ente rector | RenfyGrid (vista multi-tenant) | Para una agrupación de juntas (asociación, ACC) que comparte técnico, compras o laboratorio: índice de madurez inicial vs. actual, alertas de calidad abiertas, cumplimiento del calendario, tarifa frente a costos, morosidad agregada. Para ARCA, reportes de cumplimiento exportables que la junta decide enviar (no acceso directo a los datos operativos) | Verificaciones inicial/final de G3 y G4 |
 
-**Orden sugerido:** D0 → D1 → D2 → D3 → D12 mínimo (para mostrar al programa) → D5 → D4 → D6
-→ D7. D8-D11 van en paralelo en `renfy_pool`, después de cruzarlos con lo que ya existe allí.
-D9 depende de D3 para que los costos de O&M reales lleguen a la planilla.
+**Orden sugerido (revisado 2026-10-05, el cliente es la junta):** D0 → D1 → D2 → D3 → D8 →
+D9 → D5 → D4 → D6 → D10 → D11 → D7 → D12. Primero lo que la junta usa todos los días (operar,
+cloro, mantener), después lo que la sostiene (padrón, caja, tarifa), y al final la vista de la
+agrupación. D8-D11 van en `renfy_pool`, después de cruzarlos con lo que ya existe allí. D9
+depende de D3 para que los costos de O&M reales lleguen a la planilla.
 
 ### 11.3 Diseño agnóstico (2026-10-05)
 
@@ -482,32 +489,66 @@ del usuario: **debe servir para ARCA y también para otra entidad en otro país.
   la misma pieza (lista de verificación) con distinto contenido. 7G.2 y la rendición de cuentas
   son documentos con plantilla. Si una funcionalidad solo sirve con el nombre de un formato
   ecuatoriano, está mal ubicada.
-- **Jerarquía:** entidad (regulador, programa, GAD o cooperación) → prestador → sistema (agua
-  y/o saneamiento) → componente. Un prestador puede estar bajo varias entidades a la vez (p.
-  ej., su GAD y el regulador). Hoy el aislamiento por RLS es por tenant; la vista de la entidad
-  sobre varios tenants es nueva y debe diseñarse sin abrir el aislamiento entre prestadores.
+- **Actores (aclarado por el usuario, 2026-10-05):**
+  - **El cliente es la junta (JAAPS) o una agrupación de juntas.** Es quien opera y quien usa
+    la plataforma.
+  - **ARCA es el ente rector:** fija la norma e impulsa los programas, pero no opera ni compra.
+  - **Los programas (p. ej., Agua Para Todos / Municipios Azules) capacitan y acompañan.**
+  - Las agrupaciones tienen figura en la normativa ecuatoriana: la Guía 4 cita la *Guía para la
+    conformación de Alianzas Público-Comunitarias (APC) y Comunitarias-Comunitarias (ACC)*
+    (ARCA/CAF/GIZ/BMZ, 2023). No la tenemos; la citamos solo como referencia.
+- **Jerarquía:** agrupación (opcional) → junta → sistema (agua y/o saneamiento) → componente.
+  - Cada junta es un tenant aislado y dueña de sus datos.
+  - La agrupación ve indicadores de sus juntas miembro solo con la adhesión de cada una. Hoy el
+    aislamiento por RLS es por tenant; esa vista es nueva y debe diseñarse sin abrir el
+    aislamiento entre juntas.
+  - **Propuesta (por confirmar con el usuario):** ARCA y los programas reciben reportes que la
+    junta decide enviar, en lugar de acceso directo a sus datos operativos.
 - **Un producto con niveles, no dos productos.** Cada módulo tiene nivel básico (sin
   medidores), intermedio (macromedidor y lectura manual) y avanzado (telemedida, SIG,
   EPANET), configurable por prestador. Lo construido en los Tracks A–C es el nivel avanzado.
 - **Una sola experiencia para la junta:** cobro y finanzas siguen en el motor de `renfy_pool`,
   integrados por debajo, sin que la junta vea dos aplicaciones.
-- **El tablero de la entidad (D12) va temprano** en versión mínima, porque es lo que compra el
-  cliente (licencia por entidad; la junta no paga).
+- **El tablero de la agrupación (D12) va al final.** Como el cliente es la junta, primero va lo
+  que ella usa a diario.
+
+**Sin las Guías 1, 2, 5 y 6 (el usuario no las tiene, 2026-10-05). Decisión: no bloquean;
+cada parte que dependía de ellas se resuelve así:**
+- **G1 (diagnóstico, mapa, usuarios):** D0 hace su propio levantamiento con el mapa técnico
+  (AP1 de la G3) y el padrón (G4). Con eso alcanza para operar.
+- **G2 (gobernanza, Estatuto, Reglamento Interno):** cargos y escalera de morosidad son
+  configurables por cada junta según su propio reglamento. La plantilla por defecto es la tabla
+  de la G4 (1 / 2 / 3 / más de 3 meses).
+- **G5 (ambiente, salud, higiene):** fuera del alcance inicial. La protección de fuentes entra
+  como actividad del POA (gestión ecológica).
+- **G6 (Plan de Mejora):** matriz genérica con las columnas de la ficha 7G.2 (problema,
+  evidencia, acción, qué hace la junta, apoyo, costo, plazo/prioridad). Se ajusta si llega la
+  G6.
 
 **Decisiones abiertas:**
-- **Quién es el cliente:** ARCA como regulador, Corporación Agua Para Todos como programa o un
-  GAD.
-- **Guías 1, 2, 5 y 6.**
 - **Plan de muestreo vigente de ARCA.**
 - **Contabilidad:** si cada paquete de país trae su plan de cuentas. El motor de `renfy_pool`
   usa el PUC colombiano; la junta lleva libro de caja en USD.
+- **Qué reportes y con qué frecuencia espera ARCA de una junta** (si existe un formato
+  oficial).
 
-**Modelo comercial (hipótesis a validar en el piloto).** La junta no compra software con un
-presupuesto de ~USD 7.000/año. Paga el programa o el territorio: Corporación Agua Para Todos /
-Municipios Azules, GAD municipales, ARCA o cooperación (CAF y GIZ aparecen en la bibliografía de
-la Guía 4). Licencia por programa/GAD que cubre N juntas; la junta usa la herramienta sin costo.
+**Modelo comercial (revisado 2026-10-05; reemplaza la hipótesis "la junta no paga").** El
+cliente es la junta o la agrupación.
+- **Presupuesto real:** una junta como la de la G4 maneja ~USD 7.000/año. La suscripción tiene
+  que caber en sus **costos de administración**, la misma categoría donde la guía pone
+  papelería, recibos y trámites, y reemplaza parte de ellos.
+- **Por qué paga:** la plataforma le ayuda a calcular una tarifa que cubra sus costos reales,
+  incluida la propia herramienta.
+- **Precio:** por conexión o por tramo de tamaño. A la agrupación le conviene comprar para
+  varias juntas y compartir técnico, compras y laboratorio.
+- **Subsidio:** programas, GAD o cooperación pueden financiar el arranque, pero el modelo no
+  depende de ellos.
+- **Precio sin definir:** no se cita cifra hasta validarla en el piloto.
+- **Desalineación con el sitio:** los briefs públicos de rensoftlabs.com
+  (`renfygrid-programas-brief.html`, `renfygrid-juntas-brief.html`) todavía dicen "licencia
+  por programa / la junta no paga". Están desalineados; actualizarlos es decisión del usuario.
 
-**Criterio de éxito del piloto (3-5 juntas de un mismo programa).** Que el operador registre
+**Criterio de éxito del piloto (3-5 juntas, idealmente de una misma agrupación).** Que el operador registre
 cloro y bitácora desde el celular sin conexión, que la directiva vea el semáforo y el calendario
 cumplidos, y que la tesorería llegue a la asamblea con la tarifa calculada y la rendición de
 cuentas generada por la herramienta, no en papel.
@@ -516,10 +557,8 @@ cuentas generada por la herramienta, no en papel.
 - Cuántas JAAPS hay en Ecuador y en qué programas están (no se cita cifra sin fuente).
 - El plan de muestreo vigente de ARCA por categoría poblacional (anexos de ARCA-DE-016-2022).
 - Contacto real en Corporación Agua Para Todos.
-- **Guías 1, 2, 5 y 6 de la serie (no están en `Clientes\ARCA`).** Las guías 3 y 4 dependen de
-  ellas: el mapa y los usuarios salen de la G1; los roles, el Estatuto y el Reglamento Interno
-  (que gobiernan la morosidad) de la G2; la matriz del Plan de Mejora que alimenta D7 es de la
-  G6.
+- Guías 1, 2, 5 y 6: el usuario no las tiene (2026-10-05); ya no bloquean (ver §11.3). Si
+  llegan, se ajustan D0, D10 y D7.
 - Págs. 58-67 (G3) y 39-48 (G4) no tienen texto extraíble; probablemente son imágenes o
   contraportada. Revisarlas visualmente.
 

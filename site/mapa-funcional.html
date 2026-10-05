@@ -154,11 +154,11 @@ footer{margin-top:40px;padding-top:16px;border-top:1px solid var(--line);font-si
 <header class="hero">
   <div class="eyebrow">RenfyGrid · Diseño funcional · 5 de octubre de 2026</div>
   <h1>Una sola plataforma para el prestador grande y para la junta pequeña</h1>
-  <p class="lead">Así quedaría RenfyGrid al llevar a funcionalidad lo que prometen los briefs de empresas, programas y juntas. El motor es el mismo para todos. Lo que cambia de un cliente a otro se configura: la norma del país, la metodología del programa que acompaña y el nivel de instrumentación de cada prestador.</p>
+  <p class="lead">Así quedaría RenfyGrid al llevar a funcionalidad lo que prometen los briefs. Es una plataforma para operar el acueducto: la junta trabaja por tareas (operar, medir, mantener, cobrar, rendir cuentas) y la guía es el método que la respalda. El cliente es la junta o una agrupación de juntas. Lo que cambia de un país a otro se configura: la norma, la metodología del programa que acompaña y el nivel de instrumentación de cada junta.</p>
   <div class="thesis">
     <div><b>El motor no sabe de Ecuador</b><span>Sabe de componentes, puntos de control, reglas, órdenes, movimientos e indicadores.</span></div>
     <div><b>ARCA y Municipios Azules son paquetes</b><span>Umbrales de la NTE INEN 1108, formatos 7A–7H y 4A–4B, cargados como configuración.</span></div>
-    <div><b>Otra entidad trae su paquete</b><span>Sus normas, sus formatos con sus nombres y su lista de madurez. El código no cambia.</span></div>
+    <div><b>Otro país trae su paquete</b><span>Sus normas, sus formatos con sus nombres y su lista de madurez. El código no cambia.</span></div>
   </div>
   <nav class="nav" aria-label="Secciones">
     <a href="#capas">Capas</a><a href="#configura">Qué se configura</a><a href="#niveles">Niveles</a><a href="#modulos">Módulos</a><a href="#vistas">Vistas por rol</a><a href="#flujo">Un dato de punta a punta</a><a href="#guias">Guías → funciones</a><a href="#plan">Qué cambia en el plan</a><a href="#abierto">Decisiones abiertas</a>
@@ -169,22 +169,22 @@ footer{margin-top:40px;padding-top:16px;border-top:1px solid var(--line);font-si
   <header>
     <div class="eyebrow">Arquitectura funcional</div>
     <h2>Quién usa la plataforma y qué la parametriza</h2>
-    <p class="muted">A la izquierda, la jerarquía de lo que se gestiona. A la derecha, las tres fuentes de configuración. El motor se escribe una vez; los paquetes se cargan por cliente.</p>
+    <p class="muted">A la izquierda, quién opera y lo que se gestiona. A la derecha, las tres fuentes de configuración. El motor se escribe una vez; los paquetes se cargan por país y por programa.</p>
   </header>
   <div class="layers">
     <div class="stack" aria-label="Jerarquía">
-      <div class="tier t1"><span class="k">Entidad que supervisa o acompaña</span><b>Regulador, programa, GAD o cooperación</b><span class="muted">ARCA, Corporación Agua Para Todos, un municipio. Ve a sus prestadores en un tablero. Una junta puede estar bajo dos entidades a la vez (su GAD y el regulador).</span></div>
-      <div class="tier t2"><span class="k">Prestador</span><b>Junta de agua o empresa de acueducto</b><span class="muted">Cada uno es un espacio aislado con sus datos, usuarios, roles y nivel de instrumentación.</span></div>
+      <div class="tier t1"><span class="k">Agrupación de juntas · opcional</span><b>Asociación o alianza comunitaria (ACC)</b><span class="muted">Comparte técnico, compras o laboratorio y ve los indicadores de las juntas miembro que se adhieren.</span></div>
+      <div class="tier t2"><span class="k">Junta de agua · el cliente</span><b>JAAPS o prestador comunitario</b><span class="muted">Opera el sistema y es dueña de sus datos. Cada junta es un espacio aislado con sus usuarios, roles y nivel de instrumentación. Una empresa de acueducto ocupa el mismo lugar en nivel avanzado.</span></div>
       <div class="tier t3"><span class="k">Sistema</span><b>Agua potable y/o saneamiento</b><span class="muted">Un prestador puede operar varios sistemas, cada uno con sus sectores.</span></div>
       <div class="tier t4"><span class="k">Componente</span><b>Captación, desarenador, reservorio, red, fosa, PTAR…</b><span class="muted">Encadenados en el recorrido del agua. El tipo sale de un catálogo, no del código.</span></div>
     </div>
     <div class="packs">
       <div class="pack engine"><span class="k">Motor común (se programa una vez)</span>
         <ul><li>Componentes y su recorrido</li><li>Puntos de control y parámetros con reglas</li><li>Listas de verificación con acción por hallazgo</li><li>Registros de campo sin conexión</li><li>Órdenes y planes por tiempo o por evento</li><li>Movimientos financieros con soporte</li><li>Indicadores, alertas y documentos generados</li></ul></div>
-      <div class="pack"><span class="k">Paquete normativo · por país o regulador</span>
-        <span>Umbrales con su fuente y vigencia, parámetros de laboratorio, plan de muestreo por población, instituciones a notificar.</span></div>
-      <div class="pack"><span class="k">Paquete de programa · por entidad</span>
-        <span>Nombres de los formatos, listas de verificación, autodiagnóstico de madurez, productos esperados, plantillas de informe y de plan de mejora.</span></div>
+      <div class="pack"><span class="k">Paquete normativo · lo fija el ente rector</span>
+        <span>En Ecuador, ARCA. Umbrales con su fuente y vigencia, parámetros de laboratorio, plan de muestreo por población, instituciones a notificar. El ente rector no opera la plataforma: recibe los reportes que la junta envía.</span></div>
+      <div class="pack"><span class="k">Paquete de programa · método que acompaña</span>
+        <span>En Ecuador, Municipios Azules. Nombres de los formatos, listas de verificación, autodiagnóstico de madurez y plantillas de informe y de plan de mejora.</span></div>
     </div>
   </div>
 </section>
@@ -196,7 +196,7 @@ footer{margin-top:40px;padding-top:16px;border-top:1px solid var(--line);font-si
     <p class="muted">La columna del medio es la que ya existe gracias a las guías. La de la derecha muestra lo que tendría que traer otro cliente.</p>
   </header>
   <div class="tbl wide"><table>
-    <thead><tr><th>Elemento</th><th>Lo pone el motor</th><th>Paquete Ecuador · ARCA + Municipios Azules</th><th>Otra entidad, otro país</th></tr></thead>
+    <thead><tr><th>Elemento</th><th>Lo pone el motor</th><th>Paquete Ecuador · ARCA + Municipios Azules</th><th>Otro país u otro programa</th></tr></thead>
     <tbody>
       <tr><td><b>Umbral de cloro residual</b></td><td>Evaluar cada lectura contra una regla con rango, fuente y vigencia</td><td>0,3 a 1,5 mg/L en red, referencia operativa (Guía 3, NTE INEN 1108)</td><td>El rango que fije su norma, con su cita</td></tr>
       <tr><td><b>Otros parámetros</b></td><td>Parámetro, unidad, quién lo mide (campo o laboratorio), regla</td><td>Turbiedad ≤ 5 UTN, pH 6,5–8,5, E. coli ausente</td><td>Su lista de parámetros y límites</td></tr>
@@ -242,7 +242,7 @@ footer{margin-top:40px;padding-top:16px;border-top:1px solid var(--line);font-si
   <div class="mods">
     <article class="mod"><div class="top"><h3>Sistema y componentes</h3><span class="chip c-part">Parcial</span></div>
       <p>Recorrido del agua y del saneamiento, mapa técnico con puntos críticos, semáforo por componente y revisión del tren de tratamiento.</p>
-      <div class="who"><span>Directiva</span><span>Operador</span><span>Entidad</span></div>
+      <div class="who"><span>Directiva</span><span>Operador</span><span>Agrupación</span></div>
       <div class="base"><b>Se apoya en:</b> activos de red, zonas y mapa por sector (en producción). <b>Falta:</b> catálogo de componentes comunitarios, semáforo, tren de tratamiento.</div></article>
 
     <article class="mod"><div class="top"><h3>Operación diaria</h3><span class="chip c-new">Por construir</span></div>
@@ -252,7 +252,7 @@ footer{margin-top:40px;padding-top:16px;border-top:1px solid var(--line);font-si
 
     <article class="mod"><div class="top"><h3>Calidad del agua</h3><span class="chip c-new">Por construir</span></div>
       <p>Puntos de muestreo, mediciones de campo evaluadas con la regla del paquete, resultados de laboratorio, plan de muestreo y calculadora de dosificación con advertencias.</p>
-      <div class="who"><span>Operador</span><span>Directiva</span><span>Entidad</span></div>
+      <div class="who"><span>Operador</span><span>Directiva</span><span>Agrupación</span></div>
       <div class="base"><b>Regla clave:</b> con agua turbia, la herramienta manda revisar filtros, no subir el cloro.</div></article>
 
     <article class="mod"><div class="top"><h3>Medición y balance</h3><span class="chip c-part">Parcial</span></div>
@@ -262,7 +262,7 @@ footer{margin-top:40px;padding-top:16px;border-top:1px solid var(--line);font-si
 
     <article class="mod"><div class="top"><h3>Mantenimiento</h3><span class="chip c-part">Parcial</span></div>
       <p>Preventivo, correctivo y emergente por componente. Planes por tiempo y por evento (lluvia fuerte, deslizamiento, quejas). Calendario anual con cumplimiento y mingas.</p>
-      <div class="who"><span>Operador</span><span>Directiva</span><span>Entidad</span></div>
+      <div class="who"><span>Operador</span><span>Directiva</span><span>Agrupación</span></div>
       <div class="base"><b>En producción:</b> CMMS con prioridad, SLA, códigos de falla, ciclo de vida y KPIs. <b>Falta:</b> tipo emergente, disparo por evento, mingas, vista de calendario.</div></article>
 
     <article class="mod"><div class="top"><h3>Bodega e insumos</h3><span class="chip c-new">Por construir</span></div>
@@ -277,7 +277,7 @@ footer{margin-top:40px;padding-top:16px;border-top:1px solid var(--line);font-si
 
     <article class="mod"><div class="top"><h3>Emergencias y avisos</h3><span class="chip c-new">Por construir</span></div>
       <p>Plan por tipo de emergencia con primera acción y contactos. Se activa a mano o sola (E. coli positivo, turbiedad extrema, rebose). Aviso a la comunidad por WhatsApp.</p>
-      <div class="who"><span>Directiva</span><span>Comunidad</span><span>Entidad</span></div>
+      <div class="who"><span>Directiva</span><span>Comunidad</span><span>Agrupación</span></div>
       <div class="base"><b>Canal:</b> Renfy Vox, no un canal propio.</div></article>
 
     <article class="mod"><div class="top"><h3>Usuarios y cobro</h3><span class="chip c-part">Parcial</span></div>
@@ -292,13 +292,13 @@ footer{margin-top:40px;padding-top:16px;border-top:1px solid var(--line);font-si
 
     <article class="mod"><div class="top"><h3>Planificación y mejora</h3><span class="chip c-new">Por construir</span></div>
       <p>Autodiagnóstico de madurez al inicio y al cierre, plan mínimo de operación y mantenimiento, ficha de insumos para el plan de mejora generada desde la evidencia.</p>
-      <div class="who"><span>Directiva</span><span>Entidad</span></div>
-      <div class="base"><b>Depende de:</b> las Guías 1, 2, 5 y 6, que todavía no tenemos.</div></article>
+      <div class="who"><span>Directiva</span><span>Agrupación</span></div>
+      <div class="base"><b>Sin la Guía 6:</b> matriz genérica con las columnas de la ficha 7G.2; se ajusta si llega la guía.</div></article>
 
-    <article class="mod"><div class="top"><h3>Tablero de la entidad</h3><span class="chip c-new">Por construir</span></div>
-      <p>Todos los prestadores de la entidad en una vista: calidad, mantenimiento, agua no facturada, tarifa frente a costos, morosidad y madurez. Prioriza visitas técnicas por alertas.</p>
-      <div class="who"><span>Regulador</span><span>Programa</span><span>GAD</span></div>
-      <div class="base"><b>Es lo que compra el cliente:</b> la licencia es por entidad; la junta no paga.</div></article>
+    <article class="mod"><div class="top"><h3>Agrupación y reportes</h3><span class="chip c-new">Por construir</span></div>
+      <p>La agrupación ve a sus juntas miembro en una vista: calidad, mantenimiento, tarifa frente a costos, morosidad y madurez, y prioriza las visitas de su técnico. Para el ente rector, reportes de cumplimiento que la junta decide enviar.</p>
+      <div class="who"><span>Agrupación</span><span>Junta</span><span>Ente rector</span></div>
+      <div class="base"><b>Regla:</b> cada junta es dueña de sus datos; la agrupación ve solo con su adhesión.</div></article>
   </div>
   <p class="muted" style="font-size:14px">Además siguen disponibles, para el nivel avanzado: gemelo digital y modelo EPANET, corte y reconexión con aprobación y firma, e integración con el sistema comercial. <span class="chip c-ok">En producción</span></p>
 </section>
@@ -343,7 +343,7 @@ footer{margin-top:40px;padding-top:16px;border-top:1px solid var(--line);font-si
         </div>
       </div>
       <div class="panel">
-        <span class="k">Entidad · tablero de prestadores</span>
+        <span class="k">Agrupación · tablero de juntas miembro</span>
         <div class="tbl wide"><table>
           <thead><tr><th>Junta</th><th>Cloro al día</th><th>Preventivo cumplido</th><th>Tarifa cubre costos</th><th>Mora</th><th>Madurez</th><th>Alerta</th></tr></thead>
           <tbody>
@@ -362,14 +362,14 @@ footer{margin-top:40px;padding-top:16px;border-top:1px solid var(--line);font-si
   <header>
     <div class="eyebrow">Un dato de punta a punta</div>
     <h2>La lectura de 0,2 mg/L en la casa más lejana</h2>
-    <p class="muted">Un mismo registro alimenta a la directiva, a la entidad y al plan de mejora sin que nadie lo vuelva a digitar. En otro paquete normativo, la lectura se evalúa con el rango que fije esa norma.</p>
+    <p class="muted">Un mismo registro alimenta a la directiva, a la agrupación y al plan de mejora sin que nadie lo vuelva a digitar. En otro paquete normativo, la lectura se evalúa con el rango que fije esa norma.</p>
   </header>
   <div class="flow">
     <div class="step"><b>Registro en campo</b><span>El operador anota 0,2 mg/L sin señal.</span><span class="tag">Registro de campo</span></div>
     <div class="step"><b>Evaluación</b><span>Al sincronizar, la regla del paquete Ecuador lo marca como bajo (&lt; 0,3).</span><span class="tag">Parámetro y regla</span></div>
     <div class="step"><b>Aviso</b><span>La presidencia recibe un WhatsApp con la acción sugerida.</span><span class="tag">Alerta y canal</span></div>
     <div class="step"><b>Persistencia</b><span>Tres lecturas bajas seguidas abren una orden correctiva en el dosificador.</span><span class="tag">Orden de trabajo</span></div>
-    <div class="step"><b>Tablero</b><span>La entidad ve la alerta sostenida y prioriza la visita técnica.</span><span class="tag">Indicador</span></div>
+    <div class="step"><b>Tablero</b><span>Si la junta es miembro de una agrupación, su técnico ve la alerta sostenida y prioriza la visita.</span><span class="tag">Indicador</span></div>
     <div class="step"><b>Plan de mejora</b><span>La ficha 7G.2 se precarga con las tres mediciones como evidencia.</span><span class="tag">Documento generado</span></div>
   </div>
 </section>
@@ -377,8 +377,8 @@ footer{margin-top:40px;padding-top:16px;border-top:1px solid var(--line);font-si
 <section id="guias">
   <header>
     <div class="eyebrow">Paquete Municipios Azules</div>
-    <h2>Cada formato de las guías es una configuración del motor</h2>
-    <p class="muted">La junta reconoce en la herramienta el mismo nombre que vio en el taller. Por debajo, cada formato es una pieza genérica que otra entidad puede usar con otro nombre.</p>
+    <h2>Los formatos de la guía salen de la operación</h2>
+    <p class="muted">La junta no llena formatos: opera por tareas, y cada formato se obtiene como reporte con su nombre para el taller, el programa o ARCA. Por debajo, cada formato es una pieza genérica que otro país puede usar con otro nombre.</p>
   </header>
   <div class="tbl wide"><table>
     <thead><tr><th>Formato de la guía</th><th>Pieza del motor</th><th>Cómo queda en la plataforma</th></tr></thead>
@@ -411,9 +411,10 @@ footer{margin-top:40px;padding-top:16px;border-top:1px solid var(--line);font-si
     <thead><tr><th>Antes</th><th>Ahora</th></tr></thead>
     <tbody>
       <tr><td>D0 era "base comunitaria" con formatos de Ecuador</td><td>D0 construye el motor de paquetes: catálogos, reglas con fuente y vigencia, listas de verificación y documentos con plantilla. El paquete Ecuador se carga encima como datos.</td></tr>
-      <tr><td>Cada formato se programaba como pantalla</td><td>Cada formato es una configuración. Programar 7A y 7E por separado sería deuda; son la misma pieza.</td></tr>
+      <tr><td>Cada formato de la guía era una pantalla</td><td>Las pantallas son tareas de operación. Los formatos son reportes que salen de lo registrado. 7A y 7E son la misma pieza con distinto contenido.</td></tr>
       <tr><td>Juntas y empresas parecían dos productos</td><td>Un producto con nivel de instrumentación por módulo. Lo construido en los Tracks A–C es el nivel avanzado.</td></tr>
-      <tr><td>El tablero de la entidad iba al final</td><td>Una versión mínima va temprano, porque es lo que el cliente compra.</td></tr>
+      <tr><td>Pagaba el programa o el GAD; la junta usaba gratis</td><td>El cliente es la junta o su agrupación. La suscripción cabe en sus costos de administración y entra en el cálculo de su tarifa.</td></tr>
+      <tr><td>Primero el tablero para el programa</td><td>Primero lo que la junta usa a diario; la vista de la agrupación va al final.</td></tr>
       <tr><td>RenfyGrid y Renfy Home como dos aplicaciones</td><td>Una sola experiencia para la junta. Por debajo, cobro y finanzas siguen en el motor de Renfy Home, integrados.</td></tr>
     </tbody>
   </table></div>
@@ -425,8 +426,8 @@ footer{margin-top:40px;padding-top:16px;border-top:1px solid var(--line);font-si
     <h2>Decisiones abiertas antes de construir</h2>
   </header>
   <div class="open">
-    <div><b>¿Quién es el cliente?</b><span>ARCA como regulador, Corporación Agua Para Todos como programa o un GAD. Cambia quién ve el tablero y quién firma la licencia.</span></div>
-    <div><b>Guías 1, 2, 5 y 6</b><span>Sin ellas falta el diagnóstico inicial, el Reglamento Interno que gobierna la mora y la matriz del Plan de Mejora.</span></div>
+    <div><b>Reportes a ARCA</b><span>Qué reporta una junta al ente rector y con qué frecuencia, y si existe un formato oficial.</span></div>
+    <div><b>Precio por junta</b><span>Por conexión o por tramo de tamaño, para que quepa en los costos de administración. Se valida en el piloto.</span></div>
     <div><b>Plan de muestreo de ARCA</b><span>Necesitamos el documento vigente con las frecuencias por categoría de población.</span></div>
     <div><b>Contabilidad</b><span>El motor contable de Renfy Home usa el plan de cuentas colombiano. La junta lleva libro de caja en USD. Hay que definir si el paquete de país incluye su plan de cuentas.</span></div>
   </div>
