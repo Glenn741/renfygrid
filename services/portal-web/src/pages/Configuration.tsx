@@ -2,6 +2,11 @@ import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ApiError,
+  adoptPack,
+  getInstrumentation,
+  getPacks,
+  getParameterRules,
+  setInstrumentation,
   bulkMarkMeterProtection,
   createApprovalLevel,
   createConsumptionAnomalyRule,
@@ -37,6 +42,8 @@ import { NavSection, SectionNav } from "../components/SectionNav";
 // pegajosa arriba, cada `SectionCard` con su propio `id` para saltar
 // directo.
 const SECTIONS = [
+  { id: "packs", label: "Paquetes" },
+  { id: "instrumentation", label: "Instrumentación" },
   { id: "hes-settings", label: "HES" },
   { id: "vee-rules", label: "Reglas VEE" },
   { id: "consumption-rules", label: "Reglas de consumo" },
@@ -744,10 +751,150 @@ function CrewsSection() {
   );
 }
 
+// ── Track D, Sprint D0.3 -- paquetes y nivel de instrumentacion ──────────
+
+const PACK_KIND_LABEL: Record<string, string> = {
+  core: "Núcleo", regulatory: "Normativo", program: "Programa",
+};
+const SEVERITY_STYLE: Record<string, string> = {
+  ok: "bg-emerald-50 text-emerald-700", alert: "bg-amber-50 text-amber-700", critical: "bg-red-50 text-red-700",
+};
+const MODULE_LABEL: Record<string, string> = {
+  metering: "Medición", water_balance: "Balance de agua", quality: "Calidad del agua",
+  maintenance: "Mantenimiento", network: "Red", billing: "Cobro",
+};
+const LEVEL_LABEL: Record<string, string> = {
+  basic: "Básico — sin medidores", intermediate: "Intermedio — macromedidor y lectura manual", advanced: "Avanzado — telemedida, SIG, modelo",
+};
+
+function bandRange(bands: { upper: number | null; upper_inclusive?: boolean }[], index: number): string {
+  const lower = index === 0 ? null : bands[index - 1];
+  const upper = bands[index];
+  const lowerText = lower ? `${lower.upper_inclusive === false ? "≥" : ">"} ${lower.upper}` : "";
+  const upperText = upper.upper !== null ? `${upper.upper_inclusive === false ? "<" : "≤"} ${upper.upper}` : "";
+  return [lowerText, upperText].filter(Boolean).join(" y ") || "cualquier valor";
+}
+
+function PacksSection() {
+  const queryClient = useQueryClient();
+  const { data } = useQuery({ queryKey: ["packs"], queryFn: getPacks });
+  const { data: rules } = useQuery({ queryKey: ["parameter-rules"], queryFn: getParameterRules });
+  const [error, setError] = useState<string | null>(null);
+
+  const adoptMutation = useMutation({
+    mutationFn: (packId: string) => adoptPack(packId),
+    onSuccess: () => {
+      setError(null);
+      for (const key of ["packs", "parameter-rules", "checklist-templates", "component-types"]) {
+        queryClient.invalidateQueries({ queryKey: [key] });
+      }
+    },
+    onError: (err) => setError(err instanceof ApiError ? err.message : "No se pudo activar el paquete."),
+  });
+
+  return (
+    <SectionCard
+      title="Paquetes"
+      description="Lo que cambia de un país o de un programa a otro: umbrales de calidad del agua con su fuente, tipos de componente y listas de revisión. La plataforma no trae ningún umbral fijo; sin un paquete normativo activo no evalúa lecturas."
+    >
+      {error && <p className="text-sm text-red-600 mb-2">{error}</p>}
+      <ul className="divide-y divide-slate-100 mb-5">
+        {(data?.packs ?? []).map((p) => {
+          const active = data?.active.includes(p.pack_id);
+          return (
+            <li key={p.pack_id} className="py-3 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-semibold text-slate-800">{p.name}</span>
+                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600">{PACK_KIND_LABEL[p.kind]}</span>
+                  {p.country && <span className="text-[11px] text-slate-500">{p.country} · v{p.version}</span>}
+                </div>
+                <p className="text-xs text-slate-500 mt-0.5 max-w-3xl">{p.source_note}</p>
+              </div>
+              {active
+                ? <span className="shrink-0 text-xs font-semibold text-emerald-700">Activo</span>
+                : (
+                  <button
+                    onClick={() => adoptMutation.mutate(p.pack_id)}
+                    disabled={adoptMutation.isPending}
+                    className="shrink-0 rounded-lg bg-indigo-600 text-white text-xs font-semibold px-3 py-1.5 hover:bg-indigo-700 disabled:opacity-50"
+                  >
+                    Activar
+                  </button>
+                )}
+            </li>
+          );
+        })}
+      </ul>
+      <h3 className="text-sm font-semibold text-slate-800 mb-2">Reglas vigentes</h3>
+      {rules && rules.length === 0 && <p className="text-sm text-amber-700">Sin reglas: active un paquete normativo para evaluar lecturas.</p>}
+      <div className="space-y-3">
+        {(rules ?? []).map((r) => (
+          <div key={r.rule_id} className="rounded-lg border border-slate-200 p-3">
+            <div className="text-sm font-medium text-slate-800">
+              {r.parameter.label}{r.parameter.unit ? ` (${r.parameter.unit})` : ""}
+              <span className="ml-2 text-[11px] font-normal text-slate-500">{r.parameter.measured_by === "lab" ? "Laboratorio" : "Campo"}</span>
+            </div>
+            <div className="flex flex-wrap gap-1.5 my-2">
+              {r.bands.map((b, i) => (
+                <span key={b.code} className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${SEVERITY_STYLE[b.severity] ?? "bg-slate-100 text-slate-600"}`}>
+                  {b.label}: {bandRange(r.bands, i)}
+                </span>
+              ))}
+            </div>
+            <p className="text-xs text-slate-500">{r.citation}</p>
+          </div>
+        ))}
+      </div>
+    </SectionCard>
+  );
+}
+
+function InstrumentationSection() {
+  const queryClient = useQueryClient();
+  const { data } = useQuery({ queryKey: ["instrumentation"], queryFn: getInstrumentation });
+  const [error, setError] = useState<string | null>(null);
+  const mutation = useMutation({
+    mutationFn: (levels: Record<string, string>) => setInstrumentation(levels),
+    onSuccess: () => {
+      setError(null);
+      queryClient.invalidateQueries({ queryKey: ["instrumentation"] });
+    },
+    onError: (err) => setError(err instanceof ApiError ? err.message : "No se pudo guardar el nivel."),
+  });
+
+  return (
+    <SectionCard
+      title="Nivel de instrumentación"
+      description="Con qué cuenta el sistema en cada módulo. Una junta sin medidores trabaja en básico y sube de nivel cuando instala un macromedidor, sin cambiar de plataforma. Un módulo sin nivel declarado no asume ninguno."
+    >
+      {error && <p className="text-sm text-red-600 mb-2">{error}</p>}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        {Object.entries(MODULE_LABEL).map(([module, label]) => (
+          <div key={module}>
+            <label htmlFor={`instr-${module}`} className="block text-xs font-medium text-slate-500 mb-1">{label}</label>
+            <select
+              id={`instr-${module}`}
+              className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm w-full bg-white"
+              value={data?.levels[module] ?? ""}
+              onChange={(e) => e.target.value && mutation.mutate({ [module]: e.target.value })}
+            >
+              <option value="">Sin declarar</option>
+              {Object.entries(LEVEL_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+          </div>
+        ))}
+      </div>
+    </SectionCard>
+  );
+}
+
 export function ConfigurationPage() {
   return (
     <StagePage title="Configuración">
       <SectionNav items={SECTIONS} />
+      <NavSection id="packs"><PacksSection /></NavSection>
+      <NavSection id="instrumentation"><InstrumentationSection /></NavSection>
       <NavSection id="hes-settings"><HesSettingsSection /></NavSection>
       <NavSection id="vee-rules"><VeeRulesSection /></NavSection>
       <NavSection id="consumption-rules"><ConsumptionAnomalyRulesSection /></NavSection>

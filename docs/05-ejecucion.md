@@ -1587,3 +1587,38 @@ al verificar que corre en producción (módulos `meter_geo` y `tenant_settings` 
 - **`seed_demo_hydraulic_sectors.py`**: sectores hidráulicos ilustrativos (Cali) para el tenant demo.
 - CI básico de Sprint 0 (`.github/workflows/tests.yml`) listo pero **sin subir a GitHub**: el token de este PC no tiene el permiso `workflow` (GitHub rechaza el push). Corre las 24 pruebas
   de `services/common` (verificadas en verde localmente el 2026-09-23).
+
+
+## 2026-10-05 — Track D, Sprint D0: motor de paquetes (D0.1–D0.3 construidos, D0.4 listo sin desplegar)
+
+Diseño en `04-plan-sprints.md` §11.3–§11.4. El motor no sabe de ningún país: lo que define un
+paquete va en catálogos globales de solo lectura; lo que hace cada junta, en tablas con RLS.
+
+| Entrega | Archivo | Verificación |
+|---|---|---|
+| Migración + semillas de 3 paquetes (`core`, `EC-ARCA`, `EC-MUNICIPIOS-AZULES`): 25 tipos de componente, 4 reglas con cita, 8 listas con el texto literal de las Guías 3 y 4 | `infra/db/migrations/0021_community_packs.sql` | Aplicada en local (`psql -1`); el rol de aplicación lee los catálogos y recibe `permission denied` al escribirlos |
+| Motor puro: bandas, respuestas → hallazgos, puntaje de madurez, recorrido, tren de tratamiento | `services/community/pack_engine.py` | 23 pruebas (`tests/test_pack_engine.py`) en verde en Python 3.14 y en **3.9** (venv de Nuitka en WSL, la versión de producción) |
+| Servicio con BD | `services/community/pack_service.py` | `verify_pack_service_end_to_end.py` → `SPRINT D0.1 E2E OK` (2 juntas, aislamiento incluido) |
+| `network_asset.type` pasa a FK al catálogo; `asset_service` deja el conjunto fijo `ASSET_TYPES` | `services/digital-twin/asset_service.py` | Regresión: `SPRINT B5 DIGITAL TWIN E2E OK`, `SPRINT B7 + CMMS MAINTENANCE E2E OK` |
+| 17 endpoints (paquetes, tipos, reglas y evaluación, listas, hallazgos, reportes, instrumentación) | `services/portal-api/main.py` | `verify_community_packs_end_to_end.py` → `SPRINT D0.2 E2E OK` (HTTP + JWT reales) |
+| Portal Web: "Mi sistema", "Revisiones", Configuración → Paquetes e Instrumentación | `portal-web/src/pages/System.tsx`, `Inspections.tsx`, `Configuration.tsx` | `tsc -b` y `vite build` OK; API local respondiendo con la junta demo. **Sin revisión visual en navegador** (sin extensión de Chrome en esta sesión) |
+| Junta demo con el caso ficticio de la Guía 3 (actividades 1, 2 y 3 + verificación inicial) | `services/community/seed_demo_junta.py` | Sembrada en local: 11 componentes encadenados, 12 hallazgos abiertos |
+
+**Hallazgos reales de esta ronda:**
+- **Hueco de pertenencia cerrado antes de desplegar:** `finding.asset_id` solo tenía FK, así que
+  una junta podía ligar un hallazgo a un activo de otra. `pack_service` ahora verifica la
+  pertenencia (mismo criterio que `asset_service.connect_assets`), con su caso en ambos E2E.
+- **Ningún default fabricado:** una escala que marca hallazgo sin `finding_priority` se rechaza
+  en vez de asumir "media"; un módulo sin nivel de instrumentación no asume ninguno; sin paquete
+  normativo adoptado no hay regla (404), nunca un umbral inventado.
+- **Entorno de pruebas:** el Python 3.14 de Windows no tiene `wntr`, que `main.py` importa. Se
+  creó un venv persistente `%USERPROFILE%\venvs\renfygrid-e2e310` (Python 3.10, `wntr` 1.5.0,
+  FastAPI, httpx, gurux) para los E2E HTTP. Desde WSL no se alcanza el Postgres local (escucha
+  solo en `localhost` de Windows). En el venv de compilación de WSL, `import main` falla por el
+  `match/case` conocido de `gurux-dlms` (parchado solo en el venv del servidor); no afecta a
+  los módulos nuevos, que compilan y pasan sus pruebas en 3.9.
+
+**Pendiente (D0.4):** despliegue a producción. Pasos: `pg_dump` de respaldo → migración 0021
+en la BD `renfygrid` → compilar con Nuitka `community/` + `asset_service` → reiniciar
+`renfygrid-portal-api` → subir el build del Portal Web → sembrar la junta demo con credenciales
+propias → verificar en vivo.

@@ -1006,4 +1006,218 @@ export function generateDuePmOrders(): Promise<MaintenanceOrder[]> {
   return request("/maintenance/pm-plans/generate-due", { method: "POST", body: "{}" });
 }
 
+// ── Track D, Sprint D0 -- motor de paquetes (docs/04-plan-sprints.md SS11.4) ──
+
+export interface Pack {
+  pack_id: string;
+  kind: "core" | "regulatory" | "program";
+  country: string | null;
+  name: string;
+  version: string;
+  source_note: string;
+}
+
+export function getPacks(): Promise<{ packs: Pack[]; active: string[] }> {
+  return request("/packs");
+}
+
+export function adoptPack(packId: string): Promise<{ pack_id: string; active_packs: string[] }> {
+  return request(`/packs/${encodeURIComponent(packId)}/adopt`, { method: "POST", body: "{}" });
+}
+
+export interface ComponentType {
+  code: string;
+  pack_id: string;
+  service: "water" | "sanitation" | "support";
+  stage_order: number | null;
+  is_treatment_stage: boolean;
+  label: string;
+  description: string | null;
+}
+
+export function getComponentTypes(): Promise<ComponentType[]> {
+  return request("/component-types");
+}
+
+export interface RuleBand {
+  upper: number | null;
+  upper_inclusive?: boolean;
+  code: string;
+  label: string;
+  severity: "ok" | "alert" | "critical";
+}
+
+export interface ParameterRule {
+  rule_id: string;
+  pack_id: string;
+  bands: RuleBand[];
+  citation: string;
+  parameter: { code: string; label: string; unit: string; measured_by: "field" | "lab" };
+}
+
+export function getParameterRules(): Promise<ParameterRule[]> {
+  return request("/parameter-rules");
+}
+
+export interface ScaleEntry {
+  code: string;
+  label: string;
+  finding: boolean;
+  finding_priority?: string;
+  score: number;
+}
+
+export interface ChecklistTemplate {
+  id: string;
+  pack_id: string;
+  kind: "inspection" | "traffic_light" | "self_assessment";
+  title: string;
+  purpose: string;
+  scale: ScaleEntry[];
+  items: { key: string; text: string; component_service?: string }[];
+}
+
+export function getChecklistTemplates(): Promise<ChecklistTemplate[]> {
+  return request("/checklist-templates");
+}
+
+export interface ChecklistAnswerInput {
+  item_key: string;
+  answer_code: string;
+  observation?: string | null;
+  action?: string | null;
+  responsible?: string | null;
+  due_date?: string | null;
+  asset_id?: string | null;
+}
+
+export interface Score {
+  score: number;
+  max_score: number;
+  pct: number | null;
+}
+
+export function submitChecklistRun(body: {
+  template_id: string;
+  answers: ChecklistAnswerInput[];
+  notes?: string | null;
+}): Promise<{ run_id: string; template_id: string; performed_at: string; score: Score; findings_created: string[] }> {
+  return request("/checklist-runs", { method: "POST", body: JSON.stringify(body) });
+}
+
+export interface ChecklistRunSummary {
+  run_id: string;
+  template_id: string;
+  performed_at: string;
+  performed_by: string;
+  notes: string | null;
+  answer_count: number;
+}
+
+export function getChecklistRuns(templateId?: string): Promise<ChecklistRunSummary[]> {
+  return request(`/checklist-runs${templateId ? `?template_id=${encodeURIComponent(templateId)}` : ""}`);
+}
+
+export interface ChecklistRunDetail {
+  run_id: string;
+  template_id: string;
+  title: string;
+  kind: ChecklistTemplate["kind"];
+  performed_at: string;
+  performed_by: string;
+  notes: string | null;
+  answers: {
+    item_key: string;
+    text: string;
+    answer_code: string;
+    answer_label: string;
+    observation: string | null;
+    action: string | null;
+    responsible: string | null;
+    due_date: string | null;
+  }[];
+  score: Score;
+}
+
+export function getChecklistRun(runId: string): Promise<ChecklistRunDetail> {
+  return request(`/checklist-runs/${runId}`);
+}
+
+export interface Finding {
+  finding_id: string;
+  source_kind: "critical_point" | "checklist" | "reading" | "manual";
+  source_ref: string | null;
+  asset_id: string | null;
+  location_text: string | null;
+  geometry: unknown;
+  description: string;
+  priority: "high" | "medium" | "low";
+  support_level: "community" | "local_government" | "specialized" | null;
+  status: "open" | "in_progress" | "closed";
+  to_improvement_plan: boolean;
+  created_by: string;
+  created_at: string;
+  closed_at: string | null;
+}
+
+export function getFindings(status?: string): Promise<Finding[]> {
+  return request(`/findings${status ? `?status=${status}` : ""}`);
+}
+
+export function createFinding(body: {
+  description: string;
+  priority: string;
+  source_kind?: string;
+  asset_id?: string | null;
+  location_text?: string | null;
+  support_level?: string | null;
+}): Promise<{ finding_id: string }> {
+  return request("/findings", { method: "POST", body: JSON.stringify(body) });
+}
+
+export function updateFinding(findingId: string, body: {
+  status?: string;
+  priority?: string;
+  support_level?: string;
+  to_improvement_plan?: boolean;
+}): Promise<Finding> {
+  return request(`/findings/${findingId}`, { method: "PATCH", body: JSON.stringify(body) });
+}
+
+export interface RouteStage {
+  type: string;
+  label: string;
+  stage_order: number | null;
+  assets: { asset_id: string; type: string; status: string; attributes: Record<string, unknown>; zone_id: string | null }[];
+}
+
+export function getSystemRoute(): Promise<{ services: Record<string, RouteStage[]>; accessories: RouteStage[] }> {
+  return request("/reports/system-route");
+}
+
+export interface TreatmentStageRow {
+  type: string;
+  label: string;
+  exists: boolean;
+  works: boolean | null;
+  asset_count: number;
+  open_findings: { finding_id: string; description: string; priority: string }[];
+}
+
+export function getTreatmentTrain(): Promise<TreatmentStageRow[]> {
+  return request("/reports/treatment-train");
+}
+
+export function getTrafficLight(): Promise<{ run: ChecklistRunDetail | null }> {
+  return request("/reports/traffic-light");
+}
+
+export function getInstrumentation(): Promise<{ levels: Record<string, string> }> {
+  return request("/settings/instrumentation");
+}
+
+export function setInstrumentation(levels: Record<string, string>): Promise<{ levels: Record<string, string> }> {
+  return request("/settings/instrumentation", { method: "PUT", body: JSON.stringify({ levels }) });
+}
+
 export { ApiError };

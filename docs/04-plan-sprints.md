@@ -532,6 +532,51 @@ cada parte que dependía de ellas se resuelve así:**
 - **Qué reportes y con qué frecuencia espera ARCA de una junta** (si existe un formato
   oficial).
 
+### 11.4 D0 — diseño detallado y estado (iniciado 2026-10-05)
+
+El usuario confirmó la propuesta de reportes a ARCA (la junta decide qué envía) y autorizó
+arrancar D0.
+
+**Principio de modelado:** catálogos globales para lo que define un paquete; tablas por tenant
+(con RLS) para lo que hace cada junta.
+- Los catálogos globales no tienen `tenant_id`. El rol de aplicación solo puede leerlos
+  (`REVOKE INSERT, UPDATE, DELETE`): una junta no puede alterar el paquete de otra.
+- Los paquetes se cargan por migración o semilla versionada, nunca desde la UI de una junta.
+
+**Modelo de datos (migración `0021_community_packs.sql`):**
+
+| Tabla | Alcance | Para qué |
+|---|---|---|
+| `pack` | global | Paquete: `core`, `EC-ARCA` (normativo), `EC-MUNICIPIOS-AZULES` (programa). Tipo, país, versión, nota de fuente |
+| `tenant_pack` | tenant (RLS) | Qué paquetes adoptó cada junta. `core` siempre aplica |
+| `component_type` | global | Catálogo de tipos de componente: servicio (agua / saneamiento / soporte), orden en el recorrido, si es etapa de tratamiento. **Reemplaza el conjunto fijo `ASSET_TYPES` de `asset_service.py`**; los 6 tipos urbanos quedan como filas del paquete `core`. `network_asset.type` pasa a ser FK a este catálogo |
+| `parameter` / `parameter_rule` | global | Parámetro (unidad, campo o laboratorio) y regla por paquete: bandas ordenadas (valor máximo, código, etiqueta, severidad), cita de la fuente y vigencia. Ecuador: cloro residual 0,3–1,5 mg/L, turbiedad ≤ 5 UTN, pH 6,5–8,5, E. coli ausente |
+| `checklist_template` | global | Lista de verificación: escala de respuesta (cuáles generan hallazgo) e ítems. Semillas del programa: 7A, 7E, 7G.1, semáforo (AP2), verificación inicial G3 y G4, 4A, 4B, con el texto literal de las guías |
+| `checklist_run` / `checklist_answer` | tenant (RLS) | Aplicación de una lista por la junta: respuesta, observación, acción, responsable, fecha |
+| `finding` | tenant (RLS) | **Hallazgo**, la pieza que conecta todo: punto crítico del mapa técnico, respuesta "No" de una lista, lectura fuera de rango (D1). Tiene prioridad, nivel de apoyo (comunidad / gobierno local / especializado), estado y la marca "pasa al plan de mejora". Es la fuente de 7G.2 (D7) |
+
+**Reportes que salen de la operación (no pantallas):** el recorrido del sistema (activos +
+`asset_connectivity`), el tren de tratamiento (AP3: etapas registradas, estado y hallazgos
+abiertos), el semáforo vigente (última aplicación de AP2) y el mapa técnico (GeoJSON de
+componentes + hallazgos con ubicación).
+
+**Nivel de instrumentación por módulo:** en `tenant.config` (`instrumentation`:
+`basic` / `intermediate` / `advanced` por módulo), sin migración, mismo patrón que
+`tenant_settings.py`.
+
+**Fuera de D0:** la agrupación de juntas (D12) y los roles de operador/directiva con permisos
+(llegan con la app del operador en D1; hoy `role_permission` está vacía y los roles en uso son
+`supervisor` e `integration`).
+
+| Subsprint | Entrega | Estado |
+|---|---|---|
+| **D0.1** | Migración 0021 + semillas de los 3 paquetes + motor puro (`services/community/pack_engine.py`: evaluar regla, respuesta → hallazgo, validar aplicación, tren de tratamiento) con pruebas unitarias + servicio con BD + E2E local contra Postgres | ✅ Hecho 2026-10-05 (local) |
+| **D0.2** | Endpoints en `portal-api` (paquetes, tipos, reglas y evaluación, listas y aplicaciones, hallazgos, reportes, nivel de instrumentación) + `asset_service` leyendo el catálogo | ✅ Hecho 2026-10-05 (local) |
+| **D0.3** | Portal Web: "Mi sistema" (recorrido, semáforo, tren de tratamiento, hallazgos), "Revisiones" (aplicar una lista, historial) y paquetes/niveles en Configuración | 🔶 Construido, compila; falta revisión visual en navegador |
+| **D0.4** | Junta demo (caso ficticio de la Guía 3) + despliegue a producción con respaldo previo (`pg_dump`) + verificación en vivo + bitácora en `05-ejecucion.md` | 🔶 Semilla lista y probada en local; despliegue pendiente de autorización |
+
+### 11.5 Modelo comercial, criterio de éxito y pendientes
+
 **Modelo comercial (revisado 2026-10-05; reemplaza la hipótesis "la junta no paga").** El
 cliente es la junta o la agrupación.
 - **Presupuesto real:** una junta como la de la G4 maneja ~USD 7.000/año. La suscripción tiene
@@ -562,4 +607,4 @@ cuentas generada por la herramienta, no en papel.
 - Págs. 58-67 (G3) y 39-48 (G4) no tienen texto extraíble; probablemente son imágenes o
   contraportada. Revisarlas visualmente.
 
-Estado: **aprobado, plan revisado 2026-10-05, sin iniciar**.
+Estado: **aprobado, plan revisado 2026-10-05, D0 en curso** (ver §11.4).

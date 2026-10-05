@@ -34,6 +34,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "network-balance"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "network-model"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "digital-twin"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "maintenance"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "community"))
 
 import psycopg  # noqa: E402
 from fastapi import Depends, FastAPI, HTTPException  # noqa: E402
@@ -157,6 +158,35 @@ from order_service import (  # noqa: E402
 )
 from order_service import AssetNotFoundError as MaintenanceAssetNotFoundError  # noqa: E402
 from order_service import OrderNotFoundError as MaintenanceOrderNotFoundError  # noqa: E402
+from pack_engine import InvalidAnswersError, InvalidInstrumentationError  # noqa: E402
+from pack_service import (  # noqa: E402
+    AmbiguousRuleError,
+    FindingNotFoundError,
+    InvalidFindingError,
+    PackNotFoundError,
+    RuleNotFoundError,
+    RunNotFoundError,
+    TemplateNotAvailableError,
+    active_pack_ids,
+    adopt_pack,
+    create_finding,
+    evaluate_parameter,
+    get_checklist_run,
+    get_instrumentation,
+    latest_traffic_light,
+    list_active_rules,
+    list_checklist_runs,
+    list_checklist_templates,
+    list_component_types,
+    list_findings,
+    list_packs,
+    set_instrumentation,
+    submit_checklist_run,
+    system_route_report,
+    treatment_train_report,
+    update_finding,
+)
+from pack_service import AssetNotFoundError as PackAssetNotFoundError  # noqa: E402
 from renmeter_common.auth import create_token  # noqa: E402
 from renmeter_common.db import tenant_scope  # noqa: E402
 from renmeter_common.user_service import InvalidCredentialsError, authenticate  # noqa: E402
@@ -1289,3 +1319,205 @@ def generate_due_pm_orders_endpoint(tenant_id: str = Depends(get_tenant_id)) -> 
     Portal) mientras no haya un cron propio."""
     with db_conn() as conn:
         return generate_due_pm_orders(conn, tenant_id)
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# Track D, Sprint D0.2 -- motor de paquetes (docs/04-plan-sprints.md SS11.4)
+# ══════════════════════════════════════════════════════════════════════════
+
+
+@app.get("/packs")
+def list_packs_endpoint(tenant_id: str = Depends(get_tenant_id)) -> dict:
+    """Catalogo de paquetes + los activos de esta junta (`core` siempre)."""
+    with db_conn() as conn:
+        return {"packs": list_packs(conn), "active": active_pack_ids(conn, tenant_id)}
+
+
+@app.post("/packs/{pack_id}/adopt")
+def adopt_pack_endpoint(pack_id: str, tenant_id: str = Depends(get_tenant_id)) -> dict:
+    with db_conn() as conn:
+        try:
+            return adopt_pack(conn, tenant_id, pack_id)
+        except PackNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get("/component-types")
+def list_component_types_endpoint(tenant_id: str = Depends(get_tenant_id)) -> list[dict]:
+    with db_conn() as conn:
+        return list_component_types(conn, tenant_id)
+
+
+@app.get("/parameter-rules")
+def list_parameter_rules_endpoint(tenant_id: str = Depends(get_tenant_id)) -> list[dict]:
+    """Reglas vigentes de los paquetes adoptados, con su cita de fuente."""
+    with db_conn() as conn:
+        try:
+            return list_active_rules(conn, tenant_id)
+        except AmbiguousRuleError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+class EvaluateParameterRequest(BaseModel):
+    parameter_code: str
+    value: float
+
+
+@app.post("/parameter-rules/evaluate")
+def evaluate_parameter_endpoint(body: EvaluateParameterRequest, tenant_id: str = Depends(get_tenant_id)) -> dict:
+    """Evalua un valor con la regla vigente del paquete adoptado. 404 si
+    ningun paquete adoptado tiene regla (nunca se inventa un umbral)."""
+    with db_conn() as conn:
+        try:
+            return evaluate_parameter(conn, tenant_id, body.parameter_code, body.value)
+        except RuleNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except AmbiguousRuleError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.get("/checklist-templates")
+def list_checklist_templates_endpoint(tenant_id: str = Depends(get_tenant_id)) -> list[dict]:
+    with db_conn() as conn:
+        return list_checklist_templates(conn, tenant_id)
+
+
+class ChecklistAnswerRequest(BaseModel):
+    item_key: str
+    answer_code: str
+    observation: str | None = None
+    action: str | None = None
+    responsible: str | None = None
+    due_date: date | None = None
+    asset_id: str | None = None
+
+
+class ChecklistRunRequest(BaseModel):
+    template_id: str
+    answers: list[ChecklistAnswerRequest]
+    notes: str | None = None
+
+
+@app.post("/checklist-runs", status_code=201)
+def submit_checklist_run_endpoint(body: ChecklistRunRequest, actor: dict = Depends(get_actor)) -> dict:
+    """Aplicacion completa de una lista. Quien la hizo sale del JWT, nunca
+    del body. Crea un hallazgo por cada respuesta que la escala marca."""
+    with db_conn() as conn:
+        try:
+            return submit_checklist_run(
+                conn, actor["tenant_id"], body.template_id,
+                [a.model_dump() for a in body.answers], requested_by_label(actor), body.notes,
+            )
+        except (TemplateNotAvailableError, PackAssetNotFoundError) as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except InvalidAnswersError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/checklist-runs")
+def list_checklist_runs_endpoint(tenant_id: str = Depends(get_tenant_id), template_id: str | None = None) -> list[dict]:
+    with db_conn() as conn:
+        return list_checklist_runs(conn, tenant_id, template_id)
+
+
+@app.get("/checklist-runs/{run_id}")
+def get_checklist_run_endpoint(run_id: str, tenant_id: str = Depends(get_tenant_id)) -> dict:
+    with db_conn() as conn:
+        try:
+            return get_checklist_run(conn, tenant_id, run_id)
+        except RunNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+class FindingRequest(BaseModel):
+    description: str
+    priority: str
+    source_kind: str = "manual"
+    asset_id: str | None = None
+    location_text: str | None = None
+    geometry: dict | None = None
+    support_level: str | None = None
+
+
+@app.post("/findings", status_code=201)
+def create_finding_endpoint(body: FindingRequest, actor: dict = Depends(get_actor)) -> dict:
+    """Punto critico del mapa tecnico o hallazgo manual."""
+    with db_conn() as conn:
+        try:
+            return create_finding(
+                conn, actor["tenant_id"], body.description, body.priority, requested_by_label(actor),
+                body.source_kind, body.asset_id, body.location_text, body.geometry, body.support_level,
+            )
+        except PackAssetNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except InvalidFindingError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/findings")
+def list_findings_endpoint(tenant_id: str = Depends(get_tenant_id), status: str | None = None) -> list[dict]:
+    with db_conn() as conn:
+        try:
+            return list_findings(conn, tenant_id, status)
+        except InvalidFindingError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+class FindingUpdateRequest(BaseModel):
+    status: str | None = None
+    priority: str | None = None
+    support_level: str | None = None
+    to_improvement_plan: bool | None = None
+
+
+@app.patch("/findings/{finding_id}")
+def update_finding_endpoint(finding_id: str, body: FindingUpdateRequest, tenant_id: str = Depends(get_tenant_id)) -> dict:
+    with db_conn() as conn:
+        try:
+            return update_finding(
+                conn, tenant_id, finding_id, body.status, body.priority, body.support_level, body.to_improvement_plan
+            )
+        except FindingNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except InvalidFindingError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/reports/system-route")
+def system_route_report_endpoint(tenant_id: str = Depends(get_tenant_id)) -> dict:
+    """Recorrido del sistema: componentes ordenados por servicio y tramo."""
+    with db_conn() as conn:
+        return system_route_report(conn, tenant_id)
+
+
+@app.get("/reports/treatment-train")
+def treatment_train_report_endpoint(tenant_id: str = Depends(get_tenant_id)) -> list[dict]:
+    """Tren de tratamiento (actividad 3 de la Guia 3) desde lo registrado."""
+    with db_conn() as conn:
+        return treatment_train_report(conn, tenant_id)
+
+
+@app.get("/reports/traffic-light")
+def traffic_light_report_endpoint(tenant_id: str = Depends(get_tenant_id)) -> dict:
+    """Semaforo vigente. `run: null` si nunca se aplico."""
+    with db_conn() as conn:
+        return {"run": latest_traffic_light(conn, tenant_id)}
+
+
+@app.get("/settings/instrumentation")
+def get_instrumentation_endpoint(tenant_id: str = Depends(get_tenant_id)) -> dict:
+    with db_conn() as conn:
+        return {"levels": get_instrumentation(conn, tenant_id)}
+
+
+class InstrumentationRequest(BaseModel):
+    levels: dict[str, str]
+
+
+@app.put("/settings/instrumentation")
+def set_instrumentation_endpoint(body: InstrumentationRequest, tenant_id: str = Depends(get_tenant_id)) -> dict:
+    with db_conn() as conn:
+        try:
+            return {"levels": set_instrumentation(conn, tenant_id, body.levels)}
+        except InvalidInstrumentationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc

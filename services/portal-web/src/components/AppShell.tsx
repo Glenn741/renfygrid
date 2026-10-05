@@ -16,6 +16,8 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { to: "/", label: "Vista general", icon: "⌂" },
+  { to: "/system", label: "Mi sistema", icon: "\u{1F6B0}" },
+  { to: "/inspections", label: "Revisiones", icon: "\u{1F4CB}" },
   { to: "/meters", label: "HES / Ingesta", icon: "\u{1F4E1}" },
   { to: "/vee", label: "VEE", icon: "✓" },
   { to: "/consumption", label: "Consumo", icon: "\u{1F4C8}" },

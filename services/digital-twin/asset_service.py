@@ -30,14 +30,28 @@ from psycopg.types.json import Json  # noqa: E402
 
 from renmeter_common.db import tenant_scope  # noqa: E402
 
-ASSET_TYPES = {"pipe", "valve", "tank", "pump", "meter", "sensor"}
 ASSET_STATUSES = {"operational", "out_of_service", "maintenance"}
 
 
 class InvalidAssetTypeError(ValueError):
-    """`type` fuera de los 6 tipos reales del catastro (`0001_init.sql`) --
-    nunca se acepta un tipo libre que despues no se pueda filtrar/mostrar
-    con sentido."""
+    """`type` fuera del catalogo `component_type` para los paquetes de esta
+    junta (Track D, D0.2, `0021_community_packs.sql`). Antes era un conjunto
+    fijo de 6 tipos urbanos en este archivo; ahora esos 6 son filas del
+    paquete `core` junto con los componentes comunitarios (captacion,
+    desarenador, fosa...). Nunca se acepta un tipo libre."""
+
+
+def valid_asset_types(conn: psycopg.Connection, tenant_id: str) -> set[str]:
+    """Tipos del paquete `core` + los de paquetes que la junta adopto."""
+    with conn.transaction():
+        with tenant_scope(conn, tenant_id):
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT code FROM component_type WHERE pack_id = 'core' "
+                    "OR pack_id IN (SELECT pack_id FROM tenant_pack WHERE tenant_id = %s)",
+                    (tenant_id,),
+                )
+                return {r[0] for r in cur.fetchall()}
 
 
 class InvalidAssetStatusError(ValueError):
@@ -63,8 +77,9 @@ def register_asset(
     `{"external_code": "VLV-04821"}`, nunca un campo especial inventado).
     `geometry`: un objeto GeoJSON (`{"type": "Point", "coordinates": [lon, lat]}`)
     si se conoce -- `None` si no, nunca una coordenada inventada."""
-    if asset_type not in ASSET_TYPES:
-        raise InvalidAssetTypeError(f"Tipo de activo invalido: {asset_type!r} (validos: {sorted(ASSET_TYPES)})")
+    valid_types = valid_asset_types(conn, tenant_id)
+    if asset_type not in valid_types:
+        raise InvalidAssetTypeError(f"Tipo de activo invalido: {asset_type!r} (validos: {sorted(valid_types)})")
     if status not in ASSET_STATUSES:
         raise InvalidAssetStatusError(f"Estado de activo invalido: {status!r} (validos: {sorted(ASSET_STATUSES)})")
 
