@@ -92,3 +92,31 @@ def advance_pm_plan(next_due_at: datetime, interval_days: int, now: datetime) ->
     while new_due <= now:
         new_due = new_due + timedelta(days=interval_days)
     return new_due
+
+
+# ── Mantenimiento comunitario (Track D, D3.1, 0035) ──────────────────
+
+def validate_steps(catalog_steps: set[int], steps_done: list[int] | None) -> list[int]:
+    """Pasos del mantenimiento marcados al cerrar (Guia 3 §3.6: revisar,
+    limpiar, corregir, comprobar, registrar). Solo pasos del catalogo, sin
+    repetir. Devuelve la lista ordenada."""
+    done = sorted(set(steps_done or []))
+    unknown = [s for s in done if s not in catalog_steps]
+    if unknown:
+        raise ValueError(f"Pasos desconocidos: {unknown} (validos: {sorted(catalog_steps)})")
+    return done
+
+
+def community_summary(orders: list[dict], catalog_steps: set[int]) -> dict:
+    """Aporte comunitario y metodo: mingas (ordenes con participantes de la
+    comunidad), personas y horas donadas, y % de cierres completados con
+    TODOS los pasos del catalogo. `orders`: ordenes completadas con
+    `steps_done`, `community_participants`, `volunteer_hours`."""
+    mingas = [o for o in orders if (o.get("community_participants") or 0) > 0]
+    with_steps = [o for o in orders if catalog_steps and set(o.get("steps_done") or []) >= catalog_steps]
+    return {
+        "mingas": len(mingas),
+        "participants": sum(o.get("community_participants") or 0 for o in mingas),
+        "volunteer_hours": round(sum(float(o.get("volunteer_hours") or 0) for o in orders), 1),
+        "all_steps_pct": round(100.0 * len(with_steps) / len(orders), 1) if orders and catalog_steps else None,
+    }

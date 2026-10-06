@@ -866,6 +866,14 @@ export interface MaintenanceOrder {
   labor_hours: number | null;
   materials_used: string | null;
   root_cause: string | null;
+  // Guia 3, ficha 7D y §3.6 (0035)
+  pm_plan_id?: string | null;
+  event_id?: string | null;
+  steps_done?: number[];
+  responsible?: string | null;
+  pending_notes?: string | null;
+  community_participants?: number | null;
+  volunteer_hours?: number | null;
   closed_at: string | null;
   is_overdue: boolean;
 }
@@ -910,6 +918,11 @@ export function closeMaintenanceOrder(orderId: string, body: {
   materials_used?: string | null;
   root_cause?: string | null;
   failure_code_id?: string | null;
+  steps_done?: number[];
+  responsible?: string | null;
+  pending_notes?: string | null;
+  community_participants?: number | null;
+  volunteer_hours?: number | null;
 }): Promise<MaintenanceOrder> {
   return request(`/maintenance-orders/${orderId}/close`, { method: "POST", body: JSON.stringify(body) });
 }
@@ -922,6 +935,7 @@ export interface MaintenanceKpis {
   overdue_count: number;
   by_status: Record<string, number>;
   by_priority: Record<string, number>;
+  community?: { year: number; mingas: number; participants: number; volunteer_hours: number; all_steps_pct: number | null };
 }
 
 export function getMaintenanceKpis(): Promise<MaintenanceKpis> {
@@ -987,6 +1001,9 @@ export interface PmPlan {
   next_due_at: string;
   last_generated_at: string | null;
   is_active: boolean;
+  title?: string | null;
+  responsible?: string | null;
+  trigger_events?: string[];
 }
 
 export function getPmPlans(): Promise<PmPlan[]> {
@@ -999,12 +1016,44 @@ export function createPmPlan(body: {
   priority: string;
   interval_days: number;
   next_due_at: string;
+  title?: string | null;
+  responsible?: string | null;
+  trigger_events?: string[];
 }): Promise<PmPlan> {
   return request("/maintenance/pm-plans", { method: "POST", body: JSON.stringify(body) });
 }
 
 export function generateDuePmOrders(): Promise<MaintenanceOrder[]> {
   return request("/maintenance/pm-plans/generate-due", { method: "POST", body: "{}" });
+}
+
+// ── Mantenimiento comunitario (0035) ──────────────────────────────────
+
+export interface MaintenanceCommunityCatalog {
+  steps: { step_no: number; label: string }[];
+  event_types: { pack_id: string; code: string; label: string }[];
+}
+
+export function getMaintenanceCommunityCatalog(): Promise<MaintenanceCommunityCatalog> {
+  return request("/maintenance/community-catalog");
+}
+
+export interface MaintenanceEvent {
+  event_id: string;
+  event_type_code: string;
+  label: string;
+  occurred_at: string;
+  notes: string | null;
+  reported_by: string;
+  orders_generated: number;
+}
+
+export function getMaintenanceEvents(): Promise<MaintenanceEvent[]> {
+  return request("/maintenance/events");
+}
+
+export function recordMaintenanceEvent(body: { event_type_code: string; occurred_at?: string; notes?: string | null }): Promise<{ event_id: string; label: string; orders: MaintenanceOrder[] }> {
+  return request("/maintenance/events", { method: "POST", body: JSON.stringify(body) });
 }
 
 export interface SessionInfo {

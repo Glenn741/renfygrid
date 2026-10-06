@@ -9,6 +9,9 @@ import {
   createPmPlan,
   generateDuePmOrders,
   getCrews,
+  getMaintenanceCommunityCatalog,
+  getMaintenanceEvents,
+  recordMaintenanceEvent,
   getFailureCodes,
   getMaintenanceKpis,
   getMaintenanceOrders,
@@ -37,11 +40,11 @@ import { sectionsFor } from "../navigation";
 const SECTIONS = sectionsFor("/maintenance");
 
 const TYPE_LABEL: Record<string, string> = {
-  preventive: "Preventivo", corrective: "Correctivo", inspection: "Inspección",
+  preventive: "Preventivo", corrective: "Correctivo", inspection: "Inspección", emergency: "Emergente",
 };
 const SOURCE_LABEL: Record<string, string> = {
   asset_condition: "Condición del activo", simulation_result: "Resultado de simulación",
-  balance_anomaly: "Anomalía de balance", pm_schedule: "Preventivo programado", manual: "Manual",
+  balance_anomaly: "Anomalía de balance", pm_schedule: "Preventivo programado", manual: "Manual", event: "Por evento",
 };
 const STATUS_LABEL: Record<string, string> = {
   generated: "Generada", scheduled: "Programada", assigned: "Asignada", sent_to_bayforce: "Enviada a BayForce",
@@ -144,9 +147,15 @@ function CloseOrderForm({ order, onDone }: { order: MaintenanceOrder; onDone: ()
   const [materialsUsed, setMaterialsUsed] = useState("");
   const [rootCause, setRootCause] = useState("");
   const [failureCodeId, setFailureCodeId] = useState("");
+  const [steps, setSteps] = useState<number[]>([]);
+  const [responsible, setResponsible] = useState("");
+  const [pending, setPending] = useState("");
+  const [participants, setParticipants] = useState("");
+  const [volunteerHours, setVolunteerHours] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const { data: failureCodes } = useQuery({ queryKey: ["failure-codes"], queryFn: () => getFailureCodes() });
+  const { data: catalog } = useQuery({ queryKey: ["maintenance-community-catalog"], queryFn: getMaintenanceCommunityCatalog });
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -156,6 +165,11 @@ function CloseOrderForm({ order, onDone }: { order: MaintenanceOrder; onDone: ()
         materials_used: materialsUsed || null,
         root_cause: rootCause || null,
         failure_code_id: failureCodeId || null,
+        steps_done: steps,
+        responsible: responsible || null,
+        pending_notes: pending || null,
+        community_participants: participants ? Number(participants) : null,
+        volunteer_hours: volunteerHours ? Number(volunteerHours) : null,
       }),
     onSuccess: () => {
       setError(null);
@@ -197,6 +211,40 @@ function CloseOrderForm({ order, onDone }: { order: MaintenanceOrder; onDone: ()
             <input className="rounded-lg border border-slate-300 px-2 py-1 text-xs w-full" value={rootCause} onChange={(e) => setRootCause(e.target.value)} />
           </div>
         </div>
+        {status === "completed" && (catalog?.steps.length ?? 0) > 0 && (
+          <div className="mt-3">
+            <p className="text-[10px] font-medium text-slate-500 mb-1">Pasos del mantenimiento que se cumplieron</p>
+            <div className="flex flex-wrap gap-2">
+              {catalog!.steps.map((s) => (
+                <label key={s.step_no} className={`inline-flex cursor-pointer items-center gap-1 rounded-full border px-2.5 py-1 text-xs ${steps.includes(s.step_no) ? "border-emerald-600 bg-emerald-50 text-emerald-800" : "border-slate-300 bg-white text-slate-700"}`}>
+                  <input type="checkbox" className="sr-only" checked={steps.includes(s.step_no)}
+                    onChange={() => setSteps((cur) => (cur.includes(s.step_no) ? cur.filter((x) => x !== s.step_no) : [...cur, s.step_no]))} />
+                  {s.step_no}. {s.label}
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
+        {status === "completed" && (
+          <div className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <div>
+              <label className="block text-[10px] font-medium text-slate-500 mb-1">Responsable</label>
+              <input className="rounded-lg border border-slate-300 px-2 py-1 text-xs w-full" value={responsible} onChange={(e) => setResponsible(e.target.value)} />
+            </div>
+            <div>
+              <label className="block text-[10px] font-medium text-slate-500 mb-1">Pendiente</label>
+              <input className="rounded-lg border border-slate-300 px-2 py-1 text-xs w-full" value={pending} onChange={(e) => setPending(e.target.value)} placeholder="lo que quedó por hacer" />
+            </div>
+            <div>
+              <label className="block text-[10px] font-medium text-slate-500 mb-1">Minga: personas</label>
+              <input type="number" min={0} className="rounded-lg border border-slate-300 px-2 py-1 text-xs w-full" value={participants} onChange={(e) => setParticipants(e.target.value)} />
+            </div>
+            <div>
+              <label className="block text-[10px] font-medium text-slate-500 mb-1">Minga: horas donadas</label>
+              <input type="number" min={0} step="any" className="rounded-lg border border-slate-300 px-2 py-1 text-xs w-full" value={volunteerHours} onChange={(e) => setVolunteerHours(e.target.value)} />
+            </div>
+          </div>
+        )}
         {error && <p className="text-xs text-red-600 mt-2">{error}</p>}
         <div className="mt-2 flex gap-2">
           <button onClick={() => mutation.mutate()} disabled={mutation.isPending} className="rounded-lg bg-indigo-600 text-white text-xs font-semibold px-3 py-1.5 hover:bg-indigo-700 disabled:opacity-40">
@@ -293,6 +341,13 @@ function OrderRow({ order }: { order: MaintenanceOrder }) {
             {order.status === "in_progress" && (
               <button onClick={() => setClosing((v) => !v)} className="text-xs text-indigo-600 hover:text-indigo-700">Cerrar orden</button>
             )}
+            {order.status === "completed" && (order.steps_done?.length || order.community_participants) ? (
+              <span className="text-[11px] text-slate-500">
+                {order.steps_done?.length ? `${order.steps_done.length} pasos` : ""}
+                {order.community_participants ? ` · minga ${order.community_participants} personas, ${order.volunteer_hours ?? 0} h` : ""}
+                {order.pending_notes ? ` · pendiente: ${order.pending_notes}` : ""}
+              </span>
+            ) : null}
             {order.status === "completed" && order.labor_hours !== null && (
               <span className="text-[11px] text-slate-400">{order.labor_hours}h · {order.materials_used ?? "sin materiales"}</span>
             )}
@@ -348,15 +403,20 @@ function CreatePmPlanForm() {
   const [priority, setPriority] = useState("low");
   const [intervalDays, setIntervalDays] = useState("180");
   const [nextDueAt, setNextDueAt] = useState("");
+  const [title, setTitle] = useState("");
+  const [responsible, setResponsible] = useState("");
+  const [events, setEvents] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const { data: assets } = useQuery({ queryKey: ["network-assets"], queryFn: () => getNetworkAssets() });
+  const { data: catalog } = useQuery({ queryKey: ["maintenance-community-catalog"], queryFn: getMaintenanceCommunityCatalog });
 
   const mutation = useMutation({
     mutationFn: () =>
       createPmPlan({
         asset_id: assetId, order_type: orderType, priority,
         interval_days: Number(intervalDays), next_due_at: new Date(nextDueAt).toISOString(),
+        title: title || null, responsible: responsible || null, trigger_events: events,
       }),
     onSuccess: () => {
       setError(null);
@@ -406,6 +466,30 @@ function CreatePmPlanForm() {
           <input type="datetime-local" className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm w-full" value={nextDueAt} onChange={(e) => setNextDueAt(e.target.value)} />
         </div>
       </div>
+      <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+          <label className="block text-xs font-medium text-slate-500 mb-1">Actividad</label>
+          <input className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm w-full" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="p. ej. Limpieza de captación y desarenador" />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-slate-500 mb-1">Responsable</label>
+          <input className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm w-full" value={responsible} onChange={(e) => setResponsible(e.target.value)} placeholder="p. ej. Operador + minga" />
+        </div>
+      </div>
+      {(catalog?.event_types.length ?? 0) > 0 && (
+        <div className="mt-3">
+          <p className="text-xs font-medium text-slate-500 mb-1">Además, después de (revisión extraordinaria):</p>
+          <div className="flex flex-wrap gap-2">
+            {catalog!.event_types.map((e) => (
+              <label key={e.code} className={`inline-flex cursor-pointer items-center rounded-full border px-2.5 py-1 text-xs ${events.includes(e.code) ? "border-indigo-600 bg-indigo-50 text-indigo-800" : "border-slate-300 bg-white text-slate-700"}`}>
+                <input type="checkbox" className="sr-only" checked={events.includes(e.code)}
+                  onChange={() => setEvents((cur) => (cur.includes(e.code) ? cur.filter((x) => x !== e.code) : [...cur, e.code]))} />
+                {e.label}
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
       <p className="text-xs text-slate-500 mt-2">
         Plan real por activo específico -- cuando "Próximo vencimiento" ya pasó, "Generar órdenes vencidas" genera la orden real y avanza el plan al siguiente ciclo.
       </p>
@@ -424,6 +508,8 @@ function PmPlansSection() {
   const queryClient = useQueryClient();
   const [result, setResult] = useState<string | null>(null);
   const { data: plans, isLoading } = useQuery({ queryKey: ["pm-plans"], queryFn: getPmPlans, refetchInterval: 30_000 });
+  const { data: catalog } = useQuery({ queryKey: ["maintenance-community-catalog"], queryFn: getMaintenanceCommunityCatalog });
+  const eventLabels = Object.fromEntries((catalog?.event_types ?? []).map((e) => [e.code, e.label.toLowerCase()]));
 
   const generateMutation = useMutation({
     mutationFn: generateDuePmOrders,
@@ -471,7 +557,15 @@ function PmPlansSection() {
                 const due = new Date(p.next_due_at) <= new Date();
                 return (
                   <tr key={p.pm_plan_id} className={due ? "bg-amber-50" : ""}>
-                    <td className="px-4 py-3 font-mono text-xs text-slate-600">{p.asset_id.slice(0, 8)}</td>
+                    <td className="px-4 py-3 text-xs text-slate-700">
+                      {p.title ?? <span className="font-mono text-slate-600">{p.asset_id.slice(0, 8)}</span>}
+                      {p.responsible && <span className="block text-[11px] text-slate-500">{p.responsible}</span>}
+                      {(p.trigger_events?.length ?? 0) > 0 && (
+                        <span className="block text-[11px] text-indigo-700">
+                          y después de: {p.trigger_events!.map((c) => eventLabels[c] ?? c).join(", ")}
+                        </span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-slate-600">{TYPE_LABEL[p.order_type] ?? p.order_type}</td>
                     <td className="px-4 py-3">
                       <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold" style={{ background: `${PRIORITY_COLOR[p.priority]}22`, color: PRIORITY_COLOR[p.priority] }}>
@@ -491,6 +585,52 @@ function PmPlansSection() {
           </table>
         </div>
       )}
+    </>
+  );
+}
+
+function EventsSection() {
+  const queryClient = useQueryClient();
+  const { data: catalog } = useQuery({ queryKey: ["maintenance-community-catalog"], queryFn: getMaintenanceCommunityCatalog });
+  const { data: events } = useQuery({ queryKey: ["maintenance-events"], queryFn: getMaintenanceEvents });
+  const [code, setCode] = useState("");
+  const [notes, setNotes] = useState("");
+  const [msg, setMsg] = useState<string | null>(null);
+  const mutation = useMutation({
+    mutationFn: () => recordMaintenanceEvent({ event_type_code: code, notes: notes || null }),
+    onSuccess: (r) => {
+      setNotes("");
+      setMsg(r.orders.length ? `${r.label}: ${r.orders.length} orden(es) de revisión extraordinaria generada(s).` : `${r.label} registrado. Ningún plan espera este evento.`);
+      for (const k of ["maintenance-events", "maintenance-orders", "maintenance-kpis"]) queryClient.invalidateQueries({ queryKey: [k] });
+    },
+    onError: (err) => setMsg(err instanceof ApiError ? err.message : "No se pudo registrar el evento."),
+  });
+  return (
+    <>
+      <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-2">Eventos que piden revisión</h2>
+      <p className="mb-3 max-w-3xl text-sm text-slate-600">
+        La guía pide revisar captación, conducción y red no solo por calendario sino también después de lluvias fuertes, movimientos de tierra o quejas. Al registrar el evento se genera una orden por cada plan que lo espera.
+      </p>
+      <div className="mb-3 flex flex-wrap items-end gap-2 rounded-xl border border-slate-200 bg-white p-4">
+        <select aria-label="Evento" className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm bg-white" value={code} onChange={(e) => setCode(e.target.value)}>
+          <option value="">— ¿Qué pasó? —</option>
+          {(catalog?.event_types ?? []).map((e) => <option key={e.code} value={e.code}>{e.label}</option>)}
+        </select>
+        <input aria-label="Detalle" className="min-w-[14rem] flex-1 rounded-lg border border-slate-300 px-3 py-1.5 text-sm" placeholder="Detalle (dónde, cuánto duró, qué se vio)" value={notes} onChange={(e) => setNotes(e.target.value)} />
+        <button onClick={() => mutation.mutate()} disabled={!code || mutation.isPending} className="rounded-lg bg-indigo-600 text-white text-xs font-semibold px-3 py-2 hover:bg-indigo-700 disabled:opacity-40">
+          Registrar evento
+        </button>
+        {msg && <p className="w-full text-sm text-slate-700">{msg}</p>}
+      </div>
+      {events && events.length === 0 && <EmptyState message="Sin eventos registrados." />}
+      <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white">
+        {(events ?? []).map((e) => (
+          <li key={e.event_id} className="px-4 py-2 text-sm text-slate-700">
+            <strong>{e.label}</strong> · {new Date(e.occurred_at).toLocaleString("es")} · {e.orders_generated} orden(es)
+            {e.notes && <span className="block text-xs text-slate-500">{e.notes}</span>}
+          </li>
+        ))}
+      </ul>
     </>
   );
 }
@@ -554,6 +694,26 @@ export function MaintenancePage() {
             </div>
           </div>
         )}
+        {kpis?.community && (
+          <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-4">
+              <div className="text-2xl font-bold text-emerald-800">{kpis.community.mingas}</div>
+              <div className="text-xs text-slate-600 mt-1">Mingas en {kpis.community.year}</div>
+            </div>
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-4">
+              <div className="text-2xl font-bold text-emerald-800">{kpis.community.participants}</div>
+              <div className="text-xs text-slate-600 mt-1">Personas que participaron</div>
+            </div>
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-4">
+              <div className="text-2xl font-bold text-emerald-800">{kpis.community.volunteer_hours.toLocaleString("es")} h</div>
+              <div className="text-xs text-slate-600 mt-1">Horas donadas por la comunidad</div>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-white p-4">
+              <div className="text-2xl font-bold text-slate-900">{kpis.community.all_steps_pct === null ? "—" : `${kpis.community.all_steps_pct}%`}</div>
+              <div className="text-xs text-slate-500 mt-1">Cierres con los 5 pasos</div>
+            </div>
+          </div>
+        )}
       </div>
 
       <div id="orders" className="scroll-mt-24 mb-8">
@@ -605,8 +765,12 @@ export function MaintenancePage() {
         </div>
       </div>
 
-      <div id="pm-plans" className="scroll-mt-24">
+      <div id="pm-plans" className="scroll-mt-24 mb-8">
         <PmPlansSection />
+      </div>
+
+      <div id="events" className="scroll-mt-24">
+        <EventsSection />
       </div>
     </StagePage>
   );

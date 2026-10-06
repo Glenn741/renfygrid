@@ -297,8 +297,8 @@ def run(dsn: str) -> int:
             with conn.transaction():
                 with tenant_scope(conn, tenant_id):
                     with conn.cursor() as cur:
-                        cur.execute("DELETE FROM maintenance_pm_plan WHERE tenant_id = %s", (tenant_id,))
                         cur.execute("DELETE FROM maintenance_order WHERE tenant_id = %s", (tenant_id,))
+                        cur.execute("DELETE FROM maintenance_pm_plan WHERE tenant_id = %s", (tenant_id,))
                         cur.execute("DELETE FROM maintenance_crew WHERE tenant_id = %s", (tenant_id,))
                         cur.execute("DELETE FROM maintenance_failure_code WHERE tenant_id = %s", (tenant_id,))
                         cur.execute("DELETE FROM maintenance_sla_policy WHERE tenant_id = %s", (tenant_id,))

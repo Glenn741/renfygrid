@@ -2166,3 +2166,61 @@ La vista "Hoy" cuenta `critical_quality_open`.
 - 15 de mayo: muestra sin hallazgos.
 - 28 de septiembre: tras la lluvia, E. coli 2 en el tanque, alerta crítica.
 - 1 de octubre: control después de desinfectar, E. coli 0; la alerta se cerró.
+
+### D3.1 Mantenimiento comunitario sobre el CMMS (2026-10-06)
+
+Fuente: Guía 3 §3.6 y fichas 7D y 7G.
+
+**Migración 0035:**
+- **Orden:**
+  - `pm_plan_id` y `event_id`: de dónde salió; el calendario de D3.2 lo necesita para medir
+    cumplimiento;
+  - `steps_done`;
+  - `responsible` y `pending_notes` (ficha 7D);
+  - `community_participants` y `volunteer_hours` (minga).
+- **Plan:** `title` (actividad), `responsible` y `trigger_events`.
+- **Catálogos del paquete Municipios Azules:**
+  - `maintenance_step`: los 5 pasos (revisar, limpiar, corregir, comprobar, registrar);
+  - `maintenance_event_type`: lluvias fuertes, deslizamiento o movimiento de tierra, quejas de
+    usuarios.
+- **Por junta:** `maintenance_event`, con RLS.
+
+**CMMS (`order_service.py`, `maintenance_engine.py`):**
+- Tipo de orden `emergency` (emergente) y fuente `event`.
+- El cierre valida los pasos contra el catálogo y rechaza negativos en la minga. No exige los 5
+  pasos: el % de cierres con todos los pasos se mide como KPI.
+- `record_maintenance_event` genera una orden por cada plan activo que espera ese evento, ligada
+  al plan y al evento. El plan conserva su frecuencia normal: el evento agrega una revisión
+  extraordinaria, no la reemplaza.
+- KPIs del año: mingas, personas, horas donadas y % de cierres con los 5 pasos.
+
+**API:**
+- `GET /maintenance/community-catalog`;
+- `POST/GET /maintenance/events` (permiso `maintenance.manage`, así que el operador registra la
+  lluvia);
+- `/close` y `/pm-plans` aceptan los campos nuevos.
+
+**Portal (Mantenimiento):**
+- Cierre con los 5 pasos, responsable, pendiente y minga.
+- Planes con actividad, responsable y "además, después de…".
+- Nueva sección **Eventos**.
+- Tarjetas de aporte comunitario.
+
+**Verificación:**
+- Pruebas del CMMS: 18.
+- E2E nuevo `verify_community_maintenance_end_to_end.py`.
+- **Regresión completa:** los 26 E2E en verde. La regresión encontró que la limpieza de
+  `verify_maintenance_end_to_end.py` borraba los planes antes que las órdenes, lo que ahora
+  rompe la FK `pm_plan_id`; se corrigió el orden y se limpiaron los restos de esa corrida en la BD
+  local.
+
+**Demo en `jaas001`:**
+- tres planes: captación semanal y después de lluvias, conducción mensual y después de lluvias o
+  deslizamientos, reservorio semestral;
+- la lluvia del 27 de septiembre, registrada por el operador, generó 2 órdenes extraordinarias,
+  cerradas con minga (11 personas y 33 h en la captación) y un pendiente en el cruce de la
+  quebrada;
+- correctivo de la fuga del sector alto (30 de septiembre).
+
+**Aporte del año:** 3 mingas, 16 personas, 43 horas. Solo el 16,7 % de los cierres tiene los 5
+pasos, porque las órdenes anteriores no los registraban; el dato es real.

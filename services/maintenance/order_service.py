@@ -65,16 +65,20 @@ import psycopg  # noqa: E402
 from renmeter_common.db import tenant_scope  # noqa: E402
 from maintenance_engine import (  # noqa: E402
     advance_pm_plan,
+    community_summary,
     compute_backlog,
     compute_mttr_hours,
     compute_pm_compliance_pct,
     compute_sla_due_at,
     is_overdue,
     pm_plan_is_due,
+    validate_steps,
 )
 
-ORDER_TYPES = {"preventive", "corrective", "inspection"}
-ORDER_SOURCES = {"asset_condition", "simulation_result", "balance_anomaly", "pm_schedule", "manual"}
+# emergency: Guia 3 §3.6, "riesgo inmediato para la salud, la continuidad o la infraestructura" (D3.1).
+ORDER_TYPES = {"preventive", "corrective", "inspection", "emergency"}
+# event: generada por un evento registrado (lluvia, deslizamiento, quejas) sobre los planes que lo esperan (D3.1).
+ORDER_SOURCES = {"asset_condition", "simulation_result", "balance_anomaly", "pm_schedule", "manual", "event"}
 PRIORITIES = {"low", "medium", "high", "emergency"}
 TERMINAL_STATUSES = {"completed", "cancelled"}
 
@@ -93,6 +97,18 @@ ALLOWED_TRANSITIONS: dict[str, set[str]] = {
     "completed": set(),
     "cancelled": set(),
 }
+
+
+class InvalidCommunityWorkError(ValueError):
+    """Pasos del mantenimiento o datos de la minga invalidos (D3.1)."""
+
+
+class InvalidPmPlanError(ValueError):
+    """Plan con frecuencia o eventos invalidos (D3.1)."""
+
+
+class MaintenanceEventError(LookupError):
+    """Tipo de evento inexistente para los paquetes de la junta (D3.1)."""
 
 
 class InvalidOrderTypeError(ValueError):
@@ -214,6 +230,8 @@ def generate_order(
     source: str,
     priority: str,
     reason: str | None = None,
+    pm_plan_id: str | None = None,
+    event_id: str | None = None,
 ) -> dict[str, Any]:
     """Genera una orden real -- valida la anomalia real para las fuentes
     automaticas ANTES de insertar (`AnomalyNotConfirmedError` si no se
@@ -249,9 +267,9 @@ def generate_order(
         with tenant_scope(conn, tenant_id):
             with conn.cursor() as cur:
                 cur.execute(
-                    "INSERT INTO maintenance_order (tenant_id, asset_id, type, source, priority, status, reason) "
-                    "VALUES (%s, %s, %s, %s, %s, 'generated', %s) RETURNING id, created_at",
-                    (tenant_id, asset_id, order_type, source, priority, reason),
+                    "INSERT INTO maintenance_order (tenant_id, asset_id, type, source, priority, status, reason, pm_plan_id, event_id) "
+                    "VALUES (%s, %s, %s, %s, %s, 'generated', %s, %s, %s) RETURNING id, created_at",
+                    (tenant_id, asset_id, order_type, source, priority, reason, pm_plan_id, event_id),
                 )
                 (order_id, created_at) = cur.fetchone()
                 sla_due_at = compute_sla_due_at(created_at, target_hours)
@@ -260,17 +278,13 @@ def generate_order(
                         "UPDATE maintenance_order SET sla_due_at = %s WHERE id = %s AND tenant_id = %s",
                         (sla_due_at, order_id, tenant_id),
                     )
-    return _row_dict(
-        order_id=str(order_id), asset_id=asset_id, type=order_type, source=source, priority=priority,
-        status="generated", reason=reason, bayforce_order_ref=None, created_at=created_at, sla_due_at=sla_due_at,
-        failure_code_id=None, scheduled_at=None, assigned_crew_id=None, labor_hours=None, materials_used=None,
-        root_cause=None, closed_at=None,
-    )
+    return get_order_detail(conn, tenant_id, str(order_id))
 
 
 _ORDER_COLUMNS = (
     "id, asset_id, type, source, priority, status, bayforce_order_ref, reason, created_at, sla_due_at, "
-    "failure_code_id, scheduled_at, assigned_crew_id, labor_hours, materials_used, root_cause, closed_at"
+    "failure_code_id, scheduled_at, assigned_crew_id, labor_hours, materials_used, root_cause, closed_at, "
+    "pm_plan_id, event_id, steps_done, responsible, pending_notes, community_participants, volunteer_hours"
 )
 
 
@@ -288,6 +302,13 @@ def _row_dict(**kw: Any) -> dict[str, Any]:
         "labor_hours": float(kw["labor_hours"]) if kw["labor_hours"] is not None else None,
         "materials_used": kw["materials_used"], "root_cause": kw["root_cause"], "closed_at": _iso(kw["closed_at"]),
         "is_overdue": is_overdue(kw["sla_due_at"], kw["status"], _now()),
+        "pm_plan_id": str(kw["pm_plan_id"]) if kw.get("pm_plan_id") else None,
+        "event_id": str(kw["event_id"]) if kw.get("event_id") else None,
+        "steps_done": list(kw.get("steps_done") or []),
+        "responsible": kw.get("responsible"),
+        "pending_notes": kw.get("pending_notes"),
+        "community_participants": kw.get("community_participants"),
+        "volunteer_hours": float(kw["volunteer_hours"]) if kw.get("volunteer_hours") is not None else None,
     }
 
 
@@ -296,7 +317,8 @@ def _order_row_to_dict(row: tuple) -> dict[str, Any]:
         order_id=str(row[0]), asset_id=str(row[1]), type=row[2], source=row[3], priority=row[4], status=row[5],
         bayforce_order_ref=row[6], reason=row[7], created_at=row[8], sla_due_at=row[9], failure_code_id=row[10],
         scheduled_at=row[11], assigned_crew_id=row[12], labor_hours=row[13], materials_used=row[14],
-        root_cause=row[15], closed_at=row[16],
+        root_cause=row[15], closed_at=row[16], pm_plan_id=row[17], event_id=row[18], steps_done=row[19],
+        responsible=row[20], pending_notes=row[21], community_participants=row[22], volunteer_hours=row[23],
     )
 
 
@@ -407,6 +429,11 @@ def close_order(
     materials_used: str | None = None,
     root_cause: str | None = None,
     failure_code_id: str | None = None,
+    steps_done: list[int] | None = None,
+    responsible: str | None = None,
+    pending_notes: str | None = None,
+    community_participants: int | None = None,
+    volunteer_hours: float | None = None,
 ) -> dict[str, Any]:
     """Cierra la orden real -- `completed` (con lo que de verdad se hizo:
     horas, materiales, causa raiz, codigo de falla) o `cancelled`. Solo
@@ -416,9 +443,21 @@ def close_order(
         raise InvalidCloseStatusError(f"close_order solo cierra a 'completed'/'cancelled', no {new_status!r}")
     if failure_code_id is not None and not _failure_code_exists(conn, tenant_id, failure_code_id):
         raise FailureCodeNotFoundError(f"No existe el codigo de falla {failure_code_id} para este tenant")
+    if community_participants is not None and community_participants < 0:
+        raise InvalidCommunityWorkError("Los participantes de la minga no pueden ser negativos")
+    if volunteer_hours is not None and volunteer_hours < 0:
+        raise InvalidCommunityWorkError("Las horas donadas no pueden ser negativas")
+    try:
+        steps = validate_steps(maintenance_steps(conn, tenant_id)["numbers"], steps_done)
+    except ValueError as exc:
+        raise InvalidCommunityWorkError(str(exc)) from exc
     extra = {
         "labor_hours": labor_hours, "materials_used": materials_used,
         "root_cause": root_cause, "failure_code_id": failure_code_id,
+        # Guia 3, ficha 7D y §3.6 (D3.1): pasos, responsable, pendiente y minga.
+        "steps_done": steps, "responsible": (responsible or "").strip() or None,
+        "pending_notes": (pending_notes or "").strip() or None,
+        "community_participants": community_participants, "volunteer_hours": volunteer_hours,
     }
     return _transition(conn, tenant_id, order_id, new_status, extra)
 
@@ -534,6 +573,9 @@ def create_pm_plan(
     priority: str,
     interval_days: int,
     next_due_at: datetime,
+    title: str | None = None,
+    responsible: str | None = None,
+    trigger_events: list[str] | None = None,
 ) -> dict[str, Any]:
     """Plan real por activo especifico (nunca "por tipo de activo"
     generico) -- `next_due_at` es la fecha real desde la que se cuenta,
@@ -542,20 +584,25 @@ def create_pm_plan(
         raise InvalidOrderTypeError(f"Tipo de plan PM invalido: {order_type!r} (validos: preventive, inspection)")
     if priority not in PRIORITIES:
         raise InvalidPriorityError(f"Prioridad invalida: {priority!r} (validas: {sorted(PRIORITIES)})")
+    if interval_days <= 0:
+        raise InvalidPmPlanError("La frecuencia del plan debe ser un número de días positivo")
     _asset_row(conn, tenant_id, asset_id)  # AssetNotFoundError si no existe
+    known_events = {e["code"] for e in maintenance_event_types(conn, tenant_id)}
+    events = sorted(set(trigger_events or []))
+    unknown = [e for e in events if e not in known_events]
+    if unknown:
+        raise InvalidPmPlanError(f"Eventos desconocidos: {unknown} (validos: {sorted(known_events)})")
     with conn.transaction():
         with tenant_scope(conn, tenant_id):
             with conn.cursor() as cur:
                 cur.execute(
-                    "INSERT INTO maintenance_pm_plan (tenant_id, asset_id, order_type, priority, interval_days, next_due_at) "
-                    "VALUES (%s, %s, %s, %s, %s, %s) RETURNING id",
-                    (tenant_id, asset_id, order_type, priority, interval_days, next_due_at),
+                    "INSERT INTO maintenance_pm_plan (tenant_id, asset_id, order_type, priority, interval_days, next_due_at, "
+                    "title, responsible, trigger_events) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
+                    (tenant_id, asset_id, order_type, priority, interval_days, next_due_at,
+                     (title or "").strip() or None, (responsible or "").strip() or None, events),
                 )
                 (pm_plan_id,) = cur.fetchone()
-    return {
-        "pm_plan_id": str(pm_plan_id), "asset_id": asset_id, "order_type": order_type, "priority": priority,
-        "interval_days": interval_days, "next_due_at": next_due_at.isoformat(), "last_generated_at": None, "is_active": True,
-    }
+    return next(p for p in list_pm_plans(conn, tenant_id) if p["pm_plan_id"] == str(pm_plan_id))
 
 
 def _pm_plan_row_to_dict(row: tuple) -> dict[str, Any]:
@@ -563,6 +610,7 @@ def _pm_plan_row_to_dict(row: tuple) -> dict[str, Any]:
         "pm_plan_id": str(row[0]), "asset_id": str(row[1]), "order_type": row[2], "priority": row[3],
         "interval_days": row[4], "next_due_at": row[5].isoformat(), "is_active": row[7],
         "last_generated_at": row[6].isoformat() if row[6] else None,
+        "title": row[8], "responsible": row[9], "trigger_events": list(row[10] or []),
     }
 
 
@@ -571,8 +619,8 @@ def list_pm_plans(conn: psycopg.Connection, tenant_id: str) -> list[dict]:
         with tenant_scope(conn, tenant_id):
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT id, asset_id, order_type, priority, interval_days, next_due_at, last_generated_at, is_active "
-                    "FROM maintenance_pm_plan WHERE tenant_id = %s ORDER BY next_due_at",
+                    "SELECT id, asset_id, order_type, priority, interval_days, next_due_at, last_generated_at, is_active, "
+                    "title, responsible, trigger_events FROM maintenance_pm_plan WHERE tenant_id = %s ORDER BY next_due_at",
                     (tenant_id,),
                 )
                 rows = cur.fetchall()
@@ -603,6 +651,7 @@ def generate_due_pm_orders(conn: psycopg.Connection, tenant_id: str, now: dateti
         order = generate_order(
             conn, tenant_id, str(asset_id), order_type, "pm_schedule", priority,
             reason=f"Mantenimiento preventivo programado (plan {pm_plan_id}, cada {interval_days} dias)",
+            pm_plan_id=str(pm_plan_id),
         )
         generated.append(order)
         new_due = advance_pm_plan(next_due_at, interval_days, now)
@@ -661,6 +710,7 @@ def maintenance_kpis(conn: psycopg.Connection, tenant_id: str) -> dict[str, Any]
         "overdue_count": overdue_count,
         "by_status": by_status,
         "by_priority": by_priority,
+        "community": _community_kpis(conn, tenant_id, now),
     }
 
 
@@ -744,3 +794,96 @@ def close_from_webhook(conn: psycopg.Connection, tenant_id: str, bayforce_order_
             with conn.cursor() as cur:
                 cur.execute(f"UPDATE maintenance_order SET {set_clause} WHERE id = %s AND tenant_id = %s", params)
     return {"order_id": order_id, "status": new_status, "bayforce_order_ref": bayforce_order_ref}
+
+
+# ── Mantenimiento comunitario (Track D, D3.1, 0035) ──────────────────
+
+def _active_packs(conn: psycopg.Connection, tenant_id: str) -> list[str]:
+    with conn.transaction():
+        with tenant_scope(conn, tenant_id):
+            with conn.cursor() as cur:
+                cur.execute("SELECT pack_id FROM tenant_pack WHERE tenant_id = %s", (tenant_id,))
+                return ["core", *[r[0] for r in cur.fetchall()]]
+
+
+def maintenance_steps(conn: psycopg.Connection, tenant_id: str) -> dict[str, Any]:
+    """Los pasos del mantenimiento de los paquetes de la junta (Guia 3 §3.6)."""
+    with conn.cursor() as cur:
+        cur.execute("SELECT step_no, label FROM maintenance_step WHERE pack_id = ANY(%s) ORDER BY step_no",
+                    (_active_packs(conn, tenant_id),))
+        steps = [{"step_no": r[0], "label": r[1]} for r in cur.fetchall()]
+    return {"steps": steps, "numbers": {s["step_no"] for s in steps}}
+
+
+def maintenance_event_types(conn: psycopg.Connection, tenant_id: str) -> list[dict]:
+    with conn.cursor() as cur:
+        cur.execute("SELECT pack_id, code, label FROM maintenance_event_type WHERE pack_id = ANY(%s) ORDER BY sort_order",
+                    (_active_packs(conn, tenant_id),))
+        return [{"pack_id": r[0], "code": r[1], "label": r[2]} for r in cur.fetchall()]
+
+
+def record_maintenance_event(
+    conn: psycopg.Connection, tenant_id: str, event_type_code: str, occurred_at: datetime, reported_by: str,
+    notes: str | None = None,
+) -> dict[str, Any]:
+    """Registra un evento (lluvia fuerte, deslizamiento, quejas) y genera una
+    orden por cada plan activo que lo espera ("semanal y despues de
+    lluvias"). El plan sigue con su frecuencia normal: el evento agrega una
+    revision extraordinaria, no la reemplaza."""
+    types = {e["code"]: e for e in maintenance_event_types(conn, tenant_id)}
+    if event_type_code not in types:
+        raise MaintenanceEventError(f"Evento desconocido: {event_type_code!r} (validos: {sorted(types)})")
+    etype = types[event_type_code]
+    with conn.transaction():
+        with tenant_scope(conn, tenant_id):
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO maintenance_event (tenant_id, pack_id, event_type_code, occurred_at, notes, reported_by) "
+                    "VALUES (%s, %s, %s, %s, %s, %s) RETURNING id",
+                    (tenant_id, etype["pack_id"], event_type_code, occurred_at, (notes or "").strip() or None, reported_by),
+                )
+                event_id = str(cur.fetchone()[0])
+                cur.execute(
+                    "SELECT id, asset_id, order_type, priority, title FROM maintenance_pm_plan "
+                    "WHERE tenant_id = %s AND is_active AND %s = ANY(trigger_events)",
+                    (tenant_id, event_type_code),
+                )
+                plans = cur.fetchall()
+    orders = []
+    for plan_id, asset_id, order_type, priority, title in plans:
+        reason = f"Después de: {etype['label']} ({occurred_at.date().isoformat()})" + (f" — {title}" if title else "")
+        orders.append(generate_order(conn, tenant_id, str(asset_id), order_type, "event", priority, reason=reason,
+                                     pm_plan_id=str(plan_id), event_id=event_id))
+    return {"event_id": event_id, "event_type_code": event_type_code, "label": etype["label"],
+            "occurred_at": occurred_at.isoformat(), "orders": orders}
+
+
+def list_maintenance_events(conn: psycopg.Connection, tenant_id: str, limit: int = 50) -> list[dict]:
+    with conn.transaction():
+        with tenant_scope(conn, tenant_id):
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT e.id, e.event_type_code, t.label, e.occurred_at, e.notes, e.reported_by, "
+                    "(SELECT count(*) FROM maintenance_order o WHERE o.event_id = e.id) "
+                    "FROM maintenance_event e JOIN maintenance_event_type t ON t.pack_id = e.pack_id AND t.code = e.event_type_code "
+                    "WHERE e.tenant_id = %s ORDER BY e.occurred_at DESC LIMIT %s",
+                    (tenant_id, max(1, min(limit, 500))),
+                )
+                return [{"event_id": str(r[0]), "event_type_code": r[1], "label": r[2], "occurred_at": r[3].isoformat(),
+                         "notes": r[4], "reported_by": r[5], "orders_generated": r[6]} for r in cur.fetchall()]
+
+
+def _community_kpis(conn: psycopg.Connection, tenant_id: str, now: datetime) -> dict[str, Any]:
+    """Aporte comunitario del ano en curso (mingas, personas, horas) y % de
+    cierres con todos los pasos del mantenimiento."""
+    year_start = datetime(now.year, 1, 1, tzinfo=timezone.utc)
+    with conn.transaction():
+        with tenant_scope(conn, tenant_id):
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT steps_done, community_participants, volunteer_hours FROM maintenance_order "
+                    "WHERE tenant_id = %s AND status = 'completed' AND closed_at >= %s",
+                    (tenant_id, year_start),
+                )
+                rows = [{"steps_done": r[0], "community_participants": r[1], "volunteer_hours": r[2]} for r in cur.fetchall()]
+    return {"year": now.year, **community_summary(rows, maintenance_steps(conn, tenant_id)["numbers"])}

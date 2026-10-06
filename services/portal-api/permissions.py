@@ -47,6 +47,7 @@ ROUTE_RULES: list[tuple[frozenset[str] | None, re.Pattern, str | None]] = [
     (None, re.compile(rf"^/findings/{_ID}$"), "findings.manage"),
     (None, re.compile(r"^/(passport|follow-up)(/.*)?$"), "program.manage"),
     (None, re.compile(r"^/maintenance-orders/bayforce-webhook$"), "maintenance.webhook"),
+    (None, re.compile(r"^/maintenance/events$"), "maintenance.manage"),
     (None, re.compile(r"^/maintenance-orders(/.*)?$"), "maintenance.manage"),
     (None, re.compile(r"^/maintenance/(sla-policies|failure-codes|crews|pm-plans)(/.*)?$"), "maintenance.configure"),
     (None, re.compile(r"^/(network-zones|network-models|network-assets|asset-connectivity)(/.*)?$"), "network.manage"),

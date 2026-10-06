@@ -167,6 +167,13 @@ from order_service import (  # noqa: E402
     send_to_bayforce,
     set_sla_policy,
     start_order,
+    InvalidCommunityWorkError,
+    InvalidPmPlanError,
+    MaintenanceEventError,
+    list_maintenance_events,
+    maintenance_event_types,
+    maintenance_steps,
+    record_maintenance_event,
 )
 from order_service import AssetNotFoundError as MaintenanceAssetNotFoundError  # noqa: E402
 from order_service import OrderNotFoundError as MaintenanceOrderNotFoundError  # noqa: E402
@@ -1380,6 +1387,12 @@ class CloseOrderRequest(BaseModel):
     materials_used: str | None = None
     root_cause: str | None = None
     failure_code_id: str | None = None
+    # Guia 3, ficha 7D y §3.6 (D3.1)
+    steps_done: list[int] | None = None
+    responsible: str | None = None
+    pending_notes: str | None = None
+    community_participants: int | None = None
+    volunteer_hours: float | None = None
 
 
 @app.post("/maintenance-orders/{order_id}/close")
@@ -1393,7 +1406,10 @@ def close_maintenance_order_endpoint(order_id: str, body: CloseOrderRequest, ten
             return close_order(
                 conn, tenant_id, order_id, body.status,
                 body.labor_hours, body.materials_used, body.root_cause, body.failure_code_id,
+                body.steps_done, body.responsible, body.pending_notes, body.community_participants, body.volunteer_hours,
             )
+        except InvalidCommunityWorkError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         except (MaintenanceOrderNotFoundError, FailureCodeNotFoundError) as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except InvalidCloseStatusError as exc:
@@ -1483,6 +1499,9 @@ class PmPlanRequest(BaseModel):
     priority: str
     interval_days: int
     next_due_at: datetime
+    title: str | None = None
+    responsible: str | None = None
+    trigger_events: list[str] | None = None
 
 
 @app.get("/maintenance/pm-plans")
@@ -1498,11 +1517,47 @@ def create_pm_plan_endpoint(body: PmPlanRequest, tenant_id: str = Depends(get_te
     validos."""
     with db_conn() as conn:
         try:
-            return create_pm_plan(conn, tenant_id, body.asset_id, body.order_type, body.priority, body.interval_days, body.next_due_at)
+            return create_pm_plan(conn, tenant_id, body.asset_id, body.order_type, body.priority, body.interval_days,
+                                  body.next_due_at, body.title, body.responsible, body.trigger_events)
         except MaintenanceAssetNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
-        except (InvalidOrderTypeError, InvalidPriorityError) as exc:
+        except (InvalidOrderTypeError, InvalidPriorityError, InvalidPmPlanError) as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/maintenance/community-catalog")
+def maintenance_community_catalog_endpoint(tenant_id: str = Depends(get_tenant_id)) -> dict:
+    """Pasos del mantenimiento y eventos que disparan planes (paquete de
+    programa, Guia 3 §3.6)."""
+    with db_conn() as conn:
+        return {"steps": maintenance_steps(conn, tenant_id)["steps"], "event_types": maintenance_event_types(conn, tenant_id)}
+
+
+class MaintenanceEventRequest(BaseModel):
+    event_type_code: str
+    occurred_at: datetime | None = None
+    notes: str | None = None
+
+
+@app.post("/maintenance/events", status_code=201)
+def record_maintenance_event_endpoint(body: MaintenanceEventRequest, actor: dict = Depends(get_actor)) -> dict:
+    """Lluvia fuerte, deslizamiento o quejas: genera una orden por cada plan
+    que espera ese evento."""
+    occurred_at = body.occurred_at or datetime.now(timezone.utc)
+    if occurred_at.tzinfo is None:
+        raise HTTPException(status_code=422, detail="occurred_at debe incluir la zona horaria")
+    with db_conn() as conn:
+        try:
+            return record_maintenance_event(conn, actor["tenant_id"], body.event_type_code, occurred_at,
+                                            requested_by_label(actor), body.notes)
+        except MaintenanceEventError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get("/maintenance/events")
+def list_maintenance_events_endpoint(tenant_id: str = Depends(get_tenant_id), limit: int = 50) -> list[dict]:
+    with db_conn() as conn:
+        return list_maintenance_events(conn, tenant_id, limit)
 
 
 @app.post("/maintenance/pm-plans/generate-due")

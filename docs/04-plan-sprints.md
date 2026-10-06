@@ -683,7 +683,17 @@ Las matrices de G1 y G6 (priorización, Plan de Mejora, presupuesto) son D7, no 
   frecuencia.
 - **Activación del plan de contaminación por E. coli:** va con D5.
 
-Siguiente: D3 (O&M comunitario).
+**D3, O&M comunitario:**
+- **D3.1:** ✅ En producción 2026-10-06 (migración 0035):
+  - tipo emergente;
+  - los 5 pasos y la ficha 7D al cerrar (responsable, materiales, pendiente);
+  - mingas, con participantes y horas donadas;
+  - planes que también se disparan por evento (lluvias, deslizamientos, quejas);
+  - KPIs del aporte comunitario.
+- **D3.2:** siguiente.
+  - calendario anual 7G con % de cumplimiento;
+  - ficha "Evaluar antes de comprar";
+  - timer que genera las órdenes preventivas vencidas.
 
 ### 11.5 Modelo comercial, criterio de éxito y pendientes
 

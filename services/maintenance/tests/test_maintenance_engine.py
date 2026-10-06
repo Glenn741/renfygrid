@@ -12,12 +12,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from maintenance_engine import (
     advance_pm_plan,
+    community_summary,
     compute_backlog,
     compute_mttr_hours,
     compute_pm_compliance_pct,
     compute_sla_due_at,
     is_overdue,
     pm_plan_is_due,
+    validate_steps,
 )
 
 NOW = datetime(2026, 9, 14, 12, 0, tzinfo=timezone.utc)
@@ -109,6 +111,28 @@ class PmPlanSchedulingTests(unittest.TestCase):
         result = advance_pm_plan(next_due, 30, NOW)
         self.assertGreater(result, NOW)
         self.assertEqual(result, next_due + timedelta(days=90))
+
+
+class CommunityMaintenanceTests(unittest.TestCase):
+    STEPS = {1, 2, 3, 4, 5}
+
+    def test_steps_from_catalog(self):
+        self.assertEqual(validate_steps(self.STEPS, [5, 1, 1, 3]), [1, 3, 5])
+        self.assertEqual(validate_steps(self.STEPS, None), [])
+        with self.assertRaises(ValueError):
+            validate_steps(self.STEPS, [6])
+
+    def test_community_summary(self):
+        orders = [
+            {"steps_done": [1, 2, 3, 4, 5], "community_participants": 12, "volunteer_hours": 36},
+            {"steps_done": [1, 4, 5], "community_participants": 0, "volunteer_hours": None},
+            {"steps_done": [1, 2, 3, 4, 5], "community_participants": None, "volunteer_hours": 2.5},
+            {"steps_done": [], "community_participants": 8, "volunteer_hours": 16},
+        ]
+        self.assertEqual(community_summary(orders, self.STEPS),
+                         {"mingas": 2, "participants": 20, "volunteer_hours": 54.5, "all_steps_pct": 50.0})
+        self.assertIsNone(community_summary([], self.STEPS)["all_steps_pct"])
+        self.assertIsNone(community_summary(orders, set())["all_steps_pct"], "sin catalogo de pasos no se mide")
 
 
 if __name__ == "__main__":
