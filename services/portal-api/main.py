@@ -78,7 +78,13 @@ from list_invalid_readings import list_invalid_readings  # noqa: E402
 from manual_edit import ReadingNotFoundError, edit_reading  # noqa: E402
 from vee_summary import list_edits, list_estimated_readings, vee_summary  # noqa: E402
 from observability import ingestion_metrics  # noqa: E402
-from tenant_settings import get_hes_settings, get_meter_stale_after_seconds, set_meter_stale_after_seconds  # noqa: E402
+from tenant_settings import (  # noqa: E402
+    get_hes_settings,
+    get_meter_stale_after_seconds,
+    get_session_ttl_seconds,
+    set_meter_stale_after_seconds,
+    set_session_ttl_seconds,
+)
 from meter_geo import consumption_distribution, exception_rate_by_brand, meters_geojson, sector_summary  # noqa: E402
 from on_demand_reader import MeterNotReadableError, read_meter_now  # noqa: E402
 from meter_ping import MeterNotReachableError, ping_meter  # noqa: E402
@@ -237,6 +243,14 @@ def login(body: LoginRequest) -> dict:
             identity = authenticate(conn, tenant_id, body.email, body.password)
         except InvalidCredentialsError as exc:
             raise HTTPException(status_code=401, detail=str(exc)) from exc
+        # Duracion de la sesion: parametro de la organizacion (Configuracion
+        # -> Sesion, migracion 0022), nunca un valor fijo en codigo ni archivo.
+        session_ttl = get_session_ttl_seconds(conn, tenant_id)
+    if session_ttl is None:
+        raise HTTPException(
+            status_code=409,
+            detail="La organización no tiene configurada la duración de la sesión. Un administrador debe definirla en Configuración → Sesión.",
+        )
     token = create_token(
         {
             "tenant_id": tenant_id,
@@ -245,10 +259,9 @@ def login(body: LoginRequest) -> dict:
             "email": body.email,  # Sprint C5: convencion real de origen (auth_dependency.requested_by_label)
         },
         app.state.settings.jwt_secret,
-        expires_in_seconds=app.state.settings.session_ttl_seconds,
+        expires_in_seconds=session_ttl,
     )
-    return {"access_token": token, "token_type": "bearer", "tenant_id": tenant_id,
-            "expires_in": app.state.settings.session_ttl_seconds}
+    return {"access_token": token, "token_type": "bearer", "tenant_id": tenant_id, "expires_in": session_ttl}
 
 
 @app.get("/auth/me")
@@ -656,6 +669,28 @@ def set_hes_settings_endpoint(body: HesSettingsRequest, tenant_id: str = Depends
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         return get_hes_settings(conn, tenant_id)
+
+
+@app.get("/settings/session")
+def get_session_settings_endpoint(tenant_id: str = Depends(get_tenant_id)) -> dict:
+    """Duracion de la sesion de esta organizacion (0022). Aplica a los
+    logins siguientes; las sesiones abiertas conservan la suya."""
+    with db_conn() as conn:
+        return {"session_ttl_seconds": get_session_ttl_seconds(conn, tenant_id)}
+
+
+class SessionSettingsRequest(BaseModel):
+    session_ttl_seconds: int
+
+
+@app.put("/settings/session")
+def set_session_settings_endpoint(body: SessionSettingsRequest, tenant_id: str = Depends(get_tenant_id)) -> dict:
+    with db_conn() as conn:
+        try:
+            set_session_ttl_seconds(conn, tenant_id, body.session_ttl_seconds)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return {"session_ttl_seconds": get_session_ttl_seconds(conn, tenant_id)}
 
 
 @app.get("/billing-export", response_class=PlainTextResponse)

@@ -78,7 +78,7 @@ def run(dsn: str) -> int:
                             (tenant_id, meter_ids["caido"], psycopg.types.json.Json({"operation": "poller_read", "error": "timeout simulado"})),
                         )
 
-            token = create_token({"tenant_id": tenant_id, "role": "operator"}, JWT_SECRET)
+            token = create_token({"tenant_id": tenant_id, "role": "operator"}, JWT_SECRET, expires_in_seconds=3600)
             resp = client.get("/observability/ingestion?stale_after_seconds=3600", headers={"Authorization": f"Bearer {token}"})
             data = resp.json()
             print(f"GET /observability/ingestion: {resp.status_code}")

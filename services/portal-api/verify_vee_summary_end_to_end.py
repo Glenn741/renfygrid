@@ -131,7 +131,7 @@ def run(dsn: str) -> int:
                 new_value=5555.0, user_name="operador@renfygrid.demo", justification="corregido tras inspeccion",
             )
 
-            token = create_token({"tenant_id": tenant_id, "role": "supervisor", "email": "ana@renfygrid.demo"}, JWT_SECRET)
+            token = create_token({"tenant_id": tenant_id, "role": "supervisor", "email": "ana@renfygrid.demo"}, JWT_SECRET, expires_in_seconds=3600)
             headers = {"Authorization": f"Bearer {token}"}
 
             summary = client.get("/vee/summary", headers=headers).json()

@@ -60,7 +60,7 @@ def run(dsn: str) -> int:
             tenant_id = str(tenant_id)
 
         try:
-            token = create_token({"tenant_id": tenant_id, "role": "supervisor", "email": "ana@renfygrid.demo"}, JWT_SECRET)
+            token = create_token({"tenant_id": tenant_id, "role": "supervisor", "email": "ana@renfygrid.demo"}, JWT_SECRET, expires_in_seconds=3600)
             headers = {"Authorization": f"Bearer {token}"}
 
             mapping_v1 = {"active_energy": {"obis_code": "1.0.1.8.0.255", "attribute_index": 2}}

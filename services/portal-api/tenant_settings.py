@@ -57,5 +57,37 @@ def set_meter_stale_after_seconds(conn: psycopg.Connection, tenant_id: str, seco
             raise LookupError(f"No existe el tenant {tenant_id}")
 
 
+SESSION_TTL_KEY = "session_ttl_seconds"
+MIN_SESSION_TTL_SECONDS = 300  # una sesion de menos de 5 min no permite trabajar; limite de validacion, no un valor de uso
+
+
+class SessionTtlNotConfiguredError(LookupError):
+    """La organizacion no tiene definida la duracion de sesion -- el login
+    lo dice en vez de inventar una (2026-10-05)."""
+
+
+def get_session_ttl_seconds(conn: psycopg.Connection, tenant_id: str) -> int | None:
+    """Duracion de la sesion del Portal para esta organizacion (0022).
+    `None` si no esta configurada -- nunca un valor fabricado."""
+    with conn.cursor() as cur:
+        cur.execute("SELECT config ->> %s FROM tenant WHERE id = %s", (SESSION_TTL_KEY, tenant_id))
+        row = cur.fetchone()
+    if row is None or row[0] is None:
+        return None
+    return int(row[0])
+
+
+def set_session_ttl_seconds(conn: psycopg.Connection, tenant_id: str, seconds: int) -> None:
+    if seconds < MIN_SESSION_TTL_SECONDS:
+        raise ValueError(f"La sesión debe durar al menos {MIN_SESSION_TTL_SECONDS // 60} minutos")
+    with conn.cursor() as cur:
+        cur.execute(
+            "UPDATE tenant SET config = config || jsonb_build_object(%s::text, %s::int) WHERE id = %s",
+            (SESSION_TTL_KEY, seconds, tenant_id),
+        )
+        if cur.rowcount == 0:
+            raise LookupError(f"No existe el tenant {tenant_id}")
+
+
 def get_hes_settings(conn: psycopg.Connection, tenant_id: str) -> dict[str, Any]:
     return {"stale_after_seconds": get_meter_stale_after_seconds(conn, tenant_id)}

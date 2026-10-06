@@ -92,7 +92,7 @@ def run(dsn: str) -> int:
                             (tenant_id, meter_b1),
                         )
 
-            token = create_token({"tenant_id": tenant_id, "role": "supervisor", "email": "ana@renfygrid.demo"}, JWT_SECRET)
+            token = create_token({"tenant_id": tenant_id, "role": "supervisor", "email": "ana@renfygrid.demo"}, JWT_SECRET, expires_in_seconds=3600)
             headers = {"Authorization": f"Bearer {token}"}
 
             # Umbral real configurado por el tenant (2026-09-15) -- sin esto,

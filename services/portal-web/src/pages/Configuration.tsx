@@ -6,7 +6,9 @@ import {
   getInstrumentation,
   getPacks,
   getParameterRules,
+  getSessionSettings,
   setInstrumentation,
+  setSessionSettings,
   bulkMarkMeterProtection,
   createApprovalLevel,
   createConsumptionAnomalyRule,
@@ -42,6 +44,7 @@ import { NavSection, SectionNav } from "../components/SectionNav";
 // pegajosa arriba, cada `SectionCard` con su propio `id` para saltar
 // directo.
 const SECTIONS = [
+  { id: "session", label: "Sesión" },
   { id: "packs", label: "Paquetes" },
   { id: "instrumentation", label: "Instrumentación" },
   { id: "hes-settings", label: "HES" },
@@ -889,10 +892,77 @@ function InstrumentationSection() {
   );
 }
 
+function SessionSettingsSection() {
+  const queryClient = useQueryClient();
+  const { data } = useQuery({ queryKey: ["session-settings"], queryFn: getSessionSettings });
+  const [hours, setHours] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  const configured = data?.session_ttl_seconds ?? null;
+
+  const mutation = useMutation({
+    mutationFn: () => setSessionSettings(Math.round(Number(hours) * 3600)),
+    onSuccess: () => {
+      setError(null);
+      setSaved(true);
+      setHours("");
+      queryClient.invalidateQueries({ queryKey: ["session-settings"] });
+    },
+    onError: (err) => {
+      setSaved(false);
+      setError(err instanceof ApiError ? err.message : "No se pudo guardar la duración.");
+    },
+  });
+
+  const formatTtl = (s: number) => {
+    const h = Math.floor(s / 3600);
+    const m = Math.round((s % 3600) / 60);
+    return h > 0 ? `${h} h${m ? ` ${m} min` : ""}` : `${m} min`;
+  };
+
+  return (
+    <SectionCard
+      title="Sesión"
+      description="Cuánto dura la sesión de un usuario de esta organización antes de pedir de nuevo la contraseña. Aplica a los ingresos siguientes; las sesiones abiertas conservan su duración. Cada organización define la suya."
+    >
+      <div className="flex flex-wrap items-end gap-3 mb-3">
+        <div>
+          <label htmlFor="session-hours" className="block text-xs font-medium text-slate-500 mb-1">Duración de la sesión (horas)</label>
+          <input
+            id="session-hours"
+            type="number"
+            step="0.25"
+            min="0.25"
+            className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm w-40"
+            value={hours}
+            placeholder={configured !== null ? String(+(configured / 3600).toFixed(2)) : ""}
+            onChange={(e) => { setHours(e.target.value); setSaved(false); }}
+          />
+        </div>
+        <button
+          onClick={() => mutation.mutate()}
+          disabled={mutation.isPending || !hours || Number(hours) <= 0}
+          className="rounded-lg bg-indigo-600 text-white text-sm font-semibold px-4 py-1.5 hover:bg-indigo-700 disabled:opacity-50"
+        >
+          Guardar
+        </button>
+      </div>
+      {error && <p className="text-sm text-red-600 mb-2">{error}</p>}
+      {saved && <p className="text-sm text-emerald-700 mb-2">Guardado. Se aplica desde el próximo ingreso.</p>}
+      <p className="text-xs text-slate-500">
+        Valor actual: {configured !== null
+          ? <strong className="text-slate-700">{formatTtl(configured)}</strong>
+          : <span className="text-amber-700 font-semibold">sin configurar: los usuarios no podrán ingresar hasta definirla</span>}
+      </p>
+    </SectionCard>
+  );
+}
+
 export function ConfigurationPage() {
   return (
     <StagePage title="Configuración">
       <SectionNav items={SECTIONS} />
+      <NavSection id="session"><SessionSettingsSection /></NavSection>
       <NavSection id="packs"><PacksSection /></NavSection>
       <NavSection id="instrumentation"><InstrumentationSection /></NavSection>
       <NavSection id="hes-settings"><HesSettingsSection /></NavSection>

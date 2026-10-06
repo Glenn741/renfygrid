@@ -47,12 +47,16 @@ def _sign(message: bytes, secret: str) -> bytes:
     return hmac.new(secret.encode("utf-8"), message, hashlib.sha256).digest()
 
 
-def create_token(claims: dict[str, Any], secret: str, expires_in_seconds: int = 3600) -> str:
+def create_token(claims: dict[str, Any], secret: str, *, expires_in_seconds: int) -> str:
     """Crea un JWT HS256. `claims` DEBE incluir tenant_id (ver docstring del modulo).
 
     No acepta un `exp` ya puesto en `claims` -- el vencimiento siempre lo calcula
     esta funcion a partir de `expires_in_seconds`, para que nunca quede un token
     de vida "fija" decidida en otro lado sin pasar por aca.
+
+    `expires_in_seconds` es obligatorio (2026-10-05): antes tenia un 3600 por
+    defecto. El login lo toma del parametro de la organizacion
+    (`tenant.config.session_ttl_seconds`, Configuracion -> Sesion).
     """
     faltantes = [c for c in _REQUIRED_CLAIMS if c not in claims]
     if faltantes:

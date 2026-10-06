@@ -20,7 +20,7 @@ from renmeter_common.auth import TokenError, create_token, decode_token
 
 class AuthTests(unittest.TestCase):
     def test_round_trip_returns_the_same_claims(self):
-        token = create_token({"tenant_id": "t1", "role": "operator"}, secret="s3cret")
+        token = create_token({"tenant_id": "t1", "role": "operator"}, secret="s3cret", expires_in_seconds=3600)
         claims = decode_token(token, secret="s3cret")
         self.assertEqual(claims["tenant_id"], "t1")
         self.assertEqual(claims["role"], "operator")
@@ -29,14 +29,14 @@ class AuthTests(unittest.TestCase):
 
     def test_cannot_create_without_tenant_id(self):
         with self.assertRaises(TokenError):
-            create_token({"role": "operator"}, secret="s3cret")
+            create_token({"role": "operator"}, secret="s3cret", expires_in_seconds=3600)
 
     def test_does_not_allow_passing_exp_manually(self):
         with self.assertRaises(TokenError):
-            create_token({"tenant_id": "t1", "exp": 9999999999}, secret="s3cret")
+            create_token({"tenant_id": "t1", "exp": 9999999999}, secret="s3cret", expires_in_seconds=3600)
 
     def test_wrong_secret_fails(self):
-        token = create_token({"tenant_id": "t1"}, secret="s3cret")
+        token = create_token({"tenant_id": "t1"}, secret="s3cret", expires_in_seconds=3600)
         with self.assertRaises(TokenError):
             decode_token(token, secret="other-secret")
 
@@ -48,7 +48,7 @@ class AuthTests(unittest.TestCase):
                 decode_token(token, secret="s3cret")
 
     def test_tampered_payload_fails_signature_check(self):
-        token = create_token({"tenant_id": "t1", "role": "operator"}, secret="s3cret")
+        token = create_token({"tenant_id": "t1", "role": "operator"}, secret="s3cret", expires_in_seconds=3600)
         header_b64, payload_b64, sig_b64 = token.split(".")
         # Intento de escalar de "operator" a "admin" tocando el payload sin re-firmar
         tampered_token = f"{header_b64}.{payload_b64}XYZ.{sig_b64}"

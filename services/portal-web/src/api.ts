@@ -36,8 +36,8 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, { ...options, headers });
   if (!response.ok) {
     // Un 401 en cualquier endpoint que NO sea el login mismo significa
-    // sesion vencida (el JWT dura RENFYGRID_SESSION_TTL_SECONDS, ver
-    // portal-api/config.py; 1h si no se configura) -- antes
+    // sesion vencida (el JWT dura lo que la organizacion definio en
+    // Configuracion -> Sesion, tenant.config.session_ttl_seconds) -- antes
     // se quedaba en la pantalla con las llamadas fallando en silencio
     // (visto en vivo: 401 repetido en consola sin que el usuario supiera
     // por que). Limpiar el token y mandar a /login en vez de dejarlo ahi.
@@ -1018,6 +1018,14 @@ export interface SessionInfo {
 
 export function getSession(): Promise<SessionInfo> {
   return request("/auth/me");
+}
+
+export function getSessionSettings(): Promise<{ session_ttl_seconds: number | null }> {
+  return request("/settings/session");
+}
+
+export function setSessionSettings(sessionTtlSeconds: number): Promise<{ session_ttl_seconds: number | null }> {
+  return request("/settings/session", { method: "PUT", body: JSON.stringify({ session_ttl_seconds: sessionTtlSeconds }) });
 }
 
 // ── Track D, Sprint D0 -- motor de paquetes (docs/04-plan-sprints.md SS11.4) ──

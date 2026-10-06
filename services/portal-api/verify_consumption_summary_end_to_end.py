@@ -94,7 +94,7 @@ def run(dsn: str) -> int:
                             (tenant_id, meter_id, consumption_id, datetime.now(timezone.utc)),
                         )
 
-            token = create_token({"tenant_id": tenant_id, "role": "supervisor", "email": "ana@renfygrid.demo"}, JWT_SECRET)
+            token = create_token({"tenant_id": tenant_id, "role": "supervisor", "email": "ana@renfygrid.demo"}, JWT_SECRET, expires_in_seconds=3600)
             headers = {"Authorization": f"Bearer {token}"}
 
             summary = client.get("/consumption/summary", headers=headers).json()

@@ -1681,7 +1681,7 @@ duración de la sesión ("dura solo unas horas").
 
 | Cambio | Detalle | Verificación |
 |---|---|---|
-| Duración de sesión configurable | Era un `3600` fijo en `create_token`. Ahora `RENFYGRID_SESSION_TTL_SECONDS` (`portal-api/config.py`, default 3600). En producción vive en un drop-in propio: `/etc/systemd/system/renfygrid-portal-api.service.d/session.conf` = **43200 (12 h)**; para cambiarla se edita ese valor y se hace `daemon-reload` + `restart` | `verify_login_tenant_name_and_ttl_end_to_end.py` → OK; en vivo `expires_in = 43200` |
+| Duración de sesión configurable | Era un `3600` fijo en `create_token`. Primer intento: variable de entorno en un drop-in de systemd. **Reemplazado el mismo día** (ver sección "Duración de sesión como parámetro de la organización") | — |
 | Login por nombre de organización | `resolve_tenant_ref` (`renmeter_common/user_service.py`): UUID o nombre exacto sin distinguir mayúsculas; un nombre inexistente o repetido da el mismo 401 genérico. Antes, un tenant que no fuera UUID daba error 500 | Mismo E2E + regresión `F47/F48 OK` |
 | Login acepta usuario sin formato de correo | `Login.tsx`: "Organización" (nombre o id) y "Usuario" (`type="text"`) | Bundle `index-DFKllUs7.js` en vivo |
 | Perfiles en la semilla de las guías | `seed_demo_guias_tenant.PROFILES`: `san_jose` y `gualaceo` (nombres de componentes y coordenadas aproximadas ilustrativas al noreste de Gualaceo, Azuay) | — |
@@ -1738,6 +1738,29 @@ bajo el logo. Al vencer la sesión, sale al login sin esperar un 401.
 **Despliegues de esta ronda:** `restorecon` solo sobre los archivos copiados y reinicio con
 espera activa de `/health` (respondió en 3 s cada vez). Respaldos del código anterior en
 `essmarplapp02:/tmp/renfygrid_balancefix_backup_20261005/` y `…_session_backup_20261005/`.
+
+### Duración de sesión como parámetro de la organización (2026-10-05)
+
+Indicación del usuario: "eso debe estar como un parámetro configurable en el panel... No deben
+haber parámetros en archivos ni mucho menos en HARDCODE".
+
+- **Migración 0022:** `tenant.config.session_ttl_seconds`; 43200 (12 h, lo que ya regía) para
+  los tenants existentes y como valor inicial de los nuevos, en el esquema y no en el código.
+- **API:** el login toma la duración de la organización. Si una organización no la tiene, el
+  login responde 409 con un mensaje claro en vez de inventar una duración. Se agregan
+  `GET/PUT /settings/session`, con un mínimo de 5 minutos como validación.
+- **Código:** `create_token` ya no tiene duración por defecto (`expires_in_seconds`
+  obligatorio). Se quitó `RENFYGRID_SESSION_TTL_SECONDS` de `config.py`, y las 20 llamadas de
+  pruebas y E2E pasan su duración explícita.
+- **Servidor:** se eliminó el drop-in `renfygrid-portal-api.service.d/session.conf`
+  (`DropInPaths=` vacío tras `daemon-reload`).
+- **Portal Web:** Configuración → **Sesión** (primera sección): duración en horas y valor
+  actual.
+
+Verificación: E2E local (`verify_login_tenant_name_and_ttl_end_to_end.py`: esquema → 12 h,
+PUT → el login siguiente usa la nueva duración, < 5 min → 422, sin parámetro → 409) y
+regresión de login, API y paquetes. En vivo: cambiar `jaas001` a 8 h → el siguiente login dura
+8 h → restaurado a 12 h; `col001` independiente.
 
 **Respaldos para revertir:** `essmarplapp02:/tmp/renfygrid_jaas_backup_20261005/` (código
 anterior) y `essmarplpxy03:/var/www/renfygrid.bak_before_jaas_20261005`. El `pg_dump` previo se

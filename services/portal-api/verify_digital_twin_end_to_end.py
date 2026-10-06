@@ -62,9 +62,9 @@ def run(dsn: str) -> int:
             other_tenant_id = str(other_tenant_id)
 
         try:
-            token = create_token({"tenant_id": tenant_id, "role": "supervisor", "email": "gemelo@renfygrid.demo"}, JWT_SECRET)
+            token = create_token({"tenant_id": tenant_id, "role": "supervisor", "email": "gemelo@renfygrid.demo"}, JWT_SECRET, expires_in_seconds=3600)
             headers = {"Authorization": f"Bearer {token}"}
-            other_token = create_token({"tenant_id": other_tenant_id, "role": "supervisor", "email": "otro@renfygrid.demo"}, JWT_SECRET)
+            other_token = create_token({"tenant_id": other_tenant_id, "role": "supervisor", "email": "otro@renfygrid.demo"}, JWT_SECRET, expires_in_seconds=3600)
             other_headers = {"Authorization": f"Bearer {other_token}"}
 
             # 1. Registrar un activo real.

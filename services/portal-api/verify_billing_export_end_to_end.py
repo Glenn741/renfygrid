@@ -73,7 +73,7 @@ def run(dsn: str) -> int:
                             (tenant_id, meter_review_id),
                         )
 
-            token = create_token({"tenant_id": tenant_id, "role": "operator"}, JWT_SECRET)
+            token = create_token({"tenant_id": tenant_id, "role": "operator"}, JWT_SECRET, expires_in_seconds=3600)
             resp = client.get(
                 "/billing-export?period_start=2026-09-01&period_end=2026-10-01",
                 headers={"Authorization": f"Bearer {token}"},

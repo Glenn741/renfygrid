@@ -23,7 +23,6 @@ class Settings:
     cors_origins: list[str]
     network_model_storage_dir: str
     bayforce_webhook_url: str | None
-    session_ttl_seconds: int
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -58,20 +57,6 @@ class Settings:
             # fija en codigo. `send_to_bayforce()` rechaza el envio con un
             # error claro si falta, nunca simula un envio que no ocurrio.
             bayforce_webhook_url=os.environ.get("RENFYGRID_BAYFORCE_WEBHOOK_URL") or None,
-            # RENFYGRID_SESSION_TTL_SECONDS (2026-10-05, a pedido del usuario:
-            # "la sesion dura solo unas horas"): cuanto dura el JWT del
-            # login. Antes era un 3600 fijo dentro de create_token. El
-            # default conserva ese comportamiento; produccion lo fija en el
-            # drop-in de systemd del servicio.
-            session_ttl_seconds=_positive_int("RENFYGRID_SESSION_TTL_SECONDS", 3600),
+            # La duracion de la sesion NO va aca: es un parametro de cada
+            # organizacion (tenant.config, Configuracion -> Sesion, 0022).
         )
-
-
-def _positive_int(name: str, default: int) -> int:
-    raw = os.environ.get(name)
-    if raw is None or raw.strip() == "":
-        return default
-    value = int(raw)
-    if value <= 0:
-        raise MissingConfigError(f"{name} debe ser un entero positivo (segundos), no {raw!r}")
-    return value
