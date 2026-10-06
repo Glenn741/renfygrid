@@ -2332,3 +2332,56 @@ Aviso rojo en Operación diaria → Hoy.
 - el operador recibe 403 al editar el plan.
 
 **Pendiente:** envío del mensaje por WhatsApp con Renfy Vox.
+
+### D4 Bodega y EPP (2026-10-06)
+
+Fuente: Guía 3 §3.9 (bodega básica y EPP mínimo por tarea), §3.10 (registro de bodega) y lista
+7G.1, que ya existía.
+
+**Migración 0038:**
+- **Catálogos del paquete:**
+  - `warehouse_category`: químicos, repuestos, herramientas, control y EPP, con "qué debe
+    incluir";
+  - `ppe_task`: 4 tareas con el EPP mínimo y el cuidado principal.
+- **Tablas por junta con RLS:**
+  - `warehouse_item`: unidad g, kg, ml, L, unidad, par o m; stock mínimo de la junta; un químico
+    puede ligarse al producto de la dosificación;
+  - `warehouse_movement`: entrada con vencimiento, salida y ajuste con signo; `client_id`; orden
+    de mantenimiento opcional.
+- **Permisos:** `warehouse.record` (operador, directiva y administración) y `warehouse.manage`
+  (directiva y administración).
+
+**Motor:**
+- `to_base_unit`, `stock_level`, `fifo_remaining_lots` y `expiring_lots`. El horizonte de
+  vencimiento es la frecuencia de la 7G.1 en el paquete (30 días), no un número fijo.
+- `chlorine_reconciliation`: compara solo en la misma unidad base (g o ml).
+
+**Servicio `warehouse_service.py`:**
+- Una salida que deja el stock negativo da 409.
+- `chlorine_check`: cloro aplicado en la bitácora contra las salidas de los artículos ligados a
+  productos desinfectantes, en el periodo.
+
+**API:**
+- `GET /warehouse`: catálogo, artículos, alertas y cruce del mes en la zona de la organización;
+- `POST/PATCH /warehouse/items`;
+- `POST/GET /warehouse/movements`.
+
+**Portal:** página "Bodega y EPP".
+- **Estado:** alertas y cruce del cloro.
+- **Registrar movimiento.**
+- **Artículos:** por categoría, con "debe incluir".
+- **EPP por tarea.**
+- **Registro de bodega.**
+
+**Verificación:**
+- Pruebas del motor.
+- E2E nuevo `verify_warehouse_end_to_end.py`.
+- **Regresión completa:** 28 E2E en verde.
+
+**Demo en `jaas001`:**
+- 8 artículos y 12 movimientos;
+- un tanque de hipoclorito de 20 kg que vence el 28 de octubre (alerta: 22 días);
+- guantes y collarines bajo el mínimo;
+- cruce del cloro de octubre: 100 g en la bitácora contra 120 g salidos, 20 g sin registrar
+  (16,7 %);
+- el operador no crea artículos (403).

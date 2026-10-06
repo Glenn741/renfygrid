@@ -110,6 +110,16 @@ export const NAV_GROUPS: { title: string | null; items: NavItemDef[] }[] = [
           { id: "history", label: "Historial" },
         ],
       },
+      {
+        to: "/warehouse", label: "Bodega y EPP", icon: "\u{1F4E6}",
+        sections: [
+          { id: "status", label: "Estado" },
+          { id: "move", label: "Registrar movimiento" },
+          { id: "items", label: "Artículos" },
+          { id: "ppe", label: "EPP por tarea" },
+          { id: "history", label: "Registro de bodega" },
+        ],
+      },
       { to: "/inspections", label: "Ruta y revisiones", icon: "\u{1F4CB}", dynamic: "route" },
       {
         to: "/maintenance", label: "Mantenimiento", icon: "\u{1F527}",

@@ -19,10 +19,12 @@ from pack_engine import (  # noqa: E402
     RegisterWentDownError,
     check_register,
     checklist_status,
+    chlorine_reconciliation,
     compliance_pct,
     chlorine_product_per_day,
     dosing_guard_codes,
     evaluate_bands,
+    expiring_lots,
     findings_from_answers,
     follow_up_schedule,
     interpret_lab_result,
@@ -35,6 +37,8 @@ from pack_engine import (  # noqa: E402
     maturity_score,
     questionnaire_analysis,
     stage_summary,
+    stock_level,
+    to_base_unit,
     system_route,
     treatment_train,
     validate_answers,
@@ -552,6 +556,30 @@ class CalendarTests(unittest.TestCase):
         self.assertEqual(compliance_pct(9, 10), 90.0)
         self.assertEqual(compliance_pct(12, 10), 100.0, "hacer de mas no pasa de 100")
         self.assertIsNone(compliance_pct(0, 0))
+
+
+class WarehouseTests(unittest.TestCase):
+    def test_units(self):
+        self.assertEqual(to_base_unit(2, "kg"), ("g", 2000.0))
+        self.assertEqual(to_base_unit(1.5, "l"), ("ml", 1500.0))
+        self.assertIsNone(to_base_unit(3, "pair"))
+
+    def test_stock(self):
+        moves = [{"kind": "in", "quantity": 20}, {"kind": "out", "quantity": 3}, {"kind": "adjust", "quantity": -0.5}]
+        self.assertEqual(stock_level(moves), 16.5)
+
+    def test_chlorine_reconciliation(self):
+        r = chlorine_reconciliation(280, "g", 0.4, "kg")
+        self.assertEqual((r["comparable"], r["applied"], r["issued"], r["difference"], r["difference_pct"]),
+                         (True, 280.0, 400.0, 120.0, 30.0))
+        self.assertFalse(chlorine_reconciliation(280, "g", 1, "l")["comparable"], "masa contra volumen no se compara")
+
+    def test_expiring(self):
+        today = date(2026, 10, 6)
+        lots = [{"expires_on": date(2026, 9, 30)}, {"expires_on": date(2026, 10, 20)}, {"expires_on": date(2027, 1, 1)},
+                {"expires_on": None}]
+        out = expiring_lots(lots, today, 30)
+        self.assertEqual([(l["days_left"], l["expired"]) for l in out], [(-6, True), (14, False)])
 
 
 if __name__ == "__main__":

@@ -467,6 +467,71 @@ def sampling_points_status(points: list[dict], last_reading_on: dict[str, date],
     return rows
 
 
+# ── Bodega (D4, 0038) ──────────────────────────────────────────────────
+
+# Unidades de bodega y su equivalencia en la unidad base de masa (g) o
+# volumen (ml); las demas no se convierten.
+UNIT_BASE = {"g": ("g", 1.0), "kg": ("g", 1000.0), "ml": ("ml", 1.0), "l": ("ml", 1000.0)}
+
+
+def to_base_unit(quantity: float, unit: str) -> tuple[str, float] | None:
+    """Cantidad en g o ml; None si la unidad no es de masa ni volumen."""
+    if unit not in UNIT_BASE:
+        return None
+    base, factor = UNIT_BASE[unit]
+    return base, quantity * factor
+
+
+def stock_level(movements: list[dict]) -> float:
+    """Existencia: entradas - salidas + ajustes (con signo)."""
+    total = 0.0
+    for m in movements:
+        q = float(m["quantity"])
+        total += q if m["kind"] in ("in", "adjust") else -q
+    return round(total, 3)
+
+
+def chlorine_reconciliation(applied: float, applied_unit: str, issued: float, issued_unit: str) -> dict[str, Any]:
+    """Cruce del cloro aplicado (bitacora 7C) con lo que salio de bodega en el
+    mismo periodo. Diferencia positiva: salio mas de lo que se registro como
+    aplicado (producto sin registrar o perdido); negativa: se registro mas de
+    lo que salio (falta registrar salidas). Unidades incompatibles -> None."""
+    a, i = to_base_unit(applied, applied_unit), to_base_unit(issued, issued_unit)
+    if a is None or i is None or a[0] != i[0]:
+        return {"comparable": False, "unit": None, "applied": None, "issued": None, "difference": None, "difference_pct": None}
+    diff = round(i[1] - a[1], 1)
+    return {"comparable": True, "unit": a[0], "applied": round(a[1], 1), "issued": round(i[1], 1), "difference": diff,
+            "difference_pct": round(100.0 * diff / i[1], 1) if i[1] else None}
+
+
+def fifo_remaining_lots(ins: list[dict], consumed: float) -> list[dict]:
+    """Lotes (entradas) que siguen en bodega si lo consumido salio primero de
+    los mas antiguos. `ins`: [{quantity, moved_at, expires_on}]; devuelve los
+    lotes con su `remaining`."""
+    left = max(consumed, 0.0)
+    out = []
+    for lot in sorted(ins, key=lambda x: x["moved_at"]):
+        q = float(lot["quantity"])
+        used = min(q, left)
+        left -= used
+        if q - used > 0:
+            out.append({**lot, "remaining": round(q - used, 3)})
+    return out
+
+
+def expiring_lots(lots: list[dict], today: date, horizon_days: int) -> list[dict]:
+    """Lotes vencidos o que vencen antes de la proxima revision (horizonte en
+    dias, la frecuencia de la lista 7G.1 del paquete)."""
+    out = []
+    for lot in lots:
+        if lot.get("expires_on") is None:
+            continue
+        days = (lot["expires_on"] - today).days
+        if days <= horizon_days:
+            out.append({**lot, "days_left": days, "expired": days < 0})
+    return sorted(out, key=lambda x: x["days_left"])
+
+
 # ── Calendario anual 7G (D3.2) ─────────────────────────────────────────
 
 def periods_elapsed(days_elapsed: float, frequency_days: int) -> int:

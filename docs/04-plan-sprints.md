@@ -704,8 +704,14 @@ Las matrices de G1 y G6 (priorización, Plan de Mejora, presupuesto) son D7, no 
 - **Pendiente:** envío del mensaje a la comunidad por WhatsApp con Renfy Vox; hoy el mensaje se
   copia.
 
-**Siguiente en RenfyGrid:** D4 (bodega y EPP), D6 (saneamiento), D7 (plan mínimo y Plan de Mejora)
-y D12 (agrupación).
+**D4, bodega y EPP:** ✅ En producción 2026-10-06 (migración 0038).
+- Artículos por categoría de la bodega básica, con stock mínimo de la junta.
+- Entradas con vencimiento, salidas que no dejan stock negativo y ajustes por conteo.
+- Alertas de stock bajo y de lotes (FIFO) que vencen antes de la próxima 7G.1.
+- Cruce del cloro: bitácora 7C contra salidas de bodega.
+- EPP mínimo por tarea.
+
+**Siguiente en RenfyGrid:** D6 (saneamiento), D7 (plan mínimo y Plan de Mejora) y D12 (agrupación).
 
 **D8–D11 (padrón, caja, costos y tarifa, recaudación, POA) van en `renfy_pool`.** Según este mismo
 plan, antes hay que cruzarlos con lo que ya existe allá; queda pendiente de esa revisión con el

@@ -1583,6 +1583,64 @@ export function getQualityOverview(): Promise<QualityOverview> {
   return request("/quality/overview");
 }
 
+// ── Bodega y EPP (0038) ───────────────────────────────────────────────
+
+export interface WarehouseItem {
+  item_id: string;
+  category_code: string;
+  category_label: string;
+  name: string;
+  unit: string;
+  min_stock: number | null;
+  chemical_product_id: string | null;
+  active: boolean;
+  stock: number;
+  below_min: boolean;
+  expiring: { expires_on: string; remaining: number; days_left: number; expired: boolean }[];
+}
+
+export interface WarehouseOverview {
+  categories: { pack_id: string; code: string; label: string; should_include: string }[];
+  ppe_tasks: { task: string; ppe: string; care: string }[];
+  units: string[];
+  items: WarehouseItem[];
+  alerts: { below_min: number; expiring: number };
+  chlorine_check: { comparable: boolean; unit: string | null; applied: number | null; issued: number | null; difference: number | null; difference_pct: number | null }[];
+}
+
+export function getWarehouse(): Promise<WarehouseOverview> {
+  return request("/warehouse");
+}
+
+export function createWarehouseItem(body: { name: string; category_code: string; unit: string; min_stock?: number | null; chemical_product_id?: string | null }): Promise<WarehouseItem> {
+  return request("/warehouse/items", { method: "POST", body: JSON.stringify(body) });
+}
+
+export function updateWarehouseItem(id: string, body: { name?: string; min_stock?: number | null; active?: boolean }): Promise<WarehouseItem> {
+  return request(`/warehouse/items/${id}`, { method: "PATCH", body: JSON.stringify(body) });
+}
+
+export function recordWarehouseMovement(body: { item_id: string; kind: string; quantity: number; expires_on?: string | null; reason?: string | null; client_id?: string }): Promise<{ movement_id: string; duplicate: boolean; stock: number }> {
+  return request("/warehouse/movements", { method: "POST", body: JSON.stringify(body) });
+}
+
+export interface WarehouseMovement {
+  movement_id: string;
+  item_id: string;
+  item_name: string;
+  unit: string;
+  kind: "in" | "out" | "adjust";
+  quantity: number;
+  moved_at: string;
+  expires_on: string | null;
+  reason: string | null;
+  recorded_by: string;
+}
+
+export function getWarehouseMovements(itemId?: string): Promise<WarehouseMovement[]> {
+  return request(`/warehouse/movements${itemId ? `?item_id=${itemId}` : ""}`);
+}
+
 // ── Emergencias (0037) ────────────────────────────────────────────────
 
 export interface EmergencyEntry {

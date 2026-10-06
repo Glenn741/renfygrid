@@ -233,6 +233,17 @@ from permissions import (  # noqa: E402
     update_user,
 )
 from calendar_service import annual_calendar  # noqa: E402
+from warehouse_service import (  # noqa: E402
+    WarehouseConflictError,
+    WarehouseNotFoundError,
+    chlorine_check,
+    create_item,
+    list_items,
+    list_movements,
+    record_movement,
+    update_item,
+    warehouse_catalog,
+)
 from emergency_service import (  # noqa: E402
     EmergencyNotFoundError,
     activate_emergency,
@@ -2509,6 +2520,101 @@ def review_emergency_plan_endpoint(body: EmergencyReviewRequest, actor: dict = D
     with db_conn() as conn:
         review_emergency_plan(conn, actor["tenant_id"], body.reviewed_on, requested_by_label(actor), body.notes)
         return emergency_plan(conn, actor["tenant_id"], _emergency_now(conn, actor["tenant_id"]))["review"]
+
+
+# ── Bodega y EPP (Track D, D4, 0038) ──────────────────────────────────
+
+def _warehouse_errors(exc: Exception) -> HTTPException:
+    if isinstance(exc, WarehouseNotFoundError):
+        return HTTPException(status_code=404, detail=str(exc))
+    if isinstance(exc, WarehouseConflictError):
+        return HTTPException(status_code=409, detail=str(exc))
+    return HTTPException(status_code=422, detail=str(exc))
+
+
+_WAREHOUSE_ERRORS = (WarehouseNotFoundError, WarehouseConflictError, InvalidRecordError)
+
+
+@app.get("/warehouse")
+def warehouse_endpoint(tenant_id: str = Depends(get_tenant_id)) -> dict:
+    """Catalogo (categorias y EPP por tarea), articulos con existencia y
+    alertas, y el cruce del cloro del mes en curso (zona de la organizacion)."""
+    with db_conn() as conn:
+        today, tz_name, _, _ = _tenant_day(conn, tenant_id)
+        tz = ZoneInfo(tz_name)
+        month_start = datetime(today.year, today.month, 1, tzinfo=tz)
+        items = list_items(conn, tenant_id, today)
+        return {
+            **warehouse_catalog(conn, tenant_id), "items": items,
+            "alerts": {"below_min": sum(1 for i in items if i["below_min"]),
+                       "expiring": sum(1 for i in items if i["expiring"])},
+            "chlorine_check": chlorine_check(conn, tenant_id, month_start, datetime.now(tz)),
+        }
+
+
+class WarehouseItemRequest(BaseModel):
+    name: str
+    category_code: str
+    unit: str
+    min_stock: float | None = None
+    chemical_product_id: str | None = None
+
+
+@app.post("/warehouse/items", status_code=201)
+def create_warehouse_item_endpoint(body: WarehouseItemRequest, tenant_id: str = Depends(get_tenant_id)) -> dict:
+    with db_conn() as conn:
+        try:
+            return create_item(conn, tenant_id, body.name, body.category_code, body.unit, body.min_stock, body.chemical_product_id)
+        except _WAREHOUSE_ERRORS as exc:
+            raise _warehouse_errors(exc) from exc
+
+
+class WarehouseItemUpdateRequest(BaseModel):
+    name: str | None = None
+    min_stock: float | None = None
+    active: bool | None = None
+
+
+@app.patch("/warehouse/items/{item_id}")
+def update_warehouse_item_endpoint(item_id: str, body: WarehouseItemUpdateRequest, tenant_id: str = Depends(get_tenant_id)) -> dict:
+    with db_conn() as conn:
+        try:
+            return update_item(conn, tenant_id, item_id, **body.model_dump(exclude_unset=True))
+        except _WAREHOUSE_ERRORS as exc:
+            raise _warehouse_errors(exc) from exc
+
+
+class WarehouseMovementRequest(BaseModel):
+    item_id: str
+    kind: str
+    quantity: float
+    moved_at: datetime | None = None
+    expires_on: date | None = None
+    reason: str | None = None
+    maintenance_order_id: str | None = None
+    client_id: str | None = None
+
+
+@app.post("/warehouse/movements", status_code=201)
+def record_warehouse_movement_endpoint(body: WarehouseMovementRequest, actor: dict = Depends(get_actor)) -> dict:
+    moved_at = body.moved_at or datetime.now(timezone.utc)
+    if moved_at.tzinfo is None:
+        raise HTTPException(status_code=422, detail="moved_at debe incluir la zona horaria")
+    with db_conn() as conn:
+        try:
+            return record_movement(conn, actor["tenant_id"], body.item_id, body.kind, body.quantity, moved_at,
+                                   requested_by_label(actor), body.expires_on, body.reason, body.maintenance_order_id, body.client_id)
+        except _WAREHOUSE_ERRORS as exc:
+            raise _warehouse_errors(exc) from exc
+
+
+@app.get("/warehouse/movements")
+def list_warehouse_movements_endpoint(tenant_id: str = Depends(get_tenant_id), item_id: str | None = None, limit: int = 100) -> list[dict]:
+    with db_conn() as conn:
+        try:
+            return list_movements(conn, tenant_id, item_id, max(1, min(limit, 500)))
+        except WarehouseNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @app.get("/calendar")
