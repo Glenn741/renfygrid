@@ -2657,3 +2657,71 @@ del paquete.
 - `jaas001` no recibe sugerencias, y es correcto: en su CAP final ninguna guía quedó en "Bajo"
   (G6 quedó en 53,3 %, "Medio").
 - El operador no puede registrar observaciones T-10 (403).
+
+
+### D12.3 Informe de cumplimiento al ente rector (2026-10-06)
+
+Fuente: plan §11.2 (D12). "Para ARCA, reportes de cumplimiento exportables que la junta decide
+enviar (no acceso directo a los datos operativos)".
+
+**Formato provisional:** el formato oficial de ARCA (DIR-ARCA-RG-012-2022 y plan de muestreo por
+categoría poblacional) todavía no está cargado. El propio informe lo declara en `format_note`. Las
+secciones son catálogo del paquete regulatorio: cuando llegue el documento se ajustan esas filas,
+no el código.
+
+**Migración 0044:**
+- **Catálogos:**
+  - `report_template`: título, propósito, destinatario y estado del formato;
+  - `report_section`: orden, título, descripción, detector y `params`. Por ejemplo, la sección de
+    cloro es el detector genérico `field_readings` con `{"parameter_code": "free_chlorine"}`.
+- **Tabla `compliance_report` por junta con RLS:**
+  - `content` jsonb es una foto inmutable del período;
+  - un disparador impide modificar el contenido o el período y registrar el envío dos veces;
+  - la aplicación no tiene DELETE: el informe es un registro de lo que la junta envió.
+- **Permiso `report.generate`:** directiva y administración.
+
+**Detectores (todos por la fecha del hecho, en la zona horaria de la junta):**
+- **Laboratorio:** muestras y resultados con la interpretación y la fuente de la regla vigente.
+- **Mediciones de campo:** por tipo de punto, cuántas, % dentro del rango, cuántas sin regla,
+  mínimo y máximo.
+- **Plan de muestreo:** esperadas según la frecuencia de cada ítem frente a tomadas. Un ítem creado
+  dentro del período cuenta desde su creación.
+- **Alertas:** resultados fuera de rango por fecha de medición o análisis, cuántos se cerraron, y
+  emergencias activadas.
+- **Calendario anual:** cumplimiento al cierre del período.
+- **Saneamiento:**
+  - intervenciones 7F del período, m³ de lodos y destinos verificados o pendientes;
+  - lodos vencidos;
+  - descargas registradas antes del cierre del período.
+
+**Motor:** `sampling_plan_compliance` y `field_reading_summary`.
+
+**API:**
+- `GET/POST /reports/compliance`;
+- `GET /reports/compliance/{id}`;
+- `POST /reports/compliance/{id}/sent`, con destinatario, fecha y nota, una sola vez y nunca antes
+  de generarlo.
+
+**Portal:** página "Informe de cumplimiento".
+- Se elige el período y se genera.
+- La vista del informe se imprime o guarda como PDF desde el navegador y se descarga en JSON.
+- Historial con el estado enviado o no enviado; el envío se registra desde el informe.
+
+**Verificación:**
+- Pruebas del motor.
+- E2E nuevo `verify_compliance_report_end_to_end.py`. Cubre, entre otras cosas, la medición de
+  hace 40 días que no entra, el UPDATE directo en la base que el disparador bloquea y el envío
+  que solo se registra una vez.
+- **Regresión completa:** 33 E2E en verde.
+
+**En producción con `jaas001`:**
+- **Informe de septiembre de 2026:**
+  - laboratorio: 1 muestra con 3 resultados, 2 fuera de rango y 1 crítico;
+  - cloro: salida del tanque 9/9 dentro del rango, punto lejano 1/2;
+  - alertas del período: 4, de las cuales 2 cerradas;
+  - plan de muestreo: sin ítems en septiembre, porque se crearon después.
+- **Corrección hecha en vivo:** la primera versión contaba las alertas por la fecha del hallazgo
+  (en la demo se cargaron en octubre, así que salían 0). También listaba descargas registradas
+  después del período. Las dos cosas se corrigieron y se generó un informe nuevo; el anterior
+  queda en el historial, porque es inmutable.
+- No se registró ningún envío: decidirlo es de la junta.

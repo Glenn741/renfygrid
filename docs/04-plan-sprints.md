@@ -732,8 +732,21 @@ Las matrices de G1 y G6 (priorización, Plan de Mejora, presupuesto) son D7, no 
 - T-06 (evaluación diaria) y T-08 (rúbrica de microfacilitación) como listas del paquete.
 - T-10 (consolidado de observaciones), con sugerencias tomadas de la CAP.
 
-**Siguiente en RenfyGrid:** informe de cumplimiento al ente rector. La junta lo genera y decide
-enviarlo; el formato oficial de ARCA queda pendiente del documento.
+**D12.3, informe de cumplimiento al ente rector:** ✅ En producción 2026-10-06 (migración 0044).
+- La junta genera una foto inmutable del período y decide enviarla.
+- Secciones como catálogo del paquete regulatorio.
+- Formato provisional hasta cargar el documento de ARCA.
+
+**Track D en RenfyGrid: completo (D0–D7, D12).**
+
+**Pendientes externos, que dependen del usuario:**
+- NTE INEN 1108 (valores de laboratorio);
+- documento de ARCA del plan de muestreo y del formato oficial del informe;
+- WhatsApp con Renfy Vox (D5);
+- prueba de la PWA en un teléfono real;
+- versión más reciente de la Guía 4.
+
+**D8–D11 van en `renfy_pool`** y requieren la revisión con el usuario antes de empezar.
 
 **D8–D11 (padrón, caja, costos y tarifa, recaudación, POA) van en `renfy_pool`.** Según este mismo
 plan, antes hay que cruzarlos con lo que ya existe allá; queda pendiente de esa revisión con el

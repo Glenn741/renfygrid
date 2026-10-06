@@ -1747,6 +1747,38 @@ export function updateProgramObservation(id: string, body: Record<string, unknow
   return request(`/program/observations/${id}`, { method: "PATCH", body: JSON.stringify(body) });
 }
 
+// ── Informe de cumplimiento al ente rector (0044) ─────────────────────
+
+export interface ComplianceReport {
+  report_id: string; pack_id: string; report_code: string; period_from: string; period_to: string; generated_by: string; generated_at: string;
+  sent_to: string | null; sent_on: string | null; sent_by: string | null; sent_note: string | null; title: string;
+  content?: {
+    template: { pack_id: string; code: string; title: string; purpose: string; recipient: string | null; format_note: string | null };
+    organization: string; timezone: string; period: { from: string; to: string }; generated_at: string; generated_by: string;
+    sections: { code: string; title: string; description: string; detector: string; data: unknown }[];
+  };
+}
+
+export function getComplianceReports(): Promise<{
+  templates: { pack_id: string; code: string; title: string; purpose: string; recipient: string | null; format_note: string | null;
+    sections: { code: string; title: string; description: string; detector: string }[] }[];
+  reports: ComplianceReport[];
+}> {
+  return request("/reports/compliance");
+}
+
+export function generateComplianceReport(body: { report_code: string; period_from: string; period_to: string }): Promise<ComplianceReport> {
+  return request("/reports/compliance", { method: "POST", body: JSON.stringify(body) });
+}
+
+export function getComplianceReport(id: string): Promise<ComplianceReport> {
+  return request(`/reports/compliance/${id}`);
+}
+
+export function markComplianceReportSent(id: string, body: { sent_to: string; sent_on: string; note?: string }): Promise<ComplianceReport> {
+  return request(`/reports/compliance/${id}/sent`, { method: "POST", body: JSON.stringify(body) });
+}
+
 export function getGroupDashboard(): Promise<{
   organization: { tenant_id: string; name: string };
   members: { member_tenant_id: string; name: string; shared: string[]; since: string | null; indicators: GroupMemberIndicators }[];

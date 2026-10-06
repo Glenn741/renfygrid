@@ -784,3 +784,42 @@ def group_rollup(members: list[dict]) -> dict[str, Any]:
     out["maturity"] = {"shared_by": len(m), "evaluations_with_progress": len(changes),
                        "average_change": round(sum(changes) / len(changes), 1) if changes else None}
     return out
+
+
+
+# ── Informe de cumplimiento (D12.3) ────────────────────────────────────
+
+def sampling_plan_compliance(items: list[dict], taken: dict[str, int], period_days: int) -> dict[str, Any]:
+    """Muestras esperadas por cada item del plan en el periodo (segun su
+    frecuencia) frente a las tomadas. `taken`: {item_id: n}."""
+    rows = []
+    for it in items:
+        # Un item creado dentro del periodo cuenta desde su creacion (`days`).
+        expected = periods_elapsed(it.get("days", period_days), it["frequency_days"])
+        done = taken.get(it["item_id"], 0)
+        rows.append({**it, "expected": expected, "taken": done, "compliance_pct": compliance_pct(done, expected)})
+    exp = sum(r["expected"] for r in rows)
+    done = sum(min(r["taken"], r["expected"]) for r in rows)
+    return {"items": rows, "expected": exp, "taken": sum(r["taken"] for r in rows), "compliance_pct": compliance_pct(done, exp)}
+
+
+def field_reading_summary(readings: list[dict]) -> list[dict[str, Any]]:
+    """Por tipo de punto: cuantas mediciones, cuantas dentro del rango
+    (`severity` 'ok'), sin interpretar (sin regla vigente), minimo y maximo.
+    `readings`: [{kind, kind_label, value, severity}]; el orden de salida es
+    el de la primera aparicion (el llamador ordena por el catalogo)."""
+    out: dict[str, dict] = {}
+    for r in readings:
+        g = out.setdefault(r["kind"], {"kind": r["kind"], "label": r["kind_label"], "n": 0, "in_range": 0, "no_rule": 0,
+                                       "min": None, "max": None})
+        g["n"] += 1
+        if r["severity"] is None:
+            g["no_rule"] += 1
+        elif r["severity"] == "ok":
+            g["in_range"] += 1
+        g["min"] = r["value"] if g["min"] is None else min(g["min"], r["value"])
+        g["max"] = r["value"] if g["max"] is None else max(g["max"], r["value"])
+    for g in out.values():
+        judged = g["n"] - g["no_rule"]
+        g["in_range_pct"] = round(100.0 * g["in_range"] / judged, 1) if judged else None
+    return list(out.values())

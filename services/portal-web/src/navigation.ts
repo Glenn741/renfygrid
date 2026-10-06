@@ -136,6 +136,7 @@ export const NAV_GROUPS: { title: string | null; items: NavItemDef[] }[] = [
           { id: "products", label: "Productos 7H" },
         ],
       },
+      { to: "/compliance-reports", label: "Informe de cumplimiento", icon: "\u{1F4E8}" },
       { to: "/inspections", label: "Ruta y revisiones", icon: "\u{1F4CB}", dynamic: "route" },
       {
         to: "/maintenance", label: "Mantenimiento", icon: "\u{1F527}",

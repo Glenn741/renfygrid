@@ -233,6 +233,14 @@ from permissions import (  # noqa: E402
     update_user,
 )
 from calendar_service import annual_calendar  # noqa: E402
+from report_service import (  # noqa: E402
+    ReportConflictError,
+    ReportNotFoundError,
+)
+from report_service import generate_report as generate_compliance_report  # noqa: E402
+from report_service import get_report as get_compliance_report  # noqa: E402
+from report_service import list_reports as list_compliance_reports  # noqa: E402
+from report_service import mark_sent as mark_report_sent  # noqa: E402
 from observation_service import (  # noqa: E402
     ObservationNotFoundError,
     create_observation,
@@ -2939,6 +2947,63 @@ def update_observation_endpoint(observation_id: str, body: ObservationRequest, a
             return update_observation(conn, actor["tenant_id"], observation_id, **body.model_dump(exclude_unset=True))
         except ObservationNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except InvalidRecordError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+# ── Informe de cumplimiento al ente rector (Track D, D12.3, 0044) ─────
+
+@app.get("/reports/compliance")
+def compliance_reports_endpoint(tenant_id: str = Depends(get_tenant_id)) -> dict:
+    """Plantillas de informe de los paquetes adoptados e informes generados."""
+    with db_conn() as conn:
+        return list_compliance_reports(conn, tenant_id)
+
+
+class ComplianceReportRequest(BaseModel):
+    report_code: str
+    period_from: date
+    period_to: date
+    pack_id: str | None = None
+
+
+@app.post("/reports/compliance", status_code=201)
+def generate_compliance_report_endpoint(body: ComplianceReportRequest, actor: dict = Depends(get_actor)) -> dict:
+    with db_conn() as conn:
+        try:
+            return generate_compliance_report(conn, actor["tenant_id"], requested_by_label(actor), body.report_code,
+                                              body.period_from, body.period_to, body.pack_id)
+        except ReportNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except InvalidRecordError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/reports/compliance/{report_id}")
+def compliance_report_endpoint(report_id: str, tenant_id: str = Depends(get_tenant_id)) -> dict:
+    with db_conn() as conn:
+        try:
+            return get_compliance_report(conn, tenant_id, report_id)
+        except ReportNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+class ReportSentRequest(BaseModel):
+    sent_to: str
+    sent_on: date
+    note: str | None = None
+
+
+@app.post("/reports/compliance/{report_id}/sent")
+def mark_compliance_report_sent_endpoint(report_id: str, body: ReportSentRequest, actor: dict = Depends(get_actor)) -> dict:
+    """La junta registra que envio el informe (a quien y cuando)."""
+    with db_conn() as conn:
+        try:
+            return mark_report_sent(conn, actor["tenant_id"], report_id, requested_by_label(actor), body.sent_to, body.sent_on, body.note)
+        except ReportNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ReportConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         except InvalidRecordError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 

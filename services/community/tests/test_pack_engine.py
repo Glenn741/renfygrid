@@ -12,6 +12,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from pack_engine import (  # noqa: E402
+    field_reading_summary,
+    sampling_plan_compliance,
     group_rollup,
     maturity_progress,
     improvement_candidates,
@@ -659,6 +661,26 @@ class GroupRollupTests(unittest.TestCase):
         self.assertEqual(r["products"], {"shared_by": 1, "complete": 5, "total": 13})
         self.assertEqual(r["maturity"], {"shared_by": 1, "evaluations_with_progress": 1, "average_change": 10.0})
         self.assertEqual(r["emergencies"], {"shared_by": 0, "active": 0})
+
+
+class ComplianceReportTests(unittest.TestCase):
+    def test_sampling_plan(self):
+        items = [{"item_id": "a", "frequency_days": 30}, {"item_id": "b", "frequency_days": 90}]
+        r = sampling_plan_compliance(items, {"a": 2, "b": 3}, 61)
+        self.assertEqual([(i["expected"], i["taken"], i["compliance_pct"]) for i in r["items"]], [(3, 2, 66.7), (1, 3, 100.0)])
+        self.assertEqual((r["expected"], r["taken"], r["compliance_pct"]), (4, 5, 75.0))
+        self.assertIsNone(sampling_plan_compliance([], {}, 30)["compliance_pct"])
+
+    def test_field_summary(self):
+        rs = [{"kind": "far", "kind_label": "Punto lejano", "value": 0.15, "severity": "alert"},
+              {"kind": "far", "kind_label": "Punto lejano", "value": 0.5, "severity": "ok"},
+              {"kind": "far", "kind_label": "Punto lejano", "value": 0.4, "severity": None},
+              {"kind": "tank", "kind_label": "Salida", "value": 1.0, "severity": "ok"}]
+        out = field_reading_summary(rs)
+        far = out[0]
+        self.assertEqual((far["n"], far["in_range"], far["no_rule"], far["min"], far["max"], far["in_range_pct"]),
+                         (3, 1, 1, 0.15, 0.5, 50.0))
+        self.assertEqual(out[1]["in_range_pct"], 100.0)
 
 
 if __name__ == "__main__":
