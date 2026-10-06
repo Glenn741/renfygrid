@@ -17,6 +17,8 @@ from pack_engine import (  # noqa: E402
     InvalidRecordError,
     InvalidRuleError,
     checklist_status,
+    chlorine_product_per_day,
+    dosing_guard_codes,
     evaluate_bands,
     findings_from_answers,
     follow_up_schedule,
@@ -457,6 +459,31 @@ class SamplingPointsTests(unittest.TestCase):
         self.assertEqual(rows["c"]["status"], "never")
         last["t"] = today
         self.assertEqual(sampling_points_status(points[:1], last, today)[0]["status"], "ok")
+
+
+
+class DosingTests(unittest.TestCase):
+    def test_guide_table_section_3_5(self):
+        # Tabla de la Guia 3 §3.5, hipoclorito al 65 %: (caudal, g/dia a 1,5 mg/L, g/dia a 2,0 mg/L).
+        # La guia a veces trunca a un decimal (26,58 -> 26,5; 39,88 -> 39,8): tolerancia 0,1.
+        table = [(0.1, 19.9, 26.5), (0.2, 39.8, 53.1), (0.5, 99.7, 132.9), (1.0, 199.4, 265.8), (2.0, 398.8, 531.7)]
+        for flow, at_15, at_20 in table:
+            self.assertAlmostEqual(chlorine_product_per_day(flow, 1.5, 65), at_15, delta=0.1)
+            self.assertAlmostEqual(chlorine_product_per_day(flow, 2.0, 65), at_20, delta=0.1)
+        self.assertAlmostEqual(chlorine_product_per_day(5.0, 1.5, 65), 997.0, delta=0.1)
+
+    def test_invalid_inputs(self):
+        for args in ((0, 1.5, 65), (0.1, 0, 65), (0.1, 1.5, 0), (0.1, 1.5, 120)):
+            with self.assertRaises(InvalidRecordError):
+                chlorine_product_per_day(*args)
+
+    def test_guards(self):
+        always = ["orientative", "verify_after", "safety"]
+        self.assertEqual(dosing_guard_codes("disinfection", "adequate", True, False), always)
+        self.assertEqual(dosing_guard_codes("disinfection", "high", True, True), ["turbid_water", "high_residual"] + always)
+        self.assertEqual(dosing_guard_codes("disinfection", "low", False, False), ["low_residual", "no_reading_today"] + always)
+        self.assertEqual(dosing_guard_codes("disinfection", None, False, False), ["no_reading_today"] + always)
+        self.assertEqual(dosing_guard_codes("coagulation", "adequate", True, False), ["not_disinfectant", "safety"])
 
 
 if __name__ == "__main__":

@@ -467,6 +467,52 @@ def sampling_points_status(points: list[dict], last_reading_on: dict[str, date],
     return rows
 
 
+# ── Dosificacion (0031) ────────────────────────────────────────────────
+
+SECONDS_PER_DAY = 86_400
+
+
+def chlorine_product_per_day(flow_lps: float, dose_mg_l: float, active_pct: float) -> float:
+    """Guia 3 §3.5: gramos de producto por dia = (caudal L/s x 86.400 x dosis
+    mg/L) / (% de cloro activo x 10). Para un liquido con % peso/volumen el
+    resultado son mililitros por dia."""
+    if flow_lps <= 0:
+        raise InvalidRecordError("El caudal debe ser mayor que cero (L/s)")
+    if dose_mg_l <= 0:
+        raise InvalidRecordError("La dosis debe ser mayor que cero (mg/L)")
+    if not 0 < active_pct <= 100:
+        raise InvalidRecordError("La concentración del producto va de más de 0 a 100 %")
+    return flow_lps * SECONDS_PER_DAY * dose_mg_l / (active_pct * 10)
+
+
+def dosing_guard_codes(
+    product_purpose: str,
+    last_residual_code: str | None,
+    residual_measured_today: bool,
+    turbid_today: bool,
+) -> list[str]:
+    """Que guardas aplican al calculo (los textos son del paquete):
+      not_disinfectant -- la formula es solo para cloro; otros productos van
+                          con prueba de jarras y apoyo tecnico
+      turbid_water     -- turbiedad fuera de rango o agua turbia/con color hoy
+      high_residual    -- el ultimo cloro en la salida del tanque esta alto
+      low_residual     -- esta bajo: revisar causas antes de subir
+      no_reading_today -- no se midio hoy en la salida del tanque
+      orientative, verify_after, safety -- siempre."""
+    if product_purpose != "disinfection":
+        return ["not_disinfectant", "safety"]
+    codes = []
+    if turbid_today:
+        codes.append("turbid_water")
+    if last_residual_code == "high":
+        codes.append("high_residual")
+    elif last_residual_code == "low":
+        codes.append("low_residual")
+    if not residual_measured_today:
+        codes.append("no_reading_today")
+    return codes + ["orientative", "verify_after", "safety"]
+
+
 # ── Nivel de instrumentacion ───────────────────────────────────────────
 
 def validate_instrumentation(levels: dict[str, str]) -> None:

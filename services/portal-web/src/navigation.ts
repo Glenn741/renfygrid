@@ -76,6 +76,7 @@ export const NAV_GROUPS: { title: string | null; items: NavItemDef[] }[] = [
         sections: [
           { id: "today", label: "Hoy" },
           { id: "measure", label: "Medir" },
+          { id: "dosing", label: "Dosificación" },
           { id: "log", label: "Bitácora 7C" },
           { id: "readings", label: "Mediciones 7B" },
           { id: "points", label: "Puntos de medición" },

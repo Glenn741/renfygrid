@@ -35,6 +35,8 @@ import psycopg  # noqa: E402
 
 from pack_engine import (  # noqa: E402
     InvalidRecordError,
+    chlorine_product_per_day,
+    dosing_guard_codes,
     interpret_reading,
     log_entry_status,
     sampling_points_status,
@@ -512,4 +514,148 @@ def operation_day(
             "alerts_today": sum(1 for e in entries if e["status"] == "alert"),
             "open_reading_findings": open_reading_findings,
         },
+    }
+
+
+# ── Productos quimicos y dosificacion (0031) ──────────────────────────
+
+_PRODUCT_COLUMNS = "id, name, purpose, form, active_pct, notes, active"
+PRODUCT_PURPOSES = ("disinfection", "coagulation", "ph_adjustment")
+PRODUCT_FORMS = ("solid", "liquid")
+
+
+def _product_row(r: tuple) -> dict:
+    return {"product_id": str(r[0]), "name": r[1], "purpose": r[2], "form": r[3], "active_pct": float(r[4]),
+            "notes": r[5], "active": r[6], "unit": "g" if r[3] == "solid" else "ml"}
+
+
+def _validate_product(fields: dict) -> None:
+    if "name" in fields and not (fields["name"] or "").strip():
+        raise InvalidRecordError("El producto necesita un nombre")
+    if "purpose" in fields and fields["purpose"] not in PRODUCT_PURPOSES:
+        raise InvalidRecordError(f"Uso inválido: {fields['purpose']!r} (válidos: {list(PRODUCT_PURPOSES)})")
+    if "form" in fields and fields["form"] not in PRODUCT_FORMS:
+        raise InvalidRecordError(f"Presentación inválida: {fields['form']!r} (válidas: {list(PRODUCT_FORMS)})")
+    if "active_pct" in fields and not 0 < fields["active_pct"] <= 100:
+        raise InvalidRecordError("La concentración va de más de 0 a 100 %")
+
+
+def list_chemical_products(conn: psycopg.Connection, tenant_id: str, include_inactive: bool = False) -> list[dict]:
+    with conn.transaction():
+        with tenant_scope(conn, tenant_id):
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"SELECT {_PRODUCT_COLUMNS} FROM chemical_product WHERE tenant_id = %s "
+                    f"{'' if include_inactive else 'AND active'} ORDER BY name",
+                    (tenant_id,),
+                )
+                return [_product_row(r) for r in cur.fetchall()]
+
+
+def get_chemical_product(conn: psycopg.Connection, tenant_id: str, product_id: str) -> dict:
+    _check_uuid(product_id, "el producto")
+    with conn.transaction():
+        with tenant_scope(conn, tenant_id):
+            with conn.cursor() as cur:
+                cur.execute(f"SELECT {_PRODUCT_COLUMNS} FROM chemical_product WHERE id = %s AND tenant_id = %s",
+                            (product_id, tenant_id))
+                row = cur.fetchone()
+    if row is None:
+        raise OperationNotFoundError(f"No existe el producto {product_id} para esta junta")
+    return _product_row(row)
+
+
+def create_chemical_product(
+    conn: psycopg.Connection, tenant_id: str, name: str, purpose: str, form: str, active_pct: float,
+    notes: str | None = None,
+) -> dict:
+    _validate_product({"name": name, "purpose": purpose, "form": form, "active_pct": active_pct})
+    try:
+        with conn.transaction():
+            with tenant_scope(conn, tenant_id):
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "INSERT INTO chemical_product (tenant_id, name, purpose, form, active_pct, notes) "
+                        f"VALUES (%s, %s, %s, %s, %s, %s) RETURNING {_PRODUCT_COLUMNS}",
+                        (tenant_id, name.strip(), purpose, form, active_pct, (notes or "").strip() or None),
+                    )
+                    return _product_row(cur.fetchone())
+    except psycopg.errors.UniqueViolation:
+        raise OperationConflictError(f"Ya existe un producto llamado {name.strip()!r}") from None
+
+
+def update_chemical_product(conn: psycopg.Connection, tenant_id: str, product_id: str, **fields: Any) -> dict:
+    unknown = set(fields) - {"name", "purpose", "form", "active_pct", "notes", "active"}
+    if unknown:
+        raise InvalidRecordError(f"Campos no editables: {sorted(unknown)}")
+    _validate_product(fields)
+    get_chemical_product(conn, tenant_id, product_id)
+    if "name" in fields:
+        fields["name"] = fields["name"].strip()
+    if fields:
+        sets = ", ".join(f"{k} = %s" for k in fields)
+        try:
+            with conn.transaction():
+                with tenant_scope(conn, tenant_id):
+                    conn.execute(f"UPDATE chemical_product SET {sets} WHERE id = %s AND tenant_id = %s",
+                                 (*fields.values(), product_id, tenant_id))
+        except psycopg.errors.UniqueViolation:
+            raise OperationConflictError(f"Ya existe un producto llamado {fields.get('name')!r}") from None
+    return get_chemical_product(conn, tenant_id, product_id)
+
+
+def calculate_dosing(
+    conn: psycopg.Connection,
+    tenant_id: str,
+    product_id: str,
+    flow_lps: float,
+    dose_mg_l: float,
+    day_start: datetime,
+    day_end: datetime,
+) -> dict:
+    """Calculo orientativo de la Guia 3 §3.5 con las guardas que aplican
+    hoy. No se guarda: lo que se aplica de verdad va a la bitacora 7C y se
+    verifica con la medicion siguiente. Un producto que no es desinfectante
+    no tiene resultado (va con prueba de jarras y apoyo tecnico)."""
+    product = get_chemical_product(conn, tenant_id, product_id)
+    with conn.transaction():
+        with tenant_scope(conn, tenant_id):
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT r.result_code, r.result_label, r.value, r.measured_at FROM field_reading r "
+                    "JOIN sampling_point p ON p.id = r.sampling_point_id "
+                    "WHERE r.tenant_id = %s AND p.kind_code = 'tank_outlet' AND r.parameter_code = 'free_chlorine' "
+                    "ORDER BY r.measured_at DESC, r.created_at DESC LIMIT 1",
+                    (tenant_id,),
+                )
+                last = cur.fetchone()
+                cur.execute(
+                    "SELECT (SELECT count(*) FROM field_reading WHERE tenant_id = %s AND parameter_code = 'turbidity' "
+                    "        AND severity IN ('alert', 'critical') AND measured_at >= %s AND measured_at < %s) "
+                    "     + (SELECT count(*) FROM operation_log_entry WHERE tenant_id = %s "
+                    "        AND appearance IN ('turbid', 'colored') AND logged_at >= %s AND logged_at < %s)",
+                    (tenant_id, day_start, day_end, tenant_id, day_start, day_end),
+                )
+                turbid_today = cur.fetchone()[0] > 0
+    measured_today = bool(last and day_start <= last[3] < day_end)
+    codes = dosing_guard_codes(product["purpose"], last[0] if last else None, measured_today, turbid_today)
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT code, level, message FROM dosing_guidance WHERE pack_id = ANY(%s) ORDER BY sort_order",
+            (active_pack_ids(conn, tenant_id),),
+        )
+        texts = {r[0]: (r[1], r[2]) for r in cur.fetchall()}
+    guards = [{"code": c, "level": texts[c][0] if c in texts else None, "message": texts[c][1] if c in texts else None}
+              for c in codes]
+    result = None
+    if product["purpose"] == "disinfection":
+        per_day = chlorine_product_per_day(flow_lps, dose_mg_l, product["active_pct"])
+        result = {"per_day": round(per_day, 1), "per_hour": round(per_day / 24, 2), "unit": product["unit"]}
+    return {
+        "product": product, "flow_lps": flow_lps, "dose_mg_l": dose_mg_l, "result": result, "guards": guards,
+        "can_apply": not any(g["level"] == "stop" for g in guards),
+        "last_tank_residual": (
+            {"value": float(last[2]), "result_code": last[0], "result_label": last[1], "measured_at": last[3].isoformat()}
+            if last else None
+        ),
     }

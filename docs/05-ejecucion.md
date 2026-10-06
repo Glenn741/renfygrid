@@ -1946,3 +1946,36 @@ Fuente: Guía 3, §3.3 (rutina en 5 momentos), §3.4 (interpretación del cloro)
   1 de octubre se suma al mismo, y el 2 de octubre ya da adecuado después de reparar una fuga.
 - El 27 de septiembre, una lluvia fuerte deja turbiedad de 8 UTN, con su hallazgo y "no se
   aumentó el cloro".
+
+### D1.2 Dosificación de cloro con guardas (2026-10-06)
+
+Fuente: Guía 3 §3.5. Fórmula: g/día = caudal (L/s) × 86.400 × dosis (mg/L) ÷ (% activo × 10).
+Se verificó contra la tabla completa de la guía, que a veces trunca a un decimal (26,58 aparece
+como 26,5). Para un líquido con % peso/volumen, el resultado sale en ml/día.
+
+**Migración 0031:**
+- `chemical_product` por junta con RLS: uso (desinfección, coagulante o regulador de pH),
+  presentación sólida o líquida y % activo. D4 le sumará existencias.
+- Catálogo `dosing_guidance` del paquete Municipios Azules con 8 textos literales de la §3.5 y
+  su nivel (alto, revisar o información).
+
+**Motor:**
+- `chlorine_product_per_day`.
+- `dosing_guard_codes`, que decide las guardas con los datos del día:
+  - un producto que no es desinfectante no tiene cálculo (prueba de jarras y apoyo técnico);
+  - agua turbia o con color hoy, o turbiedad fuera de rango → alto;
+  - último cloro de la salida del tanque alto → alto; bajo → revisar las causas antes de subir;
+  - sin medición hoy en la salida del tanque → medir antes de cambiar la dosis.
+
+**API y Portal:**
+- `GET/POST/PATCH /chemical-products` y `POST /dosing/calculate`. El cálculo no se guarda: lo
+  aplicado va a la bitácora 7C.
+- Sección "Dosificación" en Operación diaria: resultado en g o ml por día y por hora, último
+  cloro del tanque, guardas con color y alta de productos.
+
+**Verificación:**
+- 50 pruebas del motor, con la tabla de la guía como caso de prueba.
+- E2E de operación ampliado: 19,9 g/día; guarda de agua turbia; 129,6 ml/día con líquido al
+  10 %; coagulante sin cálculo; 409, 422 y 404; aislamiento.
+- En vivo, `jaas001` con hipoclorito de calcio al 65 %: 0,5 L/s a 1,5 mg/L = 99,7 g/día, con
+  el aviso de que todavía no se midió hoy.

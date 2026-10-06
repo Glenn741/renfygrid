@@ -201,6 +201,44 @@ def run(dsn: str) -> None:
                   f"resumen: 5 mediciones, 2 fuera de rango, 1 hallazgo abierto ({s})")
             check(s["entries_today"] == 4 and s["alerts_today"] == 2, "4 tomas, 2 en alerta")
 
+            print("6b. Productos y dosificacion (Guia 3 §3.5, 0031)")
+            r = client.post("/chemical-products", headers=h, json={
+                "name": "Hipoclorito de calcio 65 %", "purpose": "disinfection", "form": "solid", "active_pct": 65})
+            check(r.status_code == 201 and r.json()["unit"] == "g", "hipoclorito de calcio (sólido, gramos)")
+            hypo = r.json()["product_id"]
+            check(client.post("/chemical-products", headers=h, json={"name": "Hipoclorito de calcio 65 %", "purpose": "disinfection",
+                                                                     "form": "solid", "active_pct": 65}).status_code == 409,
+                  "producto repetido -> 409")
+            for body, msg in (({"active_pct": 0}, "concentración 0 -> 422"), ({"active_pct": 120}, "concentración 120 -> 422"),
+                              ({"purpose": "magia"}, "uso inventado -> 422"), ({"form": "gas"}, "presentación inventada -> 422")):
+                base = {"name": f"x {msg}", "purpose": "disinfection", "form": "solid", "active_pct": 65}
+                check(client.post("/chemical-products", headers=h, json={**base, **body}).status_code == 422, msg)
+            liquid = client.post("/chemical-products", headers=h, json={
+                "name": "Hipoclorito de sodio 10 %", "purpose": "disinfection", "form": "liquid", "active_pct": 10}).json()
+            coag = client.post("/chemical-products", headers=h, json={
+                "name": "Sulfato de aluminio", "purpose": "coagulation", "form": "solid", "active_pct": 17}).json()
+
+            calc = client.post("/dosing/calculate", headers=h, json={"product_id": hypo, "flow_lps": 0.1, "dose_mg_l": 1.5}).json()
+            check(calc["result"] == {"per_day": 19.9, "per_hour": 0.83, "unit": "g"}, "0,1 L/s a 1,5 mg/L con 65 % = 19,9 g/día (tabla de la guía)")
+            codes = [g["code"] for g in calc["guards"]]
+            check(codes == ["turbid_water", "orientative", "verify_after", "safety"],
+                  f"hoy hubo agua turbia: guarda de alto, con los textos de la guía ({codes})")
+            check(not calc["can_apply"] and calc["guards"][0]["level"] == "stop" and "Nunca aumente" in calc["guards"][0]["message"],
+                  "no se aplica sin apoyo técnico")
+            check(calc["last_tank_residual"]["result_code"] == "adequate", "considera el último cloro de la salida del tanque")
+            lq = client.post("/dosing/calculate", headers=h, json={"product_id": liquid["product_id"], "flow_lps": 0.1, "dose_mg_l": 1.5}).json()
+            check(lq["result"]["unit"] == "ml" and lq["result"]["per_day"] == 129.6, "líquido al 10 %: 129,6 ml/día")
+            cg = client.post("/dosing/calculate", headers=h, json={"product_id": coag["product_id"], "flow_lps": 0.1, "dose_mg_l": 1.5}).json()
+            check(cg["result"] is None and [g["code"] for g in cg["guards"]][0] == "not_disinfectant" and not cg["can_apply"],
+                  "coagulante: sin cálculo, prueba de jarras y apoyo técnico")
+            check(client.post("/dosing/calculate", headers=h, json={"product_id": hypo, "flow_lps": 0, "dose_mg_l": 1.5}).status_code == 422,
+                  "caudal 0 -> 422")
+            check(client.post("/dosing/calculate", headers=h, json={"product_id": str(uuid.uuid4()), "flow_lps": 1, "dose_mg_l": 1}).status_code == 404,
+                  "producto inexistente -> 404")
+            r = client.patch(f"/chemical-products/{coag['product_id']}", headers=h, json={"active": False})
+            check(r.status_code == 200 and not r.json()["active"], "producto desactivado")
+            check(len(client.get("/chemical-products", headers=h).json()) == 2, "la lista muestra solo los activos")
+
             print("7. Aislamiento")
             check(client.get("/sampling-points", headers=other).json() == [], "la otra junta no ve los puntos")
             check(client.get("/field-readings", headers=other).json() == [], "ni las mediciones")
@@ -212,16 +250,19 @@ def run(dsn: str) -> None:
                   "no puede usar una medición ajena")
             check(client.patch(f"/sampling-points/{points['tank_outlet']}", headers=other, json={"name": "x"}).status_code == 404,
                   "no puede editar un punto ajeno")
+            check(client.get("/chemical-products", headers=other).json() == [], "no ve los productos")
+            check(client.post("/dosing/calculate", headers=other, json={"product_id": hypo, "flow_lps": 1, "dose_mg_l": 1}).status_code == 404,
+                  "no puede calcular con un producto ajeno")
         finally:
             for tid in (tenant_id, other_id):
                 with conn.transaction():
                     with tenant_scope(conn, tid):
-                        for table in ("operation_log_entry", "field_reading", "sampling_point", "finding",
+                        for table in ("chemical_product", "operation_log_entry", "field_reading", "sampling_point", "finding",
                                       "network_asset", "tenant_pack", "app_user"):
                             conn.execute(f"DELETE FROM {table} WHERE tenant_id = %s", (tid,))
                 conn.execute("DELETE FROM tenant WHERE id = %s", (tid,))
             print("Limpieza: juntas de prueba y sus datos borrados")
-    print("SPRINT D1.1 E2E OK")
+    print("SPRINT D1.1-D1.2 E2E OK")
 
 
 if __name__ == "__main__":

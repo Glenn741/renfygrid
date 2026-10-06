@@ -3,8 +3,11 @@ import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ApiError,
+  calculateDosing,
+  createChemicalProduct,
   createOperationLogEntry,
   createSamplingPoint,
+  getChemicalProducts,
   getFieldReadings,
   getOperationLog,
   getOperationsCatalog,
@@ -12,6 +15,7 @@ import {
   getSamplingPoints,
   recordFieldReading,
   updateSamplingPoint,
+  type ChemicalProduct,
   type FieldParameter,
   type FieldReading,
   type OperationLogEntry,
@@ -315,6 +319,118 @@ function MeasureSection() {
   );
 }
 
+// ── Dosificacion (Guia 3 §3.5) ────────────────────────────────────────
+
+const PURPOSE_LABEL: Record<ChemicalProduct["purpose"], string> = {
+  disinfection: "Desinfección (cloro)",
+  coagulation: "Coagulante",
+  ph_adjustment: "Regulador de pH",
+};
+const GUARD_STYLE: Record<string, string> = {
+  stop: "border-red-200 bg-red-50 text-red-900",
+  warn: "border-amber-200 bg-amber-50 text-amber-900",
+  info: "border-slate-200 bg-slate-50 text-slate-700",
+};
+
+function DosingSection() {
+  const queryClient = useQueryClient();
+  const { data: products } = useQuery({ queryKey: ["chemical-products"], queryFn: () => getChemicalProducts() });
+  const [productId, setProductId] = useState("");
+  const [flow, setFlow] = useState("");
+  const [dose, setDose] = useState("");
+  const [calcError, setCalcError] = useState<string | null>(null);
+  const [name, setName] = useState("");
+  const [purpose, setPurpose] = useState<ChemicalProduct["purpose"]>("disinfection");
+  const [form, setForm] = useState<ChemicalProduct["form"]>("solid");
+  const [pct, setPct] = useState("");
+  const [prodError, setProdError] = useState<string | null>(null);
+
+  const calc = useMutation({
+    mutationFn: () => calculateDosing({ product_id: productId, flow_lps: Number(flow), dose_mg_l: Number(dose) }),
+    onSuccess: () => setCalcError(null),
+    onError: (err) => setCalcError(errText(err, "No se pudo calcular.")),
+  });
+  const create = useMutation({
+    mutationFn: () => createChemicalProduct({ name, purpose, form, active_pct: Number(pct) }),
+    onSuccess: (p) => { setName(""); setPct(""); setProdError(null); setProductId(p.product_id); queryClient.invalidateQueries({ queryKey: ["chemical-products"] }); },
+    onError: (err) => setProdError(errText(err, "No se pudo guardar el producto.")),
+  });
+  const r = calc.data;
+
+  return (
+    <SectionCard
+      title="Dosificación de cloro"
+      description="Cálculo orientativo de la guía: gramos de producto por día = caudal (L/s) × 86.400 × dosis (mg/L) ÷ (% de cloro activo × 10). Antes de cambiar la dosis, mida; después de aplicar, vuelva a medir."
+    >
+      <div className="grid gap-3 sm:grid-cols-[1fr_9rem_9rem_auto]">
+        <label className="text-xs text-slate-600">Producto
+          <select className="mt-1 w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" value={productId} onChange={(e) => { setProductId(e.target.value); calc.reset(); }}>
+            <option value="">— elija el producto —</option>
+            {(products ?? []).map((p) => <option key={p.product_id} value={p.product_id}>{p.name} · {p.active_pct} % · {PURPOSE_LABEL[p.purpose]}</option>)}
+          </select>
+        </label>
+        <label className="text-xs text-slate-600">Caudal (L/s)
+          <input type="number" step="any" min={0} inputMode="decimal" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm" value={flow} onChange={(e) => setFlow(e.target.value)} />
+        </label>
+        <label className="text-xs text-slate-600">Dosis (mg/L)
+          <input type="number" step="any" min={0} inputMode="decimal" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm" value={dose} onChange={(e) => setDose(e.target.value)} />
+        </label>
+        <button onClick={() => calc.mutate()} disabled={!productId || !flow || !dose || calc.isPending}
+          className="self-end rounded-lg bg-indigo-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50">
+          Calcular
+        </button>
+      </div>
+      {calcError && <p className="mt-2 text-sm text-red-600">{calcError}</p>}
+      {r && (
+        <div className="mt-4 space-y-2">
+          {r.result && (
+            <div className={`rounded-lg border p-4 ${r.can_apply ? "border-emerald-200 bg-emerald-50" : "border-red-200 bg-white"}`}>
+              <p className="text-2xl font-bold tabular-nums text-slate-900">{r.result.per_day.toLocaleString("es")} {r.result.unit}/día</p>
+              <p className="text-sm text-slate-600 tabular-nums">{r.result.per_hour.toLocaleString("es")} {r.result.unit}/hora · {r.product.name} al {r.product.active_pct} %</p>
+              {!r.can_apply && <p className="mt-1 text-sm font-semibold text-red-700">No aplicar sin revisar la causa y sin apoyo técnico (ver abajo).</p>}
+            </div>
+          )}
+          {r.last_tank_residual && (
+            <p className="text-xs text-slate-600">
+              Último cloro en la salida del tanque: <strong>{r.last_tank_residual.value} mg/L</strong> ({r.last_tank_residual.result_label ?? "sin regla"}) · {dateTime(r.last_tank_residual.measured_at)}
+            </p>
+          )}
+          {r.guards.map((g) => (
+            <p key={g.code} className={`rounded-lg border p-3 text-sm ${GUARD_STYLE[g.level ?? "info"]}`}>
+              {g.level === "stop" && <strong>Alto. </strong>}{g.level === "warn" && <strong>Revisar antes. </strong>}
+              {g.message ?? g.code}
+            </p>
+          ))}
+        </div>
+      )}
+
+      <h3 className="mt-6 text-sm font-semibold text-slate-900">Productos químicos de la junta</h3>
+      <ul className="divide-y divide-slate-100">
+        {(products ?? []).map((p) => (
+          <li key={p.product_id} className="flex flex-wrap items-center gap-2 py-1.5 text-sm">
+            <span className="flex-1 text-slate-800">{p.name}</span>
+            <span className="text-xs text-slate-500">{PURPOSE_LABEL[p.purpose]} · {p.form === "solid" ? "sólido (g)" : "líquido (ml)"} · {p.active_pct} %</span>
+          </li>
+        ))}
+        {products && products.length === 0 && <li className="py-2 text-sm text-slate-500">Todavía no hay productos registrados.</li>}
+      </ul>
+      <div className="mt-2 grid gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 p-3 sm:grid-cols-[1fr_11rem_8rem_7rem_auto]">
+        <input aria-label="Nombre del producto" className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm" placeholder="Nombre (p. ej. Hipoclorito de calcio 65 %)" value={name} onChange={(e) => setName(e.target.value)} />
+        <select aria-label="Uso" className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm" value={purpose} onChange={(e) => setPurpose(e.target.value as ChemicalProduct["purpose"])}>
+          {(Object.keys(PURPOSE_LABEL) as ChemicalProduct["purpose"][]).map((k) => <option key={k} value={k}>{PURPOSE_LABEL[k]}</option>)}
+        </select>
+        <select aria-label="Presentación" className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm" value={form} onChange={(e) => setForm(e.target.value as ChemicalProduct["form"])}>
+          <option value="solid">Sólido</option>
+          <option value="liquid">Líquido</option>
+        </select>
+        <input aria-label="Concentración (%)" type="number" min={0} max={100} step="any" className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm" placeholder="% activo" value={pct} onChange={(e) => setPct(e.target.value)} />
+        <button onClick={() => create.mutate()} disabled={!name.trim() || !pct || create.isPending} className="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50">Agregar</button>
+        {prodError && <p className="text-sm text-red-600 sm:col-span-5">{prodError}</p>}
+      </div>
+    </SectionCard>
+  );
+}
+
 // ── Bitacora e historial ──────────────────────────────────────────────
 
 function LogSection() {
@@ -469,6 +585,7 @@ export function OperationsPage() {
       <SectionNav items={SECTIONS} />
       <NavSection id="today"><TodaySection /></NavSection>
       <NavSection id="measure"><MeasureSection /></NavSection>
+      <NavSection id="dosing"><DosingSection /></NavSection>
       <NavSection id="log"><LogSection /></NavSection>
       <NavSection id="readings"><ReadingsSection /></NavSection>
       <NavSection id="points"><PointsSection /></NavSection>

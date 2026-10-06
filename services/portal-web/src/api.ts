@@ -1351,6 +1351,45 @@ export function getOperationsToday(): Promise<OperationDay> {
   return request("/operations/today");
 }
 
+// ── Productos quimicos y dosificacion (0031) ──────────────────────────
+
+export interface ChemicalProduct {
+  product_id: string;
+  name: string;
+  purpose: "disinfection" | "coagulation" | "ph_adjustment";
+  form: "solid" | "liquid";
+  active_pct: number;
+  notes: string | null;
+  active: boolean;
+  unit: "g" | "ml";
+}
+
+export function getChemicalProducts(includeInactive = false): Promise<ChemicalProduct[]> {
+  return request(`/chemical-products${includeInactive ? "?include_inactive=true" : ""}`);
+}
+
+export function createChemicalProduct(body: { name: string; purpose: ChemicalProduct["purpose"]; form: ChemicalProduct["form"]; active_pct: number; notes?: string | null }): Promise<ChemicalProduct> {
+  return request("/chemical-products", { method: "POST", body: JSON.stringify(body) });
+}
+
+export function updateChemicalProduct(productId: string, body: Partial<Omit<ChemicalProduct, "product_id" | "unit">>): Promise<ChemicalProduct> {
+  return request(`/chemical-products/${productId}`, { method: "PATCH", body: JSON.stringify(body) });
+}
+
+export interface DosingResult {
+  product: ChemicalProduct;
+  flow_lps: number;
+  dose_mg_l: number;
+  result: { per_day: number; per_hour: number; unit: "g" | "ml" } | null;
+  guards: { code: string; level: "stop" | "warn" | "info" | null; message: string | null }[];
+  can_apply: boolean;
+  last_tank_residual: { value: number; result_code: string | null; result_label: string | null; measured_at: string } | null;
+}
+
+export function calculateDosing(body: { product_id: string; flow_lps: number; dose_mg_l: number }): Promise<DosingResult> {
+  return request("/dosing/calculate", { method: "POST", body: JSON.stringify(body) });
+}
+
 // ── Pasaporte de productos (T-07) y seguimiento 7-30-90 (T-09), 0028 ──
 
 export type ProductStatus = "complete" | "to_validate" | "pending";

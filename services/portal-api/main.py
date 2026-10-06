@@ -213,8 +213,11 @@ from pack_engine import InvalidRecordError  # noqa: E402
 from operation_service import (  # noqa: E402
     OperationConflictError,
     OperationNotFoundError,
+    calculate_dosing,
+    create_chemical_product,
     create_log_entry,
     create_sampling_point,
+    list_chemical_products,
     list_field_parameters,
     list_field_readings,
     list_log_entries,
@@ -223,6 +226,7 @@ from operation_service import (  # noqa: E402
     list_sampling_points,
     operation_day,
     record_field_reading,
+    update_chemical_product,
     update_sampling_point,
 )
 from pack_service import AssetNotFoundError as PackAssetNotFoundError  # noqa: E402
@@ -1929,6 +1933,68 @@ def list_log_entries_endpoint(
 ) -> list[dict]:
     with db_conn() as conn:
         return list_log_entries(conn, tenant_id, since, until, limit)
+
+
+# ── Productos quimicos y dosificacion (Track D, 0031) ──────────────────
+
+@app.get("/chemical-products")
+def list_chemical_products_endpoint(tenant_id: str = Depends(get_tenant_id), include_inactive: bool = False) -> list[dict]:
+    with db_conn() as conn:
+        return list_chemical_products(conn, tenant_id, include_inactive)
+
+
+class ChemicalProductRequest(BaseModel):
+    name: str
+    purpose: str
+    form: str
+    active_pct: float
+    notes: str | None = None
+
+
+@app.post("/chemical-products", status_code=201)
+def create_chemical_product_endpoint(body: ChemicalProductRequest, tenant_id: str = Depends(get_tenant_id)) -> dict:
+    with db_conn() as conn:
+        try:
+            return create_chemical_product(conn, tenant_id, body.name, body.purpose, body.form, body.active_pct, body.notes)
+        except _OPERATION_ERRORS as exc:
+            raise _operation_errors(exc) from exc
+
+
+class ChemicalProductUpdateRequest(BaseModel):
+    name: str | None = None
+    purpose: str | None = None
+    form: str | None = None
+    active_pct: float | None = None
+    notes: str | None = None
+    active: bool | None = None
+
+
+@app.patch("/chemical-products/{product_id}")
+def update_chemical_product_endpoint(product_id: str, body: ChemicalProductUpdateRequest,
+                                     tenant_id: str = Depends(get_tenant_id)) -> dict:
+    with db_conn() as conn:
+        try:
+            return update_chemical_product(conn, tenant_id, product_id, **body.model_dump(exclude_unset=True))
+        except _OPERATION_ERRORS as exc:
+            raise _operation_errors(exc) from exc
+
+
+class DosingRequest(BaseModel):
+    product_id: str
+    flow_lps: float
+    dose_mg_l: float
+
+
+@app.post("/dosing/calculate")
+def calculate_dosing_endpoint(body: DosingRequest, tenant_id: str = Depends(get_tenant_id)) -> dict:
+    """Calculo orientativo de la Guia 3 §3.5 con las guardas del dia. No se
+    guarda nada: lo aplicado va a la bitacora 7C."""
+    with db_conn() as conn:
+        _, _, start, end = _tenant_day(conn, tenant_id)
+        try:
+            return calculate_dosing(conn, tenant_id, body.product_id, body.flow_lps, body.dose_mg_l, start, end)
+        except _OPERATION_ERRORS as exc:
+            raise _operation_errors(exc) from exc
 
 
 @app.get("/settings/instrumentation")
