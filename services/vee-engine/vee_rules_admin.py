@@ -77,4 +77,4 @@ def deactivate_vee_rule(conn: psycopg.Connection, tenant_id: str, rule_id: str) 
                     (rule_id, tenant_id),
                 )
                 if cur.rowcount == 0:
-                    raise RuleNotFoundError(f"No existe vee_rule {rule_id} para este tenant")
+                    raise RuleNotFoundError(f"No existe vee_rule {rule_id} para esta organización")

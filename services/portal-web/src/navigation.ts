@@ -59,7 +59,7 @@ export const NAV_GROUPS: { title: string | null; items: NavItemDef[] }[] = [
   {
     title: null,
     items: [{
-      to: "/", label: "Vista general", icon: "⌂",
+      to: "/", label: "Vista general", icon: "overview",
       sections: [
         { id: "kpis", label: "Estado general" },
         { id: "map", label: "Mapa de la red" },
@@ -72,19 +72,19 @@ export const NAV_GROUPS: { title: string | null; items: NavItemDef[] }[] = [
     title: "Operación del sistema",
     items: [
       {
-        to: "/operations", label: "Operación diaria", icon: "\u{1F4A7}",
+        to: "/operations", label: "Operación diaria", icon: "operations",
         sections: [
           { id: "today", label: "Hoy" },
           { id: "measure", label: "Medir" },
           { id: "dosing", label: "Dosificación" },
-          { id: "log", label: "Bitácora 7C" },
-          { id: "readings", label: "Mediciones 7B" },
+          { id: "log", label: "Bitácora de operación" },
+          { id: "readings", label: "Mediciones de campo" },
           { id: "meters", label: "Lecturas de medidores" },
           { id: "points", label: "Puntos de medición" },
         ],
       },
       {
-        to: "/system", label: "Mi sistema", icon: "\u{1F6B0}",
+        to: "/system", label: "Mi sistema", icon: "system",
         sections: [
           { id: "route", label: "Recorrido" },
           { id: "traffic-light", label: "Semáforo" },
@@ -93,7 +93,7 @@ export const NAV_GROUPS: { title: string | null; items: NavItemDef[] }[] = [
         ],
       },
       {
-        to: "/quality", label: "Calidad del agua", icon: "\u{1F9EA}",
+        to: "/quality", label: "Calidad del agua", icon: "quality",
         sections: [
           { id: "alerts", label: "Alertas" },
           { id: "lab", label: "Registrar análisis" },
@@ -102,7 +102,7 @@ export const NAV_GROUPS: { title: string | null; items: NavItemDef[] }[] = [
         ],
       },
       {
-        to: "/emergencies", label: "Emergencias", icon: "\u{1F6A8}",
+        to: "/emergencies", label: "Emergencias", icon: "emergencies",
         sections: [
           { id: "active", label: "Activas" },
           { id: "plan", label: "Plan de emergencia" },
@@ -111,7 +111,7 @@ export const NAV_GROUPS: { title: string | null; items: NavItemDef[] }[] = [
         ],
       },
       {
-        to: "/warehouse", label: "Bodega y EPP", icon: "\u{1F4E6}",
+        to: "/warehouse", label: "Bodega y EPP", icon: "warehouse",
         sections: [
           { id: "status", label: "Estado" },
           { id: "move", label: "Registrar movimiento" },
@@ -121,31 +121,31 @@ export const NAV_GROUPS: { title: string | null; items: NavItemDef[] }[] = [
         ],
       },
       {
-        to: "/sanitation", label: "Saneamiento", icon: "\u{1F6BD}",
+        to: "/sanitation", label: "Saneamiento", icon: "sanitation",
         sections: [
           { id: "components", label: "Componentes y lodos" },
-          { id: "register", label: "Registro 7F" },
+          { id: "register", label: "Registro de saneamiento" },
           { id: "discharges", label: "Descargas productivas" },
         ],
       },
       {
-        to: "/improvement", label: "Plan mínimo y mejora", icon: "\u{1F5D2}",
+        to: "/improvement", label: "Plan mínimo y mejora", icon: "improvement",
         sections: [
           { id: "minimum-plan", label: "Plan mínimo de O&M" },
-          { id: "inputs", label: "Insumos 7G.2" },
-          { id: "products", label: "Productos 7H" },
+          { id: "inputs", label: "Insumos para el Plan de Mejora" },
+          { id: "products", label: "Productos finales" },
         ],
       },
-      { to: "/compliance-reports", label: "Informe de cumplimiento", icon: "\u{1F4E8}" },
-      { to: "/inspections", label: "Ruta y revisiones", icon: "\u{1F4CB}", dynamic: "route" },
+      { to: "/compliance-reports", label: "Informe de cumplimiento", icon: "report" },
+      { to: "/inspections", label: "Ruta y revisiones", icon: "inspections", dynamic: "route" },
       {
-        to: "/maintenance", label: "Mantenimiento", icon: "\u{1F527}",
+        to: "/maintenance", label: "Mantenimiento", icon: "maintenance",
         sections: [
           { id: "kpis", label: "Estado general" },
           { id: "orders", label: "Órdenes", badge: OVERDUE_ORDERS },
           { id: "pm-plans", label: "Mantenimiento preventivo" },
           { id: "events", label: "Eventos (lluvias, quejas)" },
-          { id: "calendar", label: "Calendario anual 7G" },
+          { id: "calendar", label: "Calendario anual" },
         ],
       },
     ],
@@ -154,7 +154,7 @@ export const NAV_GROUPS: { title: string | null; items: NavItemDef[] }[] = [
     title: "Medición (MDM)",
     items: [
       {
-        to: "/meters", label: "HES / Ingesta", icon: "\u{1F4E1}",
+        to: "/meters", label: "HES / Ingesta", icon: "metering",
         sections: [
           { id: "map", label: "Mapa de medidores" },
           { id: "distribution", label: "Distribución estadística" },
@@ -166,7 +166,7 @@ export const NAV_GROUPS: { title: string | null; items: NavItemDef[] }[] = [
         ],
       },
       {
-        to: "/vee", label: "VEE", icon: "✓",
+        to: "/vee", label: "VEE", icon: "validation",
         sections: [
           { id: "validation", label: "V · Validación", badge: VEE_PENDING },
           { id: "estimation", label: "E · Estimación" },
@@ -174,20 +174,20 @@ export const NAV_GROUPS: { title: string | null; items: NavItemDef[] }[] = [
         ],
       },
       {
-        to: "/consumption", label: "Consumo", icon: "\u{1F4C8}",
+        to: "/consumption", label: "Consumo", icon: "consumption",
         sections: [
           { id: "under-review", label: "En revisión" },
           { id: "orders", label: "Órdenes de relectura / inspección" },
         ],
       },
-      { to: "/control", label: "Control (SCR)", icon: "⚡" },
+      { to: "/control", label: "Control (SCR)", icon: "control" },
     ],
   },
   {
     title: "Red y pérdidas",
     items: [
       {
-        to: "/network-balance", label: "Balance de Red", icon: "\u{1F4A7}",
+        to: "/network-balance", label: "Balance de Red", icon: "balance",
         sections: [
           { id: "map", label: "Mapa de zonas" },
           { id: "zones", label: "Zonas de red" },
@@ -195,28 +195,30 @@ export const NAV_GROUPS: { title: string | null; items: NavItemDef[] }[] = [
         ],
       },
       {
-        to: "/digital-twin", label: "Gemelo Digital", icon: "\u{1F5FA}",
+        to: "/digital-twin", label: "Gemelo Digital", icon: "twin",
         sections: [
           { id: "map", label: "Mapa de activos" },
           { id: "assets", label: "Activos" },
         ],
       },
-      { to: "/network-model", label: "Modelado Hidráulico", icon: "\u{1F30A}" },
+      { to: "/network-model", label: "Modelado Hidráulico", icon: "model" },
     ],
   },
   {
     title: "Plataforma",
     items: [
-      { to: "/group", label: "Agrupación", icon: "\u{1F91D}" },
-      { to: "/program-observations", label: "Mejora de las guías (T-10)", icon: "\u{1F4DD}" },
-      { to: "/integrations", label: "Integraciones (CIS)", icon: "\u{1F517}" },
-      { to: "/observability", label: "Observabilidad", icon: "\u{1FA7A}" },
+      { to: "/group", label: "Agrupación", icon: "group" },
+      { to: "/program-observations", label: "Observaciones del programa", icon: "observations" },
+      { to: "/integrations", label: "Integraciones (CIS)", icon: "integrations" },
+      { to: "/observability", label: "Observabilidad", icon: "observability" },
       {
-        to: "/configuration", label: "Configuración", icon: "⚙",
+        to: "/configuration", label: "Configuración", icon: "settings",
         sections: [
           { id: "users", label: "Usuarios y roles" },
           { id: "session", label: "Sesión" },
           { id: "timezone", label: "Zona horaria" },
+          { id: "region", label: "Región y moneda" },
+          { id: "terms", label: "Terminología" },
           { id: "packs", label: "Paquetes" },
           { id: "instrumentation", label: "Instrumentación" },
           { id: "hes-settings", label: "HES" },

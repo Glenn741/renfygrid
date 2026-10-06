@@ -18,6 +18,7 @@ import { NetworkMap, nrwColorForMap } from "../components/NetworkMap";
 import { SectionNav } from "../components/SectionNav";
 
 import { sectionsFor } from "../navigation";
+import { label as codeLabel, options as codeOptions } from "../catalog";
 const SECTIONS = sectionsFor("/network-balance");
 
 // Balance de Red -- Track B, Sprint B1/B1-2 (docs/07-track-b-alcance-funcional.md):
@@ -25,17 +26,7 @@ const SECTIONS = sectionsFor("/network-balance");
 // depende del HES/VEE propio de RenfyGrid (01-planteamiento.md SS3): una
 // zona puede recibir su balance de un CIS/HES externo (`data_source`).
 
-const ZONE_TYPE_LABEL: Record<string, string> = {
-  dma: "DMA (Distrito Hidrométrico)",
-  circuit: "Circuito",
-  district: "Distrito",
-  pressure_zone: "Zona de presión",
-};
 
-const METHOD_LABEL: Record<string, string> = {
-  top_down: "Top-Down (auditoría)",
-  bottom_up: "Bottom-Up (componentes)",
-};
 
 function nrwColor(pct: number | null, exceeds: boolean | null): string {
   if (pct === null) return "text-slate-400";
@@ -122,7 +113,7 @@ function RegisterZoneForm() {
             value={type}
             onChange={(e) => setType(e.target.value)}
           >
-            {Object.entries(ZONE_TYPE_LABEL).map(([value, label]) => (
+            {codeOptions("zone.type").map(({ code: value, label }) => (
               <option key={value} value={value}>{label}</option>
             ))}
           </select>
@@ -175,7 +166,7 @@ function RegisterZoneForm() {
             className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm w-full"
             value={nrwThresholdPct}
             onChange={(e) => setNrwThresholdPct(e.target.value)}
-            placeholder="ej. 30 (CRA/IANC Colombia) -- según regulador"
+            placeholder="p. ej. el tope que fije su regulador"
           />
         </div>
         <div>
@@ -272,7 +263,7 @@ function SubmitBalanceForm({ zone, onDone }: { zone: NetworkZone; onDone: () => 
           <div className="col-span-1">
             <label className="block text-[10px] font-medium text-slate-500 mb-1">Método</label>
             <select className="rounded-lg border border-slate-300 px-2 py-1 text-xs w-full bg-white" value={method} onChange={(e) => setMethod(e.target.value)}>
-              {Object.entries(METHOD_LABEL).map(([value, label]) => (
+              {codeOptions("balance.method").map(({ code: value, label }) => (
                 <option key={value} value={value}>{label}</option>
               ))}
             </select>
@@ -349,7 +340,7 @@ function ZoneRow({ zone }: { zone: NetworkZone }) {
     <>
       <tr>
         <td className="px-4 py-3 font-medium text-slate-900">{zone.name}</td>
-        <td className="px-4 py-3 text-slate-600">{ZONE_TYPE_LABEL[zone.type] ?? zone.type}</td>
+        <td className="px-4 py-3 text-slate-600">{codeLabel("zone.type", zone.type)}</td>
         <td className="px-4 py-3 text-slate-600">{zone.data_source === "renfygrid" ? "RenfyGrid" : "Externo"}</td>
         <td className="px-4 py-3">
           {hasInfra ? (
@@ -528,7 +519,7 @@ export function NetworkBalancePage() {
                 <tr key={row.balance_id}>
                   <td className="px-4 py-3 font-medium text-slate-900">{row.zone_name}</td>
                   <td className="px-4 py-3 text-slate-600">{row.period}</td>
-                  <td className="px-4 py-3 text-slate-600">{METHOD_LABEL[row.method] ?? row.method}</td>
+                  <td className="px-4 py-3 text-slate-600">{codeLabel("balance.method", row.method)}</td>
                   <td className={`px-4 py-3 font-semibold tabular-nums ${nrwColor(row.nrw_pct, row.exceeds_threshold)}`}>
                     {row.nrw_pct === null ? "—" : `${row.nrw_pct.toFixed(1)}%`}
                     {row.exceeds_threshold === true && (
@@ -562,7 +553,7 @@ export function NetworkBalancePage() {
 
       <div className="mt-4 rounded-xl border border-indigo-100 bg-indigo-50/40 p-4 text-sm text-slate-600">
         <b className="text-slate-900">¿Qué es NRW e ILI?</b>{" "}
-        NRW (Non-Revenue Water) es el % del agua que entra a la red y no genera ingreso -- en Colombia la CRA exige mantenerla bajo el 30% (IANC, Resolución 315/2005) para poder trasladar costos. ILI (Infrastructure Leakage Index) compara las pérdidas reales contra el mínimo técnicamente alcanzable para el tamaño de esa red específica -- solo se calcula si la zona tiene longitud de red, conexiones y presión configuradas.
+        NRW (Non-Revenue Water) es el % del agua que entra a la red y no genera ingreso (balance hídrico IWA); muchos reguladores fijan un tope para trasladar costos a la tarifa. ILI (Infrastructure Leakage Index) compara las pérdidas reales contra el mínimo técnicamente alcanzable para el tamaño de esa red específica -- solo se calcula si la zona tiene longitud de red, conexiones y presión configuradas.
       </div>
     </StagePage>
   );

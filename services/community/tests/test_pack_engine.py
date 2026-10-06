@@ -12,6 +12,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from pack_engine import (  # noqa: E402
+    format_number,
     field_reading_summary,
     sampling_plan_compliance,
     group_rollup,
@@ -681,6 +682,18 @@ class ComplianceReportTests(unittest.TestCase):
         self.assertEqual((far["n"], far["in_range"], far["no_rule"], far["min"], far["max"], far["in_range_pct"]),
                          (3, 1, 1, 0.15, 0.5, 50.0))
         self.assertEqual(out[1]["in_range_pct"], 100.0)
+
+
+class FormatNumberTests(unittest.TestCase):
+    def test_regions(self):
+        self.assertEqual(format_number(0.15, (",", ".")), "0,15")
+        self.assertEqual(format_number(12345.6, (",", ".")), "12.345,6")
+        self.assertEqual(format_number(12345.6, (".", ",")), "12,345.6")
+        self.assertEqual(format_number(12345.6, (",", " ")), "12 345,6")
+        self.assertEqual(format_number(1800.0, (",", ".")), "1.800")
+        self.assertEqual(format_number(0.5, None), "0.5")
+        self.assertEqual(format_number(12345.6, None), "12345.6")
+        self.assertEqual(format_number(None, None), "—")
 
 
 if __name__ == "__main__":

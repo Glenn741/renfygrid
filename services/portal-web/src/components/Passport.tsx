@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, getPassport, setProductRecord, type PassportProduct, type PassportSummary, type ProductStatus } from "../api";
 import { ROUTE_QUERY_KEY } from "./routeStatus";
+import { formSuffix } from "../catalog";
 
 // Pasaporte de productos (Guia 7, T-07, migracion 0028): que producto se
 // construyo, que evidencia existe y que debe validarse o pasar al Plan de
@@ -83,7 +84,7 @@ function ProductRow({ product }: { product: PassportProduct }) {
           />
           <label className="flex items-center gap-2 text-sm text-slate-700">
             <input type="checkbox" checked={toPlan} onChange={(e) => setToPlan(e.target.checked)} />
-            Pasa al Plan de Mejora (Guía 6)
+            Pasa al Plan de Mejora{formSuffix("improvement_plan")}
           </label>
           {error && <p className="text-sm text-red-600">{error}</p>}
           <div className="flex gap-2">

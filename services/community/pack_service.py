@@ -112,7 +112,7 @@ def _assert_assets_belong(conn: psycopg.Connection, tenant_id: str, asset_ids: s
                 found = {r[0] for r in cur.fetchall()}
     missing = asset_ids - found
     if missing:
-        raise AssetNotFoundError(f"Activos inexistentes para esta junta: {sorted(missing)}")
+        raise AssetNotFoundError(f"Activos inexistentes para esta organización: {sorted(missing)}")
 
 
 # ── Paquetes ──────────────────────────────────────────────────────────
@@ -426,7 +426,7 @@ def get_checklist_run(conn: psycopg.Connection, tenant_id: str, run_id: str) -> 
                 )
                 run = cur.fetchone()
                 if run is None:
-                    raise RunNotFoundError(f"No existe la aplicación {run_id} para esta junta")
+                    raise RunNotFoundError(f"No existe la aplicación {run_id} para esta organización")
                 cur.execute(
                     "SELECT item_key, answer_code, observation, action, responsible, due_date "
                     "FROM checklist_answer WHERE run_id = %s AND tenant_id = %s",
@@ -618,7 +618,7 @@ def update_finding(
                 )
                 row = cur.fetchone()
     if row is None:
-        raise FindingNotFoundError(f"No existe el hallazgo {finding_id} para esta junta")
+        raise FindingNotFoundError(f"No existe el hallazgo {finding_id} para esta organización")
     return _finding_row(row)
 
 
@@ -732,7 +732,7 @@ def set_product_record(
 ) -> dict:
     validate_product_status(status)
     if pack_id not in active_pack_ids(conn, tenant_id):
-        raise ProductNotFoundError(f"El paquete {pack_id!r} no está activo para esta junta")
+        raise ProductNotFoundError(f"El paquete {pack_id!r} no está activo para esta organización")
     with conn.cursor() as cur:
         cur.execute("SELECT 1 FROM process_product WHERE pack_id = %s AND code = %s", (pack_id, product_code))
         if cur.fetchone() is None:
@@ -858,7 +858,7 @@ def _cycle_pack(conn: psycopg.Connection, tenant_id: str, cycle_id: str) -> str:
                 cur.execute("SELECT pack_id FROM follow_up_cycle WHERE id = %s AND tenant_id = %s", (cycle_id, tenant_id))
                 row = cur.fetchone()
     if row is None:
-        raise FollowUpNotFoundError(f"No existe el ciclo de seguimiento {cycle_id} para esta junta")
+        raise FollowUpNotFoundError(f"No existe el ciclo de seguimiento {cycle_id} para esta organización")
     return row[0]
 
 
@@ -919,7 +919,7 @@ def update_follow_up_item(conn: psycopg.Connection, tenant_id: str, item_id: str
                 )
                 row = cur.fetchone()
     if row is None:
-        raise FollowUpNotFoundError(f"No existe el compromiso {item_id} para esta junta")
+        raise FollowUpNotFoundError(f"No existe el compromiso {item_id} para esta organización")
     return _item_row(row)
 
 

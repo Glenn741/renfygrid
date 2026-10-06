@@ -14,6 +14,7 @@ import { SectionNav } from "../components/SectionNav";
 import { TrendBars } from "../components/TrendBars";
 
 import { sectionsFor } from "../navigation";
+import { label as codeLabel } from "../catalog";
 const SECTIONS = sectionsFor("/vee");
 
 // Validacion (VEE), por etapa -- Sprint C11-3, sobre el feedback directo
@@ -28,26 +29,14 @@ const SECTIONS = sectionsFor("/vee");
 // eso esta pantalla son 3 secciones -- Validacion / Estimacion / Edicion
 // manual -- cada una con sus propios KPIs, no una tabla generica.
 
-const RULE_TYPE_LABEL: Record<string, string> = {
-  range: "Rango",
-  channel_consistency: "Coherencia entre canales",
-  missing_interval: "Intervalo faltante",
-  sin_regla_o_formato: "Sin regla / formato",
-};
 
 function ruleTypeLabel(type: string | null): string {
-  return RULE_TYPE_LABEL[type ?? "sin_regla_o_formato"] ?? type ?? "Sin regla / formato";
+  return codeLabel("vee.rule_type", type ?? "sin_regla_o_formato");
 }
 
-const METHOD_LABEL: Record<string, string> = {
-  linear_interpolation: "Interpolación lineal",
-  customer_historical_average: "Promedio histórico del medidor",
-  similar_customers_average: "Promedio de medidores similares",
-  desconocido: "Método desconocido",
-};
 
 function methodLabel(method: string | null): string {
-  return METHOD_LABEL[method ?? "desconocido"] ?? method ?? "Método desconocido";
+  return codeLabel("vee.method", method ?? "desconocido");
 }
 
 type TypeFilter = "todas" | "range" | "channel_consistency" | "missing_interval" | "sin_regla_o_formato";
@@ -250,7 +239,7 @@ export function VeePage() {
       {isLoading && <p className="text-sm text-slate-500 mb-6">Cargando...</p>}
       {data && data.length === 0 && (
         <div className="mb-8">
-          <EmptyState message="Sin lecturas inválidas pendientes. 👍" />
+          <EmptyState message="Sin lecturas inválidas pendientes." />
         </div>
       )}
       {rows.length === 0 && data && data.length > 0 && (

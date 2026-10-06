@@ -2725,3 +2725,75 @@ no el código.
   después del período. Las dos cosas se corrigieron y se generó un informe nuevo; el anterior
   queda en el historial, porque es inmutable.
 - No se registró ningún envío: decidirlo es de la junta.
+
+
+### Base genérica: catálogos de la organización, terminología e íconos (2026-10-06)
+
+**Pedido del usuario:**
+- "No deben haber datos hardcodeados, es una premisa de trabajo de todos los proyectos".
+- RenfyGrid es un sistema multi-país, sin referencias puntuales a entidades como ARCA
+  (`docs/08-estandares-mundiales.md`).
+- Nada de emoticonos: íconos SVG corporativos.
+
+**Migración 0045:**
+- **`currency` y `locale_option`:** catálogos de moneda (ISO 4217) y región. Los separadores
+  decimales y de miles se tomaron de Intl (CLDR), no se escribieron a mano.
+- **Moneda y región de la organización:** se guardan en `tenant.config`. Sin configurar, los
+  montos se muestran sin moneda: no se supone ninguna.
+- **`code_label`:** 114 etiquetas en 31 dominios (estados, tipos, prioridades), cada una con su
+  tono visual. Reemplazan unos 50 mapas que estaban en el frontend.
+  - La prioridad de las órdenes de mantenimiento (`maintenance.priority`, con "Emergencia") va
+    separada de la de hallazgos, 7G.2 y observaciones (`priority`), porque la base admite códigos
+    distintos para cada una.
+  - Los tipos de activo se exponen desde `component_type`, su catálogo de siempre, sin copiarlos.
+- **`term` y `tenant_term`:** terminología por paquete y por organización. La resolución va del
+  núcleo al paquete normativo, luego al de programa y por último a la organización.
+  - **Núcleo:** organización, directiva, gobierno local, autoridad de salud, ente rector, línea de
+    emergencias, protección civil, jornada comunitaria.
+  - **Paquete EC-MUNICIPIOS-AZULES:** junta, minga.
+  - **Paquete EC-ARCA:** GAD municipal, MSP, ARCA, ECU 911, COE cantonal.
+- **`pack_form`:** el código con que un programa conoce cada registro ("7G.2", "7F", "T-10"…),
+  con la etapa y la lista donde se aplica. La pantalla muestra el código solo si el paquete
+  adoptado lo declara. Ya no hay enlaces fijos a `/inspections/G3` ni la plantilla `MA-G3-7H`
+  escrita en el código.
+
+**Backend:**
+- `catalog_service.py` y endpoints `GET /catalog/ui`, `PUT /settings/region`, `PUT /settings/terms`.
+- `format_number` en el motor: los textos que arma el servidor (por ejemplo, la evidencia de la
+  7G.2) usan los separadores de la región. Con Ecuador sale "0,15"; con Estados Unidos, "0.15".
+- 46 mensajes de error decían "junta" o "tenant"; ahora dicen "organización".
+
+**Portal:**
+- `src/catalog.tsx`: el catálogo se carga una vez por sesión. Sin red (app del operador) se usa
+  la última copia guardada; al cambiar de sesión se vacía.
+- **Reemplazos en las pantallas:**
+  - unos 50 mapas de etiquetas, 54 formatos regionales "es" y 3 fechas "en-CA";
+  - 5 montos en "USD", unas 40 apariciones de "junta";
+  - las entidades ARCA, GAD, MSP, ECU 911, COE cantonal y JAAPS;
+  - los códigos de formato del programa en títulos y en el menú;
+  - "minga" pasa al término `community_work`;
+  - 3 textos con la regulación colombiana (Ley 142, CRA, CREG);
+  - el centro del mapa fijo en Colombia pasa a una vista neutra.
+- **Configuración:** secciones nuevas "Región y moneda" y "Terminología".
+
+**Íconos:**
+- Los emoticonos del menú, de la Vista general y de los mensajes se reemplazaron por íconos SVG
+  de línea (`lucide-react`, licencia ISC), el mismo estilo del set corporativo
+  (`rcpance/iconos`), mediante el componente `Icon` con nombres semánticos.
+- Los símbolos ✓ ✕ ⚠ ☰ ▸ ▾ también pasaron a SVG.
+- El favicon era el logo de Vite: ahora es el logo de RensoftLabs.
+
+**Verificación:**
+- E2E nuevo `verify_catalog_end_to_end.py`. Cubre, entre otras cosas, los términos neutros sin
+  los paquetes de Ecuador, la validación de moneda y región, los números del servidor según la
+  región y la terminología propia que vuelve a la del paquete.
+- **Regresión completa:** 34 E2E en verde, más la app sin conexión (25 verificaciones).
+
+**Producción:**
+- Región y moneda configuradas: `jaas001` y `agr001` en USD con formato es-EC; `col001` en COP
+  con formato es-CO.
+
+**Pendiente de decisión del usuario:** desde la 0025, toda organización adopta por defecto los
+paquetes de Ecuador, por eso `col001` (Colombia) se presenta con "junta", "ARCA" y "minga". Con el
+sistema multi-país, lo correcto sería que por defecto solo se adopte el núcleo y que el país y el
+programa se elijan al crear la organización.

@@ -15,6 +15,7 @@ import {
 import { StagePage, EmptyState } from "../components/StagePage";
 import { NavSection, SectionNav } from "../components/SectionNav";
 import { sectionsFor } from "../navigation";
+import { appLocale, isoDay, term } from "../catalog";
 
 // Plan de emergencia (Track D, D5; Guia 3 §3.11 y Actividad participativa 6).
 // "Las emergencias no se improvisan": quien activa, quien comunica, que se
@@ -80,7 +81,7 @@ function ActiveSection() {
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <h3 className="text-base font-bold text-red-900">{a.label}</h3>
                 <span className="text-xs text-red-800">
-                  {a.trigger === "auto" ? "Activada automáticamente" : `Activada por ${a.activated_by.replace(/^portal:/, "")}`} · {new Date(a.activated_at).toLocaleString("es")}
+                  {a.trigger === "auto" ? "Activada automáticamente" : `Activada por ${a.activated_by.replace(/^portal:/, "")}`} · {new Date(a.activated_at).toLocaleString(appLocale())}
                 </span>
               </div>
               {e && (
@@ -165,15 +166,15 @@ function PlanSection() {
     onError: (e) => setMsg(errText(e, "No se pudo agregar.")),
   });
   const review = useMutation({
-    mutationFn: () => reviewEmergencyPlan({ reviewed_on: new Date().toLocaleDateString("en-CA"), notes: reviewNotes || null }),
+    mutationFn: () => reviewEmergencyPlan({ reviewed_on: isoDay(), notes: reviewNotes || null }),
     onSuccess: () => { setReviewNotes(""); refresh(); },
     onError: (e) => setMsg(errText(e, "No se pudo registrar.")),
   });
   if (!data) return null;
   return (
-    <Card title="Plan de emergencia" description="Para cada emergencia: señales, primera acción segura, quién la activa, el mensaje a la comunidad y la institución que apoya. Parte de la Guía 3; ajústelo a su sistema.">
+    <Card title="Plan de emergencia" description="Para cada emergencia: señales, primera acción segura, quién la activa, el mensaje a la comunidad y la institución que apoya. Ajústelo a su sistema.">
       <div className={`mb-4 rounded-lg border p-3 text-sm ${data.review.status === "ok" ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-amber-200 bg-amber-50 text-amber-900"}`}>
-        <strong>Revisión del plan:</strong> {data.review.last_reviewed_on ? `última el ${new Date(`${data.review.last_reviewed_on}T12:00:00`).toLocaleDateString("es")}` : "todavía no se revisó"}
+        <strong>Revisión del plan:</strong> {data.review.last_reviewed_on ? `última el ${new Date(`${data.review.last_reviewed_on}T12:00:00`).toLocaleDateString(appLocale())}` : "todavía no se revisó"}
         {data.review.status === "overdue" && " · vencida"}
         {data.review.source && <span className="block text-xs opacity-80">{data.review.source}</span>}
         <span className="mt-2 flex flex-wrap gap-2">
@@ -187,7 +188,7 @@ function PlanSection() {
           return (
             <article key={key} className="rounded-lg border border-slate-200 p-3">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <h3 className="text-sm font-semibold text-slate-900">{e.label}{e.customized && <span className="ml-2 rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-700">ajustado por la junta</span>}</h3>
+                <h3 className="text-sm font-semibold text-slate-900">{e.label}{e.customized && <span className="ml-2 rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-700">ajustado</span>}</h3>
                 {editing !== key && <button onClick={() => setEditing(key)} className="text-xs font-medium text-indigo-700 hover:underline">Ajustar</button>}
               </div>
               {e.signals && <p className="text-xs text-slate-500">Señales: {e.signals}</p>}
@@ -225,7 +226,7 @@ function ContactsSection() {
   });
   const del = useMutation({ mutationFn: deleteEmergencyContact, onSuccess: refresh });
   return (
-    <Card title="Contactos institucionales" description="Números visibles para el operador y la directiva: GAD, MSP, ARCA, COE cantonal, ECU 911, técnico de apoyo.">
+    <Card title="Contactos institucionales" description={`Números a mano para operación y dirección: ${term("local_government")}, ${term("health_authority")}, ${term("regulator")}, ${term("civil_protection")}, ${term("emergency_line")}, técnico de apoyo.`}>
       {data && data.contacts.length === 0 && <EmptyState message="Todavía no hay contactos." />}
       <ul className="divide-y divide-slate-100">
         {(data?.contacts ?? []).map((c) => (
@@ -255,8 +256,8 @@ function HistorySection() {
       <ul className="divide-y divide-slate-100">
         {(data ?? []).map((a) => (
           <li key={a.activation_id} className="py-2 text-sm text-slate-700">
-            <strong>{a.label}</strong> · {new Date(a.activated_at).toLocaleString("es")} · {a.trigger === "auto" ? "automática" : "manual"} ·{" "}
-            {a.status === "active" ? <span className="font-semibold text-red-700">activa</span> : `resuelta ${a.closed_at ? new Date(a.closed_at).toLocaleDateString("es") : ""}`}
+            <strong>{a.label}</strong> · {new Date(a.activated_at).toLocaleString(appLocale())} · {a.trigger === "auto" ? "automática" : "manual"} ·{" "}
+            {a.status === "active" ? <span className="font-semibold text-red-700">activa</span> : `resuelta ${a.closed_at ? new Date(a.closed_at).toLocaleDateString(appLocale()) : ""}`}
             {a.closing_notes && <span className="block text-xs text-slate-500">{a.closing_notes}</span>}
           </li>
         ))}

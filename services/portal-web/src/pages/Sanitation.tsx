@@ -5,6 +5,7 @@ import { ApiError, addDischargeFollowup, createDischarge, getSanitation, verifyS
 import { StagePage, EmptyState } from "../components/StagePage";
 import { NavSection, SectionNav } from "../components/SectionNav";
 import { sectionsFor } from "../navigation";
+import { badgeClass, label as codeLabel, options as codeOptions, appLocale, formSuffix, formLink } from "../catalog";
 
 // Saneamiento (Track D, D6; Guia 3 §3.7-3.8, AP5, ficha 7F). "El agua potable
 // entra segura a la casa. El saneamiento evita que el agua usada salga
@@ -12,12 +13,6 @@ import { sectionsFor } from "../navigation";
 
 const SECTIONS = sectionsFor("/sanitation");
 const KEY = ["sanitation"];
-const DSTATUS: Record<string, { label: string; cls: string }> = {
-  identified: { label: "Identificada", cls: "bg-amber-50 text-amber-800" },
-  agreement: { label: "Con acuerdo", cls: "bg-indigo-50 text-indigo-700" },
-  controlled: { label: "Controlada", cls: "bg-emerald-50 text-emerald-700" },
-  closed: { label: "Cerrada", cls: "bg-slate-100 text-slate-600" },
-};
 
 function errText(err: unknown, fallback: string) {
   return err instanceof ApiError ? err.message : fallback;
@@ -34,7 +29,7 @@ function Card({ title, description, children }: { title: string; description?: s
 }
 
 function day(iso: string | null) {
-  return iso ? new Date(iso).toLocaleDateString("es") : "—";
+  return iso ? new Date(iso).toLocaleDateString(appLocale()) : "—";
 }
 
 function ComponentsSection() {
@@ -61,7 +56,7 @@ function ComponentsSection() {
       <p className="mt-3 text-sm">
         <Link to="/maintenance#orders" className="font-semibold text-indigo-700 hover:underline">Programar limpieza o retiro de lodos ›</Link>
         <span className="mx-2 text-slate-300">·</span>
-        <Link to="/inspections/G3" className="font-semibold text-indigo-700 hover:underline">Aplicar la lista 7E de saneamiento ›</Link>
+        <Link to={formLink("sanitation_inspection") ?? "/inspections"} className="font-semibold text-indigo-700 hover:underline">Aplicar la lista de inspección de saneamiento{formSuffix("sanitation_inspection")} ›</Link>
       </p>
     </Card>
   );
@@ -78,7 +73,7 @@ function RegisterSection() {
   });
   if (!data) return null;
   return (
-    <Card title="Registro de limpieza, lodos y saneamiento (7F)" description="Cada intervención en una caja, fosa o planta: quién retiró los residuos y a qué sitio seguro fueron llevados. La directiva verifica el destino seguro.">
+    <Card title={`Registro de limpieza, lodos y saneamiento${formSuffix("sanitation_register")}`} description="Cada intervención en una caja, fosa o planta: quién retiró los residuos y a qué sitio seguro fueron llevados. La directiva verifica el destino seguro.">
       {data.register_7f.length === 0 && <EmptyState message="Todavía no hay intervenciones de saneamiento cerradas." />}
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
@@ -136,7 +131,7 @@ function DischargesSection() {
             <article key={d.discharge_id} className="rounded-lg border border-slate-200 p-3">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <h3 className="text-sm font-semibold text-slate-900">{d.name} <span className="font-normal text-slate-500">· {d.activity_label}{d.owner ? ` · ${d.owner}` : ""}</span></h3>
-                <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${DSTATUS[d.status].cls}`}>{DSTATUS[d.status].label}</span>
+                <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${badgeClass("discharge.status", d.status)}`}>{codeLabel("discharge.status", d.status)}</span>
               </div>
               {d.location_text && <p className="text-xs text-slate-500">{d.location_text}</p>}
               {d.problem && <p className="mt-1 text-sm text-slate-700">{d.problem}</p>}
@@ -149,7 +144,7 @@ function DischargesSection() {
               ))}
               {d.followups.length > 0 && (
                 <ul className="mt-2 border-l-2 border-slate-200 pl-3 text-xs text-slate-600">
-                  {d.followups.map((x, i) => <li key={i}>{day(x.noted_at)} · {x.note}{x.new_status ? ` → ${DSTATUS[x.new_status].label}` : ""}</li>)}
+                  {d.followups.map((x, i) => <li key={i}>{day(x.noted_at)} · {x.note}{x.new_status ? ` → ${codeLabel("discharge.status", x.new_status)}` : ""}</li>)}
                 </ul>
               )}
               <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_9rem_auto]">
@@ -158,7 +153,7 @@ function DischargesSection() {
                 <select aria-label="Nuevo estado" className="rounded-lg border border-slate-300 px-2 py-1 text-sm" value={n.status}
                   onChange={(e) => setNote({ ...note, [d.discharge_id]: { ...n, status: e.target.value } })}>
                   <option value="">— mismo estado —</option>
-                  {Object.entries(DSTATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                  {codeOptions("discharge.status").map(({ code: k, ...v }) => <option key={k} value={k}>{v.label}</option>)}
                 </select>
                 <button onClick={() => follow.mutate(d.discharge_id)} disabled={!n.note.trim()} className="rounded-lg border border-indigo-300 px-3 py-1 text-sm font-medium text-indigo-700 disabled:opacity-50">Anotar</button>
                 {n.status === "agreement" && (

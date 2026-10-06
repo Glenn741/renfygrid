@@ -6,6 +6,7 @@ import { NAV_GROUPS, type NavBadge, type NavItemDef } from "../navigation";
 import { ActiveSectionProvider, scrollToSection, useActiveSection } from "./activeSection";
 import { SessionMenu, useSessionInfo } from "./SessionMenu";
 import { ROUTE_QUERY_KEY, STAGE_STATE_STYLE, stageState } from "./routeStatus";
+import { Icon } from "./Icon";
 
 // Shell visual compartido (Sprint C9; menu agrupado por proceso y submenus
 // contextuales 2026-10-05, a pedido del usuario: "la vision de proceso no es
@@ -168,7 +169,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
                             : "text-slate-300 hover:bg-white/5 hover:text-white"
                         }`}
                       >
-                        <span className="text-base leading-none">{item.icon}</span>
+                        <Icon name={item.icon} className="h-4 w-4 shrink-0" />
                         {item.label}
                       </Link>
                       {hasSubmenu && !active && (
@@ -179,7 +180,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
                           title={expanded ? "Ocultar" : "Mostrar contenido"}
                           className="ml-1 flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-white/5 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
                         >
-                          <span aria-hidden className={`text-xs transition-transform ${expanded ? "rotate-90" : ""}`}>▸</span>
+                          <span className={`transition-transform ${expanded ? "rotate-90" : ""}`}><Icon name="expand" className="h-3.5 w-3.5" /></span>
                         </button>
                       )}
                     </div>
@@ -258,7 +259,7 @@ function ShellLayout({ title, children }: AppShellProps) {
             className="lg:hidden flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-600"
             onClick={() => setMobileOpen(true)}
           >
-            ☰
+            <Icon name="menu" className="h-4 w-4" />
           </button>
           <h1 className="text-base lg:text-lg font-bold text-slate-900 truncate">{title}</h1>
           <SessionMenu />

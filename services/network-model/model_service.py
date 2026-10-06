@@ -159,7 +159,7 @@ def _model_row(conn: psycopg.Connection, tenant_id: str, model_id: str) -> tuple
                 )
                 row = cur.fetchone()
     if row is None:
-        raise ModelNotFoundError(f"No existe el modelo {model_id} para este tenant")
+        raise ModelNotFoundError(f"No existe el modelo {model_id} para esta organización")
     return row[0], (str(row[1]) if row[1] else None)
 
 

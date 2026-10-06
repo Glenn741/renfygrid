@@ -88,7 +88,7 @@ def handle_connection(sock: socket.socket, conn: psycopg.Connection, tenant_id: 
             return
         meter_id = meter_id_for_server_address(conn, tenant_id, event.meter_server_address)
         if meter_id is None:
-            print(f"  DESCARTADA: server_address={event.meter_server_address} no registrado en este tenant")
+            print(f"  DESCARTADA: server_address={event.meter_server_address} no registrado en esta organización")
             return
         record_event(conn, tenant_id, meter_id, event)
         print(

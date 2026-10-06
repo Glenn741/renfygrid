@@ -156,7 +156,7 @@ class FailureCodeNotFoundError(LookupError):
 
 
 class CrewNotFoundError(LookupError):
-    """No existe esa cuadrilla (o esta inactiva) para este tenant."""
+    """No existe esa cuadrilla (o esta inactiva) para esta organización."""
 
 
 class PmPlanNotFoundError(LookupError):
@@ -190,7 +190,7 @@ def _asset_row(conn: psycopg.Connection, tenant_id: str, asset_id: str) -> tuple
                 )
                 row = cur.fetchone()
     if row is None:
-        raise AssetNotFoundError(f"No existe el activo {asset_id} para este tenant")
+        raise AssetNotFoundError(f"No existe el activo {asset_id} para esta organización")
     return row[0], (str(row[1]) if row[1] else None)
 
 
@@ -362,7 +362,7 @@ def get_order_detail(conn: psycopg.Connection, tenant_id: str, order_id: str) ->
                 )
                 row = cur.fetchone()
     if row is None:
-        raise OrderNotFoundError(f"No existe la orden {order_id} para este tenant")
+        raise OrderNotFoundError(f"No existe la orden {order_id} para esta organización")
     return _order_row_to_dict(row)
 
 
@@ -408,7 +408,7 @@ def assign_order(conn: psycopg.Connection, tenant_id: str, order_id: str, crew_i
     si no existe o esta inactiva. Sin motor de ruteo/optimizacion --
     asignacion simple y explicita, a proposito (ver docs/04-plan-sprints.md SS9)."""
     if not _crew_exists(conn, tenant_id, crew_id):
-        raise CrewNotFoundError(f"No existe la cuadrilla {crew_id} (o esta inactiva) para este tenant")
+        raise CrewNotFoundError(f"No existe la cuadrilla {crew_id} (o esta inactiva) para esta organización")
     return _transition(conn, tenant_id, order_id, "assigned", {"assigned_crew_id": crew_id})
 
 
@@ -454,9 +454,9 @@ def close_order(
     if new_status not in ("completed", "cancelled"):
         raise InvalidCloseStatusError(f"close_order solo cierra a 'completed'/'cancelled', no {new_status!r}")
     if failure_code_id is not None and not _failure_code_exists(conn, tenant_id, failure_code_id):
-        raise FailureCodeNotFoundError(f"No existe el codigo de falla {failure_code_id} para este tenant")
+        raise FailureCodeNotFoundError(f"No existe el codigo de falla {failure_code_id} para esta organización")
     if community_participants is not None and community_participants < 0:
-        raise InvalidCommunityWorkError("Los participantes de la minga no pueden ser negativos")
+        raise InvalidCommunityWorkError("Los participantes de la jornada comunitaria no pueden ser negativos")
     if volunteer_hours is not None and volunteer_hours < 0:
         raise InvalidCommunityWorkError("Las horas donadas no pueden ser negativas")
     try:
@@ -799,7 +799,7 @@ def close_from_webhook(conn: psycopg.Connection, tenant_id: str, bayforce_order_
                 )
                 row = cur.fetchone()
     if row is None:
-        raise OrderNotFoundError(f"No existe ninguna orden con bayforce_order_ref={bayforce_order_ref!r} para este tenant")
+        raise OrderNotFoundError(f"No existe ninguna orden con bayforce_order_ref={bayforce_order_ref!r} para esta organización")
     order_id, current_status = str(row[0]), row[1]
     if new_status not in ALLOWED_TRANSITIONS.get(current_status, set()):
         raise InvalidStatusTransitionError(f"La orden {order_id} esta '{current_status}', no puede pasar a '{new_status}'")

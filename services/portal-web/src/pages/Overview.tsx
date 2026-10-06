@@ -16,6 +16,7 @@ import { TrendBars } from "../components/TrendBars";
 import { SectionNav } from "../components/SectionNav";
 
 import { sectionsFor } from "../navigation";
+import { Icon } from "../components/Icon";
 // Nivel 1 (F48, Sprint C1) -- rediseñada 2026-09-14 a pedido directo del
 // usuario: la version anterior solo tenia 4 tiles de Track A y se veia
 // "escueta... como una plataforma escolar". Esta version es un reflejo
@@ -37,17 +38,17 @@ interface ModuleCard {
 }
 
 const MODULES: ModuleCard[] = [
-  { to: "/meters", icon: "\u{1F4E1}", label: "HES / Ingesta", description: "Medidores, concentradores, flota y eventos/alarmas" },
-  { to: "/vee", icon: "✓", label: "VEE", description: "Validación, estimación y edición manual de lecturas" },
-  { to: "/consumption", icon: "\u{1F4C8}", label: "Consumo", description: "Consumo facturable y anomalías bajo revisión" },
-  { to: "/control", icon: "⚡", label: "Control (SCR)", description: "Suspensión, corte y reconexión remota" },
-  { to: "/network-balance", icon: "\u{1F4A7}", label: "Balance de Red", description: "NRW, ILI y balance hídrico IWA por zona" },
-  { to: "/network-model", icon: "\u{1F30A}", label: "Modelado Hidráulico", description: "Simulación EPANET (WNTR) de presión y caudal" },
-  { to: "/digital-twin", icon: "\u{1F5FA}", label: "Gemelo Digital", description: "Inventario georreferenciado de activos de red" },
-  { to: "/maintenance", icon: "\u{1F527}", label: "Mantenimiento", description: "Órdenes de mantenimiento e integración BayForce" },
-  { to: "/integrations", icon: "\u{1F517}", label: "Integraciones (CIS)", description: "Feed unificado de órdenes y lecturas bajo demanda" },
-  { to: "/observability", icon: "\u{1FA7A}", label: "Observabilidad", description: "Alertas activas de ingesta en tiempo real" },
-  { to: "/configuration", icon: "⚙", label: "Configuración", description: "Reglas VEE/consumo, aprobación SCR, OBIS, cuentas protegidas" },
+  { to: "/meters", icon: "metering", label: "HES / Ingesta", description: "Medidores, concentradores, flota y eventos/alarmas" },
+  { to: "/vee", icon: "validation", label: "VEE", description: "Validación, estimación y edición manual de lecturas" },
+  { to: "/consumption", icon: "consumption", label: "Consumo", description: "Consumo facturable y anomalías bajo revisión" },
+  { to: "/control", icon: "control", label: "Control (SCR)", description: "Suspensión, corte y reconexión remota" },
+  { to: "/network-balance", icon: "balance", label: "Balance de Red", description: "NRW, ILI y balance hídrico IWA por zona" },
+  { to: "/network-model", icon: "model", label: "Modelado Hidráulico", description: "Simulación EPANET (WNTR) de presión y caudal" },
+  { to: "/digital-twin", icon: "twin", label: "Gemelo Digital", description: "Inventario georreferenciado de activos de red" },
+  { to: "/maintenance", icon: "maintenance", label: "Mantenimiento", description: "Órdenes de mantenimiento e integración BayForce" },
+  { to: "/integrations", icon: "integrations", label: "Integraciones (CIS)", description: "Feed unificado de órdenes y lecturas bajo demanda" },
+  { to: "/observability", icon: "observability", label: "Observabilidad", description: "Alertas activas de ingesta en tiempo real" },
+  { to: "/configuration", icon: "settings", label: "Configuración", description: "Reglas VEE/consumo, aprobación SCR, OBIS, cuentas protegidas" },
 ];
 
 function StatCard({ label, value, colorClass, hint }: { label: string; value: string; colorClass?: string; hint?: string }) {
@@ -251,7 +252,7 @@ export function OverviewPage() {
               to={m.to}
               className="rounded-xl border border-slate-200 bg-white p-4 flex items-start gap-3 hover:border-indigo-300 hover:shadow-sm transition-shadow"
             >
-              <span className="text-xl leading-none shrink-0 mt-0.5">{m.icon}</span>
+              <span className="shrink-0 mt-0.5 text-indigo-600"><Icon name={m.icon} className="h-5 w-5" /></span>
               <div>
                 <div className="text-sm font-semibold text-slate-900">{m.label}</div>
                 <div className="text-xs text-slate-500 mt-0.5">{m.description}</div>

@@ -147,7 +147,7 @@ def get_asset_detail(conn: psycopg.Connection, tenant_id: str, asset_id: str) ->
                 )
                 row = cur.fetchone()
     if row is None:
-        raise AssetNotFoundError(f"No existe el activo {asset_id} para este tenant")
+        raise AssetNotFoundError(f"No existe el activo {asset_id} para esta organización")
     asset = _asset_row_to_dict(row)
     asset["connectivity"] = asset_connectivity(conn, tenant_id, asset_id)
     return asset
@@ -169,7 +169,7 @@ def update_asset_status(conn: psycopg.Connection, tenant_id: str, asset_id: str,
                 )
                 row = cur.fetchone()
     if row is None:
-        raise AssetNotFoundError(f"No existe el activo {asset_id} para este tenant")
+        raise AssetNotFoundError(f"No existe el activo {asset_id} para esta organización")
     return {"asset_id": asset_id, "status": status, "version": row[0]}
 
 
@@ -182,9 +182,9 @@ def connect_assets(
     docstring del modulo). `ON CONFLICT` actualiza el tipo de conexion en
     vez de duplicar la fila si ya existia ese par."""
     if not _asset_belongs_to_tenant(conn, tenant_id, source_asset_id):
-        raise AssetNotFoundError(f"No existe el activo origen {source_asset_id} para este tenant")
+        raise AssetNotFoundError(f"No existe el activo origen {source_asset_id} para esta organización")
     if not _asset_belongs_to_tenant(conn, tenant_id, target_asset_id):
-        raise AssetNotFoundError(f"No existe el activo destino {target_asset_id} para este tenant")
+        raise AssetNotFoundError(f"No existe el activo destino {target_asset_id} para esta organización")
 
     with conn.transaction():
         with conn.cursor() as cur:

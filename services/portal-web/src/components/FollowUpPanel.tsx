@@ -12,6 +12,7 @@ import {
   type FollowUpItemStatus,
   type FollowUpMilestone,
 } from "../api";
+import { appLocale, isoDay } from "../catalog";
 
 // Seguimiento a 7, 30 y 90 dias (Guia 7, T-09 y seccion 11; migracion 0028).
 // Los momentos, que revisar y que evidencia pedir salen del catalogo del
@@ -32,7 +33,7 @@ function errText(err: unknown, fallback: string): string {
 }
 
 function formatDay(iso: string): string {
-  return new Date(`${iso}T12:00:00`).toLocaleDateString("es", { day: "numeric", month: "short", year: "numeric" });
+  return new Date(`${iso}T12:00:00`).toLocaleDateString(appLocale(), { day: "numeric", month: "short", year: "numeric" });
 }
 
 function milestoneBadge(m: FollowUpMilestone): { text: string; cls: string } {
@@ -198,7 +199,7 @@ function NewCycleForm({ programs, onCancel }: { programs: { pack_id: string; nam
         Abra el seguimiento con la fecha de cierre de la formación (el último día): desde ahí se cuentan los 7, 30 y 90 días.
       </p>
       <div className="grid gap-2 sm:grid-cols-[1fr_10rem_auto]">
-        <input aria-label="Nombre" className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm" placeholder="Nombre (p. ej. Taller Municipios Azules 2026)" value={title} onChange={(e) => setTitle(e.target.value)} />
+        <input aria-label="Nombre" className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm" placeholder="Nombre (p. ej. Taller de capacitación 2026)" value={title} onChange={(e) => setTitle(e.target.value)} />
         <input aria-label="Fecha de cierre de la formación" type="date" className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm" value={anchor} onChange={(e) => setAnchor(e.target.value)} />
         <div className="flex gap-2">
           <button onClick={() => mutation.mutate()} disabled={mutation.isPending || !anchor || !title.trim() || !packId} className="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50">
@@ -223,7 +224,7 @@ export function FollowUpPanel() {
   const [creating, setCreating] = useState(false);
   // "Hoy" del navegador solo como valor inicial del formulario de revision;
   // los vencimientos los calcula el servidor con la zona de la organizacion.
-  const today = new Date().toLocaleDateString("en-CA");
+  const today = isoDay();
 
   const cycle = data?.cycles.find((c) => c.cycle_id === selected) ?? data?.cycles[0];
 

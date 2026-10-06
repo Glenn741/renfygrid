@@ -12,6 +12,7 @@ import { StagePage, EmptyState } from "../components/StagePage";
 import { SectionNav } from "../components/SectionNav";
 
 import { sectionsFor } from "../navigation";
+import { label as codeLabel } from "../catalog";
 const SECTIONS = sectionsFor("/consumption");
 
 // Gestion de Consumos (Sprint C11-6, benchmark real: docs/05-ejecucion.md
@@ -21,13 +22,9 @@ const SECTIONS = sectionsFor("/consumption");
 // resumen, sin las ordenes de relectura/inspeccion (F23) visibles, y sin
 // forma de cerrar una anomalia investigada.
 
-const ACTION_LABEL: Record<string, string> = {
-  reread_order: "Orden de relectura",
-  inspection_order: "Orden de inspección",
-};
 
 function actionLabel(action: string): string {
-  return ACTION_LABEL[action] ?? action;
+  return codeLabel("consumption.action", action);
 }
 
 function periodFromRangeText(period: string): { start: string; end: string } {

@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
 import { clearToken, getToken, setToken } from "./api";
+import { resetCatalog } from "./catalog";
 
 interface AuthContextValue {
   isAuthenticated: boolean;
@@ -13,12 +14,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(() => getToken() !== null);
 
   const setAuthenticated = (token: string) => {
+    resetCatalog();
     setToken(token);
     setIsAuthenticated(true);
   };
 
   const logout = () => {
     clearToken();
+    resetCatalog();
     setIsAuthenticated(false);
   };
 

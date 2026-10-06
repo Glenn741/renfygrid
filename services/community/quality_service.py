@@ -59,7 +59,7 @@ def _assert_point(cur: psycopg.Cursor, tenant_id: str, point_id: str | None) -> 
     cur.execute("SELECT name FROM sampling_point WHERE id = %s AND tenant_id = %s", (point_id, tenant_id))
     row = cur.fetchone()
     if row is None:
-        raise QualityNotFoundError(f"No existe el punto {point_id} para esta junta")
+        raise QualityNotFoundError(f"No existe el punto {point_id} para esta organización")
     return row[0]
 
 
@@ -151,7 +151,7 @@ def update_plan_item(conn: psycopg.Connection, tenant_id: str, plan_item_id: str
                         _assert_point(cur, tenant_id, fields["sampling_point_id"])
                     cur.execute("SELECT 1 FROM lab_plan_item WHERE id = %s AND tenant_id = %s", (plan_item_id, tenant_id))
                     if cur.fetchone() is None:
-                        raise QualityNotFoundError(f"No existe el plan {plan_item_id} para esta junta")
+                        raise QualityNotFoundError(f"No existe el plan {plan_item_id} para esta organización")
                     if fields:
                         sets = ", ".join(f"{k} = %s" for k in fields)
                         cur.execute(f"UPDATE lab_plan_item SET {sets} WHERE id = %s AND tenant_id = %s",
@@ -280,11 +280,11 @@ def record_lab_sample(
                 if plan_item_id:
                     cur.execute("SELECT 1 FROM lab_plan_item WHERE id = %s AND tenant_id = %s", (plan_item_id, tenant_id))
                     if cur.fetchone() is None:
-                        raise QualityNotFoundError(f"No existe el plan {plan_item_id} para esta junta")
+                        raise QualityNotFoundError(f"No existe el plan {plan_item_id} para esta organización")
                 if discharge_id:
                     cur.execute("SELECT 1 FROM productive_discharge WHERE id = %s AND tenant_id = %s", (discharge_id, tenant_id))
                     if cur.fetchone() is None:
-                        raise QualityNotFoundError(f"No existe la descarga {discharge_id} para esta junta")
+                        raise QualityNotFoundError(f"No existe la descarga {discharge_id} para esta organización")
                 cur.execute(
                     "INSERT INTO lab_sample (tenant_id, sampling_point_id, plan_item_id, sampled_at, laboratory, report_ref, reason, "
                     "notes, recorded_by, discharge_id) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
@@ -375,7 +375,7 @@ def get_lab_sample(conn: psycopg.Connection, tenant_id: str, sample_id: str) -> 
                 cur.execute(_sample_query("s.id = %s"), (tenant_id, sample_id))
                 row = cur.fetchone()
                 if row is None:
-                    raise QualityNotFoundError(f"No existe la muestra {sample_id} para esta junta")
+                    raise QualityNotFoundError(f"No existe la muestra {sample_id} para esta organización")
                 head = _sample_head(row)
                 head["results"] = _results(cur, tenant_id, [sample_id]).get(sample_id, [])
     return head

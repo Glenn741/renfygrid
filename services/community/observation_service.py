@@ -22,7 +22,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "common"))
 
 import psycopg  # noqa: E402
 
-from pack_engine import InvalidRecordError  # noqa: E402
+from catalog_service import number_separators  # noqa: E402
+from pack_engine import InvalidRecordError, format_number  # noqa: E402
 from pack_service import active_pack_ids, list_checklist_templates, questionnaire_report  # noqa: E402
 from renmeter_common.db import tenant_scope  # noqa: E402
 
@@ -63,6 +64,7 @@ def _suggestions(conn: psycopg.Connection, tenant_id: str, stage_codes: set[str]
     """Guias en el rango mas bajo del ultimo momento de un cuestionario con
     analisis y rangos, que aun no tienen una observacion de esa fuente."""
     taken = {(o["stage_code"], o["source_code"]) for o in existing if o["status"] != "discarded"}
+    sep = number_separators(conn, tenant_id)
     out = []
     for t in list_checklist_templates(conn, tenant_id):
         spec = t.get("analysis") or {}
@@ -80,7 +82,7 @@ def _suggestions(conn: psycopg.Connection, tenant_id: str, stage_codes: set[str]
                 cell = row["moments"].get(last) or {}
                 if row["code"] in stage_codes and cell.get("level") == lowest and (row["code"], "cap") not in taken:
                     out.append({"stage_code": row["code"], "source_code": "cap",
-                                "finding": f"{t['title']}: {row['label']} quedó en {cell['pct']} % ({lowest}) en "
+                                "finding": f"{t['title']}: {row['label']} quedó en {format_number(cell['pct'], sep)} % ({lowest}) en "
                                            f"{next(m['label'] for m in spec['compare'] if m['code'] == last)} (n={cell['n']}).",
                                 "hint": spec.get("note")})
     return out

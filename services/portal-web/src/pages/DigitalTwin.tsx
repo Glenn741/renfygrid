@@ -16,6 +16,7 @@ import { NetworkMap } from "../components/NetworkMap";
 import { SectionNav } from "../components/SectionNav";
 
 import { sectionsFor } from "../navigation";
+import { badgeClass, label as codeLabel, options as codeOptions, toneHex } from "../catalog";
 const SECTIONS = sectionsFor("/digital-twin");
 
 // Gemelo Digital -- Track B, Sprint B5 (docs/07-track-b-alcance-funcional.md
@@ -25,15 +26,6 @@ const SECTIONS = sectionsFor("/digital-twin");
 // usándolo; esto vincula Balance de Red (zona) y, más adelante,
 // Mantenimiento (B7) con activos reales.
 
-const ASSET_TYPE_LABEL: Record<string, string> = {
-  pipe: "Tubería", valve: "Válvula", tank: "Tanque", pump: "Bomba", meter: "Medidor", sensor: "Sensor",
-};
-const STATUS_LABEL: Record<string, string> = {
-  operational: "Operativo", out_of_service: "Fuera de servicio", maintenance: "En mantenimiento",
-};
-const STATUS_COLOR: Record<string, string> = {
-  operational: "#10b981", out_of_service: "#ef4444", maintenance: "#f59e0b",
-};
 
 function RegisterAssetForm() {
   const queryClient = useQueryClient();
@@ -79,7 +71,7 @@ function RegisterAssetForm() {
         <div>
           <label className="block text-xs font-medium text-slate-500 mb-1">Tipo</label>
           <select className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm w-full bg-white" value={assetType} onChange={(e) => setAssetType(e.target.value)}>
-            {Object.entries(ASSET_TYPE_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            {codeOptions("asset.type").map(({ code: v, label: l }) => <option key={v} value={v}>{l}</option>)}
           </select>
         </div>
         <div>
@@ -147,14 +139,14 @@ function ConnectAssetsForm({ assets }: { assets: NetworkAsset[] }) {
           <label className="block text-xs font-medium text-slate-500 mb-1">Origen</label>
           <select className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm w-full bg-white" value={sourceId} onChange={(e) => setSourceId(e.target.value)}>
             <option value="">— Elegir —</option>
-            {assets.map((a) => <option key={a.asset_id} value={a.asset_id}>{ASSET_TYPE_LABEL[a.type]} {a.asset_id.slice(0, 8)}</option>)}
+            {assets.map((a) => <option key={a.asset_id} value={a.asset_id}>{codeLabel("asset.type", a.type)} {a.asset_id.slice(0, 8)}</option>)}
           </select>
         </div>
         <div>
           <label className="block text-xs font-medium text-slate-500 mb-1">Destino</label>
           <select className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm w-full bg-white" value={targetId} onChange={(e) => setTargetId(e.target.value)}>
             <option value="">— Elegir —</option>
-            {assets.map((a) => <option key={a.asset_id} value={a.asset_id}>{ASSET_TYPE_LABEL[a.type]} {a.asset_id.slice(0, 8)}</option>)}
+            {assets.map((a) => <option key={a.asset_id} value={a.asset_id}>{codeLabel("asset.type", a.type)} {a.asset_id.slice(0, 8)}</option>)}
           </select>
         </div>
         <div>
@@ -200,17 +192,16 @@ function AssetRow({ asset }: { asset: NetworkAsset }) {
   return (
     <>
       <tr>
-        <td className="px-4 py-3 font-medium text-slate-900">{ASSET_TYPE_LABEL[asset.type] ?? asset.type}</td>
+        <td className="px-4 py-3 font-medium text-slate-900">{codeLabel("asset.type", asset.type)}</td>
         <td className="px-4 py-3 text-slate-500 font-mono text-xs">{asset.asset_id.slice(0, 8)}</td>
         <td className="px-4 py-3 text-slate-600">{notes ?? "—"}</td>
         <td className="px-4 py-3">
           <select
-            className="rounded-full px-2 py-0.5 text-xs font-semibold border-0"
-            style={{ background: `${STATUS_COLOR[asset.status]}22`, color: STATUS_COLOR[asset.status] }}
+            className={`rounded-full px-2 py-0.5 text-xs font-semibold border-0 ${badgeClass("asset.status", asset.status)}`}
             value={asset.status}
             onChange={(e) => statusMutation.mutate(e.target.value)}
           >
-            {Object.entries(STATUS_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            {codeOptions("asset.status").map(({ code: v, label: l }) => <option key={v} value={v}>{l}</option>)}
           </select>
         </td>
         <td className="px-4 py-3 text-slate-500">v{asset.version}</td>
@@ -284,7 +275,7 @@ export function DigitalTwinPage() {
               <div className="flex flex-wrap gap-1.5">
                 {Object.entries(byType).map(([t, n]) => (
                   <span key={t} className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">
-                    {ASSET_TYPE_LABEL[t] ?? t}: {n}
+                    {codeLabel("asset.type", t)}: {n}
                   </span>
                 ))}
               </div>
@@ -300,21 +291,21 @@ export function DigitalTwinPage() {
           geojson={geojson}
           height={340}
           emptyMessage="Ningún activo tiene latitud/longitud cargada todavía -- agrégalas al registrar un activo para verlo aquí."
-          pointColor={(p) => STATUS_COLOR[p.status as string] ?? "#94a3b8"}
+          pointColor={(p) => toneHex("asset.status", p.status as string)}
           pointRadius={() => 7}
           lineColor={() => "#64748b"}
           popupHtml={(p, geomType) => {
             if (geomType === "Point") {
-              return `<div style="font-size:12px"><strong>${ASSET_TYPE_LABEL[p.asset_type as string] ?? p.asset_type}</strong><br/>Estado: ${STATUS_LABEL[p.status as string] ?? p.status}</div>`;
+              return `<div style="font-size:12px"><strong>${codeLabel("asset.type", p.asset_type as string)}</strong><br/>Estado: ${codeLabel("asset.status", p.status as string)}</div>`;
             }
             return `<div style="font-size:12px">${p.connection_type}</div>`;
           }}
         />
       </div>
       <div className="mb-6 flex flex-wrap gap-4 text-xs text-slate-500">
-        <span><span className="inline-block w-2.5 h-2.5 rounded-full mr-1" style={{ background: STATUS_COLOR.operational }} />Operativo</span>
-        <span><span className="inline-block w-2.5 h-2.5 rounded-full mr-1" style={{ background: STATUS_COLOR.maintenance }} />En mantenimiento</span>
-        <span><span className="inline-block w-2.5 h-2.5 rounded-full mr-1" style={{ background: STATUS_COLOR.out_of_service }} />Fuera de servicio</span>
+        <span><span className="inline-block w-2.5 h-2.5 rounded-full mr-1" style={{ background: toneHex("asset.status", "operational") }} />{codeLabel("asset.status", "operational")}</span>
+        <span><span className="inline-block w-2.5 h-2.5 rounded-full mr-1" style={{ background: toneHex("asset.status", "maintenance") }} />{codeLabel("asset.status", "maintenance")}</span>
+        <span><span className="inline-block w-2.5 h-2.5 rounded-full mr-1" style={{ background: toneHex("asset.status", "out_of_service") }} />{codeLabel("asset.status", "out_of_service")}</span>
       </div>
       </div>
 

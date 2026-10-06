@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getSession } from "../api";
 import { useAuth } from "../auth";
+import { Icon } from "./Icon";
+import { appLocale } from "../catalog";
 
 // Menu de sesion del encabezado (2026-10-05, a pedido del usuario: "en el
 // banner superior hacen falta datos basicos de la sesion: tenant, usuario,
@@ -73,7 +75,7 @@ export function SessionMenu() {
   return (
     <div ref={ref} className="relative ml-auto flex items-center gap-3">
       <span className="hidden md:inline-flex items-center gap-1.5 rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700" title={`Organización: ${data.tenant_name ?? data.tenant_id}`}>
-        <span aria-hidden>🏢</span>{data.tenant_name ?? data.tenant_id.slice(0, 8)}
+        <Icon name="organization" className="h-3.5 w-3.5" />{data.tenant_name ?? data.tenant_id.slice(0, 8)}
       </span>
       {remaining !== null && (
         <span className={`hidden lg:inline text-xs tabular-nums ${nearExpiry ? "text-amber-700 font-semibold" : "text-slate-500"}`}>
@@ -91,7 +93,7 @@ export function SessionMenu() {
           <span className="block text-xs font-semibold text-slate-800 max-w-[14rem] truncate">{data.email}</span>
           {role && <span className="block text-[11px] text-slate-500">{role}</span>}
         </span>
-        <span aria-hidden className="text-slate-400 text-xs">▾</span>
+        <Icon name="dropdown" className="h-3.5 w-3.5 text-slate-400" />
       </button>
 
       {open && (
@@ -109,12 +111,12 @@ export function SessionMenu() {
             <div>
               <dt className="text-[11px] uppercase tracking-wide text-slate-500">Sesión</dt>
               <dd className="text-slate-800 tabular-nums">
-                {issuedAt !== null && <>Inició {new Date(issuedAt).toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit" })} · </>}
+                {issuedAt !== null && <>Inició {new Date(issuedAt).toLocaleTimeString(appLocale(), { hour: "2-digit", minute: "2-digit" })} · </>}
                 {elapsed !== null && <>{formatDuration(elapsed)} en sesión</>}
               </dd>
               {remaining !== null && (
                 <dd className={`tabular-nums ${nearExpiry ? "text-amber-700 font-semibold" : "text-slate-500"}`}>
-                  Vence a las {new Date(expiresAt!).toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit" })} (en {formatDuration(remaining)})
+                  Vence a las {new Date(expiresAt!).toLocaleTimeString(appLocale(), { hour: "2-digit", minute: "2-digit" })} (en {formatDuration(remaining)})
                 </dd>
               )}
             </div>

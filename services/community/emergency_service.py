@@ -176,7 +176,7 @@ def delete_contact(conn: psycopg.Connection, tenant_id: str, contact_id: str) ->
             with conn.cursor() as cur:
                 cur.execute("DELETE FROM emergency_contact WHERE id = %s AND tenant_id = %s", (contact_id, tenant_id))
                 if cur.rowcount == 0:
-                    raise EmergencyNotFoundError(f"No existe el contacto {contact_id} para esta junta")
+                    raise EmergencyNotFoundError(f"No existe el contacto {contact_id} para esta organización")
 
 
 _ACT_COLUMNS = ("id, pack_id, type_code, plan_entry_id, label, trigger, trigger_ref, activated_at, activated_by, notes, status, "
@@ -258,7 +258,7 @@ def close_activation(conn: psycopg.Connection, tenant_id: str, activation_id: st
                 )
                 row = cur.fetchone()
     if row is None:
-        raise EmergencyNotFoundError(f"No hay una emergencia activa {activation_id} en esta junta")
+        raise EmergencyNotFoundError(f"No hay una emergencia activa {activation_id} en esta organización")
     return _act_row(row)
 
 

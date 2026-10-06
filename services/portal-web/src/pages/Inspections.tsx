@@ -21,6 +21,8 @@ import { StagePage, EmptyState } from "../components/StagePage";
 import { ROUTE_QUERY_KEY, STAGE_STATE_STYLE, stageState } from "../components/routeStatus";
 import { PassportView, StageProducts, passportText } from "../components/Passport";
 import { FollowUpPanel } from "../components/FollowUpPanel";
+import { Icon } from "../components/Icon";
+import { appLocale } from "../catalog";
 
 // Ruta y revisiones -- rediseno de usabilidad (2026-10-05, a pedido del
 // usuario: "un usuario no logra percibir que debe hacer click" y "la vision
@@ -64,7 +66,7 @@ const STATUS_STYLE: Record<RouteList["status"], { label: string; pill: string; d
 };
 
 function formatDate(iso: string | null): string {
-  return iso ? new Date(iso).toLocaleDateString("es", { day: "numeric", month: "short", year: "numeric" }) : "—";
+  return iso ? new Date(iso).toLocaleDateString(appLocale(), { day: "numeric", month: "short", year: "numeric" }) : "—";
 }
 
 function dueText(item: RouteList): string {
@@ -84,9 +86,9 @@ function answerTone(scale: ScaleEntry[], entry: ScaleEntry, neutral = false) {
   const scores = scale.map((s) => s.score);
   const max = Math.max(...scores);
   const min = Math.min(...scores);
-  if (entry.score === max) return { icon: "✓", idle: "border-emerald-300 text-emerald-800 hover:bg-emerald-50", active: "bg-emerald-600 border-emerald-600 text-white" };
-  if (entry.score === min) return { icon: "✕", idle: "border-red-300 text-red-800 hover:bg-red-50", active: "bg-red-600 border-red-600 text-white" };
-  return { icon: "~", idle: "border-amber-300 text-amber-800 hover:bg-amber-50", active: "bg-amber-500 border-amber-500 text-white" };
+  if (entry.score === max) return { icon: "check", idle: "border-emerald-300 text-emerald-800 hover:bg-emerald-50", active: "bg-emerald-600 border-emerald-600 text-white" };
+  if (entry.score === min) return { icon: "close", idle: "border-red-300 text-red-800 hover:bg-red-50", active: "bg-red-600 border-red-600 text-white" };
+  return { icon: "partial", idle: "border-amber-300 text-amber-800 hover:bg-amber-50", active: "bg-amber-500 border-amber-500 text-white" };
 }
 
 // ── Ruta ──────────────────────────────────────────────────────────────
@@ -347,7 +349,7 @@ function RunForm({ template, onCancel, onDone }: { template: ChecklistTemplate; 
                         className={`inline-flex cursor-pointer items-center gap-2 rounded-lg border-2 px-4 py-2 text-sm font-semibold shadow-sm transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-indigo-500 ${isQuestionnaire ? "justify-start text-left" : "min-w-[7rem] justify-center"} ${selected ? tone.active : `bg-white ${tone.idle}`}`}
                       >
                         <input id={id} type="radio" className="sr-only" name={`${template.id}-${item.key}`} checked={selected} onChange={() => update(item.key, { answer_code: s.code })} />
-                        {tone.icon && <span aria-hidden>{tone.icon}</span>}{s.label}
+                        {tone.icon && <Icon name={tone.icon} className="h-3.5 w-3.5" />}{s.label}
                       </label>
                     );
                   })}
@@ -420,7 +422,7 @@ function RunDetail({ runId, templates, onClose }: { runId: string; templates: Re
         <>
           <h2 className="text-base font-semibold text-slate-900">{data.title}</h2>
           <p className="mb-3 text-xs text-slate-500">
-            {new Date(data.performed_at).toLocaleString("es")} · {data.performed_by.replace(/^portal:/, "")}{ctx && ` · ${ctx}`} · puntaje {data.score.score} de {data.score.max_score}
+            {new Date(data.performed_at).toLocaleString(appLocale())} · {data.performed_by.replace(/^portal:/, "")}{ctx && ` · ${ctx}`} · puntaje {data.score.score} de {data.score.max_score}
           </p>
           {data.notes && <p className="mb-3 text-sm text-slate-600">{data.notes}</p>}
           <div className="overflow-x-auto">
@@ -469,7 +471,7 @@ function History({ templates, onView }: { templates: Record<string, ChecklistTem
                   <span className="ml-2 text-xs font-normal text-slate-500">{contextText(templates[r.template_id]?.run_fields, r.context)}</span>
                 )}
               </span>
-              <span className="text-xs text-slate-500 tabular-nums">{new Date(r.performed_at).toLocaleDateString("es")}</span>
+              <span className="text-xs text-slate-500 tabular-nums">{new Date(r.performed_at).toLocaleDateString(appLocale())}</span>
               {r.score && <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-700 tabular-nums">{r.score.score}/{r.score.max_score}</span>}
               <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${r.findings_count ? "bg-amber-50 text-amber-800" : "bg-slate-100 text-slate-600"}`}>
                 {r.findings_count} hallazgo{r.findings_count === 1 ? "" : "s"}
@@ -498,7 +500,7 @@ function AnalysisView({ template, onClose }: { template: ChecklistTemplate; onCl
     const order = [...data.levels].sort((a, b) => b.min_pct - a.min_pct).map((l) => l.label);
     return LEVEL_STYLE[Math.min(order.indexOf(label), LEVEL_STYLE.length - 1)] ?? "bg-slate-100 text-slate-600";
   };
-  const fmt = (v: number | null, suffix = "") => (v === null ? "—" : `${v.toLocaleString("es")}${suffix}`);
+  const fmt = (v: number | null, suffix = "") => (v === null ? "—" : `${v.toLocaleString(appLocale())}${suffix}`);
   const rowsTable = (title: string, rows: NonNullable<typeof data>["total"][]) => data && (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
@@ -640,7 +642,7 @@ export function InspectionsPage() {
       {message && (
         <div role="status" className="mb-4 flex items-start justify-between gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm text-emerald-800">
           <span>{message}</span>
-          <button onClick={() => setMessage(null)} aria-label="Cerrar aviso" className="text-emerald-700 hover:text-emerald-900">✕</button>
+          <button onClick={() => setMessage(null)} aria-label="Cerrar aviso" className="text-emerald-700 hover:text-emerald-900"><Icon name="close" className="h-4 w-4" /></button>
         </div>
       )}
 

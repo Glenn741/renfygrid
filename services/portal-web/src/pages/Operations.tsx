@@ -27,6 +27,7 @@ import {
 import { StagePage, EmptyState } from "../components/StagePage";
 import { NavSection, SectionNav } from "../components/SectionNav";
 import { sectionsFor } from "../navigation";
+import { appLocale, term, formSuffix } from "../catalog";
 
 // Operacion diaria de la junta (Track D, D1.1; Guia 3 §3.3-3.4, fichas 7B y
 // 7C). Todo sale del catalogo: los tipos de punto, la rutina de 5 momentos y
@@ -58,11 +59,11 @@ function newClientId(): string {
 }
 
 function time(iso: string): string {
-  return new Date(iso).toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit" });
+  return new Date(iso).toLocaleTimeString(appLocale(), { hour: "2-digit", minute: "2-digit" });
 }
 
 function dateTime(iso: string): string {
-  return new Date(iso).toLocaleString("es", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  return new Date(iso).toLocaleString(appLocale(), { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 }
 
 /** Vista previa con los tramos del paquete (misma regla que el motor). */
@@ -211,7 +212,7 @@ function TodaySection() {
   const s = data.summary;
   return (
     <SectionCard
-      title={`Hoy · ${new Date(`${data.date}T12:00:00`).toLocaleDateString("es", { weekday: "long", day: "numeric", month: "long" })}`}
+      title={`Hoy · ${new Date(`${data.date}T12:00:00`).toLocaleDateString(appLocale(), { weekday: "long", day: "numeric", month: "long" })}`}
       description="La rutina diaria en el orden de la guía. Registre cada toma en su momento; si el cloro sale fuera de rango, la toma queda en alerta y se abre un hallazgo para la directiva."
     >
       {s.active_emergencies > 0 && (
@@ -222,7 +223,7 @@ function TodaySection() {
       )}
       {s.critical_quality_open > 0 && (
         <Link to="/quality#alerts" className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-900 hover:bg-red-100">
-          <span><strong>Alerta crítica de calidad:</strong> {s.critical_quality_open} resultado{s.critical_quality_open === 1 ? "" : "s"} de laboratorio con contaminación (E. coli). Informe a la directiva y coordine con el GAD, MSP o ARCA.</span>
+          <span><strong>Alerta crítica de calidad:</strong> {s.critical_quality_open} resultado{s.critical_quality_open === 1 ? "" : "s"} de laboratorio con contaminación (E. coli). Informe a la {term("board")} y coordine con {term("local_government")}, {term("health_authority")} o {term("regulator")}.</span>
           <span className="font-semibold">Ver ›</span>
         </Link>
       )}
@@ -297,7 +298,7 @@ function MeasureSection() {
   });
 
   return (
-    <SectionCard title="Registrar medición (7B)" description="Mida en el punto, anote el resultado y la acción tomada. Repita toda medición dudosa antes de ajustar la dosis.">
+    <SectionCard title={`Registrar medición${formSuffix("field_readings")}`} description="Mida en el punto, anote el resultado y la acción tomada. Repita toda medición dudosa antes de ajustar la dosis.">
       <div className="grid gap-3 sm:grid-cols-[1fr_12rem_9rem]">
         <label className="text-xs text-slate-600">Punto
           <select className="mt-1 w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" value={pointId} onChange={(e) => setPointId(e.target.value)}>
@@ -402,8 +403,8 @@ function DosingSection() {
         <div className="mt-4 space-y-2">
           {r.result && (
             <div className={`rounded-lg border p-4 ${r.can_apply ? "border-emerald-200 bg-emerald-50" : "border-red-200 bg-white"}`}>
-              <p className="text-2xl font-bold tabular-nums text-slate-900">{r.result.per_day.toLocaleString("es")} {r.result.unit}/día</p>
-              <p className="text-sm text-slate-600 tabular-nums">{r.result.per_hour.toLocaleString("es")} {r.result.unit}/hora · {r.product.name} al {r.product.active_pct} %</p>
+              <p className="text-2xl font-bold tabular-nums text-slate-900">{r.result.per_day.toLocaleString(appLocale())} {r.result.unit}/día</p>
+              <p className="text-sm text-slate-600 tabular-nums">{r.result.per_hour.toLocaleString(appLocale())} {r.result.unit}/hora · {r.product.name} al {r.product.active_pct} %</p>
               {!r.can_apply && <p className="mt-1 text-sm font-semibold text-red-700">No aplicar sin revisar la causa y sin apoyo técnico (ver abajo).</p>}
             </div>
           )}
@@ -421,7 +422,7 @@ function DosingSection() {
         </div>
       )}
 
-      <h3 className="mt-6 text-sm font-semibold text-slate-900">Productos químicos de la junta</h3>
+      <h3 className="mt-6 text-sm font-semibold text-slate-900">Productos químicos</h3>
       <ul className="divide-y divide-slate-100">
         {(products ?? []).map((p) => (
           <li key={p.product_id} className="flex flex-wrap items-center gap-2 py-1.5 text-sm">
@@ -453,7 +454,7 @@ function DosingSection() {
 function LogSection() {
   const { data } = useQuery({ queryKey: ["operation-log"], queryFn: () => getOperationLog({ limit: 100 }) });
   return (
-    <SectionCard title="Bitácora diaria (7C)" description="Las últimas tomas registradas. La directiva la revisa periódicamente.">
+    <SectionCard title={`Bitácora diaria${formSuffix("operation_log")}`} description={`Las últimas tomas registradas. La ${term("board")} la revisa periódicamente.`}>
       {data && data.length === 0 && <EmptyState message="Todavía no hay tomas en la bitácora." />}
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
@@ -494,7 +495,7 @@ function ReadingsSection() {
   const [pointId, setPointId] = useState("");
   const { data } = useQuery({ queryKey: ["field-readings", pointId], queryFn: () => getFieldReadings({ point_id: pointId || undefined, limit: 200 }) });
   return (
-    <SectionCard title="Mediciones (7B)" description="Mediciones fechadas, interpretadas y con la acción tomada. La interpretación es la de la regla vigente cuando se midió.">
+    <SectionCard title={`Mediciones${formSuffix("field_readings")}`} description="Mediciones fechadas, interpretadas y con la acción tomada. La interpretación es la de la regla vigente cuando se midió.">
       <select aria-label="Filtrar por punto" className="mb-3 rounded-lg border border-slate-300 px-2 py-1.5 text-sm" value={pointId} onChange={(e) => setPointId(e.target.value)}>
         <option value="">Todos los puntos</option>
         {(points ?? []).map((p) => <option key={p.point_id} value={p.point_id}>{p.name}</option>)}
@@ -563,10 +564,10 @@ function ManualReadingsSection() {
               <tr key={r.manual_reading_id} className="border-b border-slate-100 align-top last:border-0">
                 <td className="whitespace-nowrap py-2 pr-3 tabular-nums text-slate-700">{dateTime(r.read_at)}</td>
                 <td className="py-2 pr-3 text-slate-700">{r.account_number} <span className="text-xs text-slate-500">({r.meter_type === "macro" ? "macro" : "micro"})</span></td>
-                <td className="py-2 pr-3 tabular-nums">{r.value.toLocaleString("es")} <span className="text-xs text-slate-500">{r.channel}</span></td>
+                <td className="py-2 pr-3 tabular-nums">{r.value.toLocaleString(appLocale())} <span className="text-xs text-slate-500">{r.channel}</span></td>
                 <td className="py-2 pr-3 tabular-nums">
                   {r.lower_confirmed ? <span className="text-xs font-semibold text-amber-800">medidor cambiado</span>
-                    : r.previous_value !== null ? (r.value - r.previous_value).toLocaleString("es", { maximumFractionDigits: 3 }) : "—"}
+                    : r.previous_value !== null ? (r.value - r.previous_value).toLocaleString(appLocale(), { maximumFractionDigits: 3 }) : "—"}
                 </td>
                 <td className="py-2 pr-3 text-slate-600">{r.read_by.replace(/^portal:/, "")}</td>
                 <td className="py-2 text-slate-600">{r.notes ?? ""}</td>
@@ -607,7 +608,7 @@ function PointsSection() {
   const kindDefault = catalog?.point_kinds.find((k) => k.code === kind);
 
   return (
-    <SectionCard title="Puntos de medición" description="Dónde mide la junta: la salida del tanque todos los días y puntos de la red en rotación (medio, lejano y crítico).">
+    <SectionCard title="Puntos de medición" description="Dónde se mide: la salida del tanque todos los días y puntos de la red en rotación (medio, lejano y crítico).">
       {error && <p className="mb-2 text-sm text-amber-800">{errText(error, "")}</p>}
       <ul className="divide-y divide-slate-100">
         {(points ?? []).map((p) => (

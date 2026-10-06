@@ -42,7 +42,7 @@ def is_protected(conn: psycopg.Connection, tenant_id: str, meter_id: str) -> dic
                 )
                 row = cur.fetchone()
     if row is None:
-        raise MeterNotFoundError(f"No existe el medidor {meter_id} para este tenant")
+        raise MeterNotFoundError(f"No existe el medidor {meter_id} para esta organización")
     protected, reason, marked_by, marked_at = row
     return {
         "protected": protected,
@@ -74,7 +74,7 @@ def mark_protection(
                     (protected, reason, marked_by, meter_id, tenant_id),
                 )
                 if cur.rowcount == 0:
-                    raise MeterNotFoundError(f"No existe el medidor {meter_id} para este tenant")
+                    raise MeterNotFoundError(f"No existe el medidor {meter_id} para esta organización")
 
 
 def bulk_mark_protection(

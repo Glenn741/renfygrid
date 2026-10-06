@@ -167,7 +167,7 @@ def get_sampling_point(conn: psycopg.Connection, tenant_id: str, point_id: str) 
                 )
                 row = cur.fetchone()
     if row is None:
-        raise OperationNotFoundError(f"No existe el punto {point_id} para esta junta")
+        raise OperationNotFoundError(f"No existe el punto {point_id} para esta organización")
     return _point_row(row)
 
 
@@ -446,7 +446,7 @@ def create_log_entry(
                 with conn.cursor() as cur:
                     reading = _get_reading(cur, tenant_id, "r.id = %s", (reading_id,))
         if reading is None:
-            raise OperationNotFoundError(f"No existe la medición {reading_id} para esta junta")
+            raise OperationNotFoundError(f"No existe la medición {reading_id} para esta organización")
         severity = reading["severity"]
     final_status = log_entry_status(status, severity, appearance)
     with conn.transaction():
@@ -567,7 +567,7 @@ def get_chemical_product(conn: psycopg.Connection, tenant_id: str, product_id: s
                             (product_id, tenant_id))
                 row = cur.fetchone()
     if row is None:
-        raise OperationNotFoundError(f"No existe el producto {product_id} para esta junta")
+        raise OperationNotFoundError(f"No existe el producto {product_id} para esta organización")
     return _product_row(row)
 
 

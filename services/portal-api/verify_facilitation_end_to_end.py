@@ -123,7 +123,7 @@ def run(dsn: str) -> None:
             o = client.get("/program/observations", headers=h).json()
             check([s["code"] for s in o["sources"]] == ["application", "cap", "follow_up"] and len(o["stages"]) == 7, "fuentes y guías del paquete")
             sug = [s for s in o["suggestions"] if s["stage_code"] == "G3"]
-            check(len(sug) == 1 and "0.0 %" in sug[0]["finding"] and "Bajo" in sug[0]["finding"] and "Inicial" in sug[0]["finding"]
+            check(len(sug) == 1 and "0 %" in sug[0]["finding"] and "Bajo" in sug[0]["finding"] and "Inicial" in sug[0]["finding"]
                   and not any(s["stage_code"] == "G2" for s in o["suggestions"]), "la CAP propone la Guía 3 (0 %, Bajo, inicial); no la 2")
             check(client.post("/program/observations", headers=op, json={"stage_code": "G3", "source_code": "cap", "finding": "x",
                                                                           "priority": "high"}).status_code == 403, "el operador no registra T-10")

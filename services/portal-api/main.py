@@ -233,6 +233,7 @@ from permissions import (  # noqa: E402
     update_user,
 )
 from calendar_service import annual_calendar  # noqa: E402
+from catalog_service import set_region, set_terms, ui_catalog  # noqa: E402
 from report_service import (  # noqa: E402
     ReportConflictError,
     ReportNotFoundError,
@@ -3004,6 +3005,50 @@ def mark_compliance_report_sent_endpoint(report_id: str, body: ReportSentRequest
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except ReportConflictError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except InvalidRecordError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+# ── Catalogos de la organizacion (base generica, 0045) ────────────────
+
+@app.get("/catalog/ui")
+def ui_catalog_endpoint(tenant_id: str = Depends(get_tenant_id)) -> dict:
+    """Todo lo que la interfaz nombra: etiquetas de codigos, terminologia,
+    formatos del paquete, moneda y region de la organizacion."""
+    with db_conn() as conn:
+        return ui_catalog(conn, tenant_id)
+
+
+class RegionRequest(BaseModel):
+    currency: str
+    locale: str
+
+
+@app.put("/settings/region")
+def set_region_endpoint(body: RegionRequest, tenant_id: str = Depends(get_tenant_id)) -> dict:
+    with db_conn() as conn:
+        try:
+            return set_region(conn, tenant_id, body.currency.strip().upper(), body.locale.strip())
+        except InvalidRecordError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+class TermValue(BaseModel):
+    label: str
+    plural: str
+
+
+class TermsRequest(BaseModel):
+    changes: dict[str, TermValue | None]
+
+
+@app.put("/settings/terms")
+def set_terms_endpoint(body: TermsRequest, actor: dict = Depends(get_actor)) -> dict:
+    """Como nombra la organizacion cada termino; `null` vuelve al del paquete."""
+    with db_conn() as conn:
+        try:
+            return set_terms(conn, actor["tenant_id"], requested_by_label(actor),
+                             {k: (v.model_dump() if v else None) for k, v in body.changes.items()})
         except InvalidRecordError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 

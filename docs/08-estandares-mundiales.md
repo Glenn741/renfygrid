@@ -80,6 +80,10 @@ fuente.
 **Término "junta":** pasa al catálogo de terminología. Los mensajes del backend dicen
 "organización".
 
+**Estado (2026-10-06):** lo de esta sección se corrigió con la migración 0045 y el sprint "base
+genérica" (ver `05-ejecucion.md`). Queda una decisión pendiente: la adopción por defecto de los
+paquetes de Ecuador.
+
 ## 5. Consecuencias para lo que sigue
 
 - **D8 se rehace como dominio 10, "Usuarios y servicio"** (ISO 24510 + JMP):

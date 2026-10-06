@@ -823,3 +823,21 @@ def field_reading_summary(readings: list[dict]) -> list[dict[str, Any]]:
         judged = g["n"] - g["no_rule"]
         g["in_range_pct"] = round(100.0 * g["in_range"] / judged, 1) if judged else None
     return list(out.values())
+
+
+
+# ── Formato de numeros en textos que arma el servidor (0045) ───────────
+
+def format_number(value: float | int | None, separators: tuple[str, str] | None, max_decimals: int = 2) -> str:
+    """Numero con los separadores de la region de la organizacion (catalogo
+    `locale_option`). Sin region configurada: sin agrupar y con punto, que no
+    finge ser de ningun pais. Quita ceros decimales sobrantes."""
+    if value is None:
+        return "—"
+    text = f"{float(value):,.{max_decimals}f}"
+    if "." in text:
+        text = text.rstrip("0").rstrip(".")
+    if separators is None:
+        return text.replace(",", "")
+    dec, grp = separators
+    return text.replace(",", "\x00").replace(".", dec).replace("\x00", grp)

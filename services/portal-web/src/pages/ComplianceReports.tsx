@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, type ComplianceReport, generateComplianceReport, getComplianceReport, getComplianceReports, markComplianceReportSent } from "../api";
 import { StagePage, EmptyState } from "../components/StagePage";
+import { appLocale, term } from "../catalog";
 
 // Informe de cumplimiento al ente rector (Track D, D12.3). La junta genera
 // una foto del periodo y decide enviarla; el ente rector no entra al sistema.
@@ -15,7 +16,7 @@ function isoDay(d: Date) {
 }
 
 function n(v: number | null | undefined, suffix = "") {
-  return v === null || v === undefined ? "—" : `${v.toLocaleString("es")}${suffix}`;
+  return v === null || v === undefined ? "—" : `${v.toLocaleString(appLocale())}${suffix}`;
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -30,7 +31,7 @@ function SectionBody({ detector, data }: { detector: string; data: any }) {
           <tbody>
             {data.samples.flatMap((s: any, i: number) => s.results.map((r: any, j: number) => (
               <tr key={`${i}-${j}`} className="border-b border-slate-100 align-top">
-                <td className="py-1 pr-2 whitespace-nowrap">{new Date(s.sampled_at).toLocaleDateString("es")}</td>
+                <td className="py-1 pr-2 whitespace-nowrap">{new Date(s.sampled_at).toLocaleDateString(appLocale())}</td>
                 <td className="pr-2">{s.point ?? "—"}</td>
                 <td className="pr-2">{s.laboratory}{s.report_ref ? ` · ${s.report_ref}` : ""}</td>
                 <td className="pr-2">{r.parameter}</td>
@@ -60,7 +61,7 @@ function SectionBody({ detector, data }: { detector: string; data: any }) {
     );
   }
   if (detector === "sampling_plan") {
-    if (!data.items.length) return <p className="text-sm text-slate-500">La junta no tiene plan de muestreo registrado.</p>;
+    if (!data.items.length) return <p className="text-sm text-slate-500">No hay plan de muestreo registrado.</p>;
     return (
       <>
         <p className="text-sm">Cumplimiento: {n(data.compliance_pct, " %")} ({data.taken} tomadas de {data.expected} esperadas)</p>
@@ -73,7 +74,7 @@ function SectionBody({ detector, data }: { detector: string; data: any }) {
       <>
         <p className="text-sm">{data.out_of_range_alerts} resultados fuera de rango en el periodo; {data.alerts_closed} cerrados.</p>
         {data.emergencies.length === 0 ? <p className="text-xs text-slate-500">Sin emergencias activadas.</p>
-          : <ul className="mt-1 text-xs">{data.emergencies.map((e: any, i: number) => <li key={i}>{e.label} — {new Date(e.activated_at).toLocaleString("es")} ({e.trigger === "auto" ? "automática" : "manual"}){e.closed_at ? `, cerrada ${new Date(e.closed_at).toLocaleDateString("es")}` : ", activa"}</li>)}</ul>}
+          : <ul className="mt-1 text-xs">{data.emergencies.map((e: any, i: number) => <li key={i}>{e.label} — {new Date(e.activated_at).toLocaleString(appLocale())} ({e.trigger === "auto" ? "automática" : "manual"}){e.closed_at ? `, cerrada ${new Date(e.closed_at).toLocaleDateString(appLocale())}` : ", activa"}</li>)}</ul>}
       </>
     );
   }
@@ -120,8 +121,8 @@ function ReportView({ id, onClose }: { id: string; onClose: () => void }) {
         <button onClick={onClose} className="ml-auto text-sm text-slate-500">Cerrar</button>
       </div>
       <h2 className="text-lg font-semibold text-slate-900">{c.template.title}</h2>
-      <p className="text-sm text-slate-700">{c.organization} · periodo {new Date(c.period.from + "T00:00").toLocaleDateString("es")} al {new Date(c.period.to + "T00:00").toLocaleDateString("es")}</p>
-      <p className="text-xs text-slate-500">Generado {new Date(c.generated_at).toLocaleString("es")} por {c.generated_by.replace(/^portal:/, "")} · dirigido a: {c.template.recipient}</p>
+      <p className="text-sm text-slate-700">{c.organization} · periodo {new Date(c.period.from + "T00:00").toLocaleDateString(appLocale())} al {new Date(c.period.to + "T00:00").toLocaleDateString(appLocale())}</p>
+      <p className="text-xs text-slate-500">Generado {new Date(c.generated_at).toLocaleString(appLocale())} por {c.generated_by.replace(/^portal:/, "")} · dirigido a: {c.template.recipient}</p>
       <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">{c.template.format_note}</p>
       {c.sections.map((s) => (
         <div key={s.code} className="mt-4 break-inside-avoid">
@@ -132,10 +133,10 @@ function ReportView({ id, onClose }: { id: string; onClose: () => void }) {
       ))}
       <div className="mt-6 border-t border-slate-200 pt-3 text-sm">
         {data.sent_on ? (
-          <p className="text-emerald-700">Enviado a {data.sent_to} el {new Date(data.sent_on + "T00:00").toLocaleDateString("es")} por {data.sent_by?.replace(/^portal:/, "")}{data.sent_note ? ` · ${data.sent_note}` : ""}</p>
+          <p className="text-emerald-700">Enviado a {data.sent_to} el {new Date(data.sent_on + "T00:00").toLocaleDateString(appLocale())} por {data.sent_by?.replace(/^portal:/, "")}{data.sent_note ? ` · ${data.sent_note}` : ""}</p>
         ) : (
           <div className="flex flex-wrap gap-2 print:hidden">
-            <input aria-label="Enviado a" className="min-w-[14rem] flex-1 rounded-lg border border-slate-300 px-3 py-1.5" placeholder="Enviado a (ARCA, GAD…)" value={f.sent_to} onChange={(e) => setF({ ...f, sent_to: e.target.value })} />
+            <input aria-label="Enviado a" className="min-w-[14rem] flex-1 rounded-lg border border-slate-300 px-3 py-1.5" placeholder={`Enviado a (${term("regulator")}, ${term("local_government")}…)`} value={f.sent_to} onChange={(e) => setF({ ...f, sent_to: e.target.value })} />
             <input aria-label="Fecha de envío" type="date" className="rounded-lg border border-slate-300 px-2 py-1.5" value={f.sent_on} onChange={(e) => setF({ ...f, sent_on: e.target.value })} />
             <input aria-label="Nota" className="rounded-lg border border-slate-300 px-3 py-1.5" placeholder="N.º de oficio u observación" value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} />
             <button onClick={() => sent.mutate()} disabled={!f.sent_to.trim()} className="rounded-lg border border-indigo-300 px-3 py-1.5 font-semibold text-indigo-700 disabled:opacity-50">Registrar envío</button>
@@ -188,8 +189,8 @@ export function ComplianceReportsPage() {
             <ul className="divide-y divide-slate-100">
               {data.reports.map((r) => (
                 <li key={r.report_id} className="flex flex-wrap items-center gap-3 py-2 text-sm">
-                  <span className="flex-1">{r.title} · {new Date(r.period_from + "T00:00").toLocaleDateString("es")} – {new Date(r.period_to + "T00:00").toLocaleDateString("es")}
-                    <span className="block text-xs text-slate-500">Generado {new Date(r.generated_at).toLocaleString("es")} por {r.generated_by.replace(/^portal:/, "")}</span></span>
+                  <span className="flex-1">{r.title} · {new Date(r.period_from + "T00:00").toLocaleDateString(appLocale())} – {new Date(r.period_to + "T00:00").toLocaleDateString(appLocale())}
+                    <span className="block text-xs text-slate-500">Generado {new Date(r.generated_at).toLocaleString(appLocale())} por {r.generated_by.replace(/^portal:/, "")}</span></span>
                   {r.sent_on ? <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">Enviado a {r.sent_to}</span>
                     : <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">No enviado</span>}
                   <button onClick={() => setOpen(r.report_id)} className="text-xs font-semibold text-indigo-700 hover:underline">Ver</button>

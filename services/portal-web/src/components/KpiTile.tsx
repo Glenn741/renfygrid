@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { Icon } from "./Icon";
 
 interface KpiTileProps {
   label: string;
@@ -27,8 +28,8 @@ export function KpiTile({ label, value, alert = false, hint, to }: KpiTileProps)
           {label}
         </span>
         {showAlert && (
-          <span className="text-amber-600" aria-label="atención requerida" title="Atención requerida">
-            ⚠
+          <span className="text-amber-600" title="Atención requerida">
+            <Icon name="alert" className="h-4 w-4" label="Atención requerida" />
           </span>
         )}
       </div>

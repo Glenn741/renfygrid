@@ -141,7 +141,7 @@ def _zone_row(conn: psycopg.Connection, tenant_id: str, zone_id: str) -> tuple[Z
                 )
                 row = cur.fetchone()
     if row is None:
-        raise ZoneNotFoundError(f"No existe la zona {zone_id} para este tenant")
+        raise ZoneNotFoundError(f"No existe la zona {zone_id} para esta organización")
     length_km, num_connections, pressure, service_length_km, threshold_pct = row
     infra = ZoneInfrastructure(
         network_length_km=float(length_km) if length_km is not None else None,

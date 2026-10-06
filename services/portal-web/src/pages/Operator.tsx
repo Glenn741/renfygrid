@@ -16,6 +16,8 @@ import {
   type OutboxItem,
   type ReadingPayload,
 } from "../offline/outbox";
+import { Icon } from "../components/Icon";
+import { appLocale } from "../catalog";
 
 // App del operador (Track D, D1.3): pensada para el telefono y para trabajar
 // SIN CONEXION. Lo registrado se guarda primero en el dispositivo y se envia
@@ -100,7 +102,7 @@ function MeasureForm({ snap, onSaved }: { snap: Snapshot; onSaved: (label: strin
               {p.name}<span className="block text-xs font-normal opacity-80">{p.kind_label}</span>
             </BigButton>
           ))}
-          {snap.points.length === 0 && <p className="text-sm text-amber-800">La junta todavía no tiene puntos de medición. Créelos en el Portal (Operación diaria → Puntos).</p>}
+          {snap.points.length === 0 && <p className="text-sm text-amber-800">Todavía no hay puntos de medición. Créelos en el Portal (Operación diaria → Puntos).</p>}
         </div>
       </div>
       <div className="flex gap-2">
@@ -179,7 +181,7 @@ function LogForm({ snap, todayReadings, onSaved }: { snap: Snapshot; todayReadin
         <label className="block text-sm font-semibold text-slate-700">Cloro residual medido hoy
           <select className="mt-1 w-full rounded-xl border-2 border-slate-300 px-3 py-3 text-base" value={readingCid} onChange={(e) => setReadingCid(e.target.value)}>
             <option value="">— sin medición —</option>
-            {chlorine.map((i) => <option key={i.client_id} value={i.client_id}>{new Date(i.created_at).toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit" })} · {i.label}</option>)}
+            {chlorine.map((i) => <option key={i.client_id} value={i.client_id}>{new Date(i.created_at).toLocaleTimeString(appLocale(), { hour: "2-digit", minute: "2-digit" })} · {i.label}</option>)}
           </select>
         </label>
       )}
@@ -246,7 +248,7 @@ function MeterForm({ snap, onSaved }: { snap: Snapshot; onSaved: (label: string)
     onSaved(label);
   };
 
-  if (meters.length === 0) return <p className="text-sm text-slate-600">La junta no tiene medidores registrados para lectura manual.</p>;
+  if (meters.length === 0) return <p className="text-sm text-slate-600">No hay medidores registrados para lectura manual.</p>;
 
   return (
     <div className="space-y-4">
@@ -279,8 +281,8 @@ function MeterForm({ snap, onSaved }: { snap: Snapshot; onSaved: (label: string)
           {channels.length === 0 && <p className="text-sm text-amber-800">Este medidor no tiene un canal conocido; regístrelo primero en el Portal.</p>}
           {ch && (
             <p className="text-sm text-slate-600">
-              Lectura anterior: {last !== null ? <strong>{last.toLocaleString("es")}</strong> : "ninguna"}
-              {ch.last_at && ` · ${new Date(ch.last_at).toLocaleDateString("es", { day: "numeric", month: "short" })}`}
+              Lectura anterior: {last !== null ? <strong>{last.toLocaleString(appLocale())}</strong> : "ninguna"}
+              {ch.last_at && ` · ${new Date(ch.last_at).toLocaleDateString(appLocale(), { day: "numeric", month: "short" })}`}
             </p>
           )}
           <label className="block text-sm font-semibold text-slate-700">Lectura del registro (m³)
@@ -397,7 +399,7 @@ export function OperatorPage() {
       {message && (
         <div role="status" className="mx-4 mt-3 flex items-start justify-between gap-2 rounded-xl border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-900">
           <span>{message}</span>
-          <button onClick={() => setMessage(null)} aria-label="Cerrar aviso">✕</button>
+          <button onClick={() => setMessage(null)} aria-label="Cerrar aviso"><Icon name="close" className="h-4 w-4" /></button>
         </div>
       )}
 
@@ -429,7 +431,7 @@ export function OperatorPage() {
                   <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-bold ${STATUS_PILL[i.status].cls}`}>{STATUS_PILL[i.status].label}</span>
                 </div>
                 <p className="mt-1 text-xs text-slate-500">
-                  {new Date(i.created_at).toLocaleString("es", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                  {new Date(i.created_at).toLocaleString(appLocale(), { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
                   {i.server_note && ` · ${i.server_note}`}
                 </p>
                 {i.error && (
@@ -443,7 +445,7 @@ export function OperatorPage() {
             ))}
           </ul>
         )}
-        {snap && <p className="mt-6 text-center text-[11px] text-slate-400">Datos de la junta actualizados {new Date(snap.saved_at).toLocaleString("es", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</p>}
+        {snap && <p className="mt-6 text-center text-[11px] text-slate-400">Datos actualizados {new Date(snap.saved_at).toLocaleString(appLocale(), { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</p>}
       </main>
     </div>
   );

@@ -41,12 +41,15 @@ import {
   markMeterProtection,
   setHesSettings,
   setSlaPolicy,
+  setRegion,
+  setTerms,
 } from "../api";
 import { StagePage, EmptyState } from "../components/StagePage";
 import { NavSection, SectionNav } from "../components/SectionNav";
 
 import { sectionsFor } from "../navigation";
 import { useSessionInfo } from "../components/SessionMenu";
+import { label as codeLabel, options as codeOptions, catalog, reloadCatalog } from "../catalog";
 // Pulido de usabilidad (2026-09-14): esta era la pagina mas larga del
 // portal -- 5 secciones de administracion sin ninguna relacion visual
 // entre si, apiladas en un solo scroll ciego. Convertida al patron real
@@ -56,9 +59,6 @@ import { useSessionInfo } from "../components/SessionMenu";
 // directo.
 const SECTIONS = sectionsFor("/configuration");
 
-const PRIORITY_LABEL: Record<string, string> = {
-  low: "Baja", medium: "Media", high: "Alta", emergency: "Emergencia",
-};
 
 function SectionCard({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
   return (
@@ -489,7 +489,7 @@ function ProtectedAccountsSection() {
   return (
     <SectionCard
       title="Cuentas protegidas contra suspensión/desconexión"
-      description="Contratos que la regulación vigente (en Colombia, Ley 142 y normas de la CRA/CREG) excluye de corte -- hospitales, colegios, etc. RenfyGrid solo guarda la bandera de exclusión + quién/cuándo/por qué la marcó; la clasificación real del cliente vive en el CIS."
+      description="Contratos que la regulación de su país excluye de corte (hospitales, colegios, etc.). RenfyGrid solo guarda la bandera de exclusión + quién/cuándo/por qué la marcó; la clasificación real del cliente vive en el CIS."
     >
       <div className="flex flex-wrap items-end gap-3 mb-4">
         <div className="flex-1 min-w-[240px]">
@@ -637,7 +637,7 @@ function SlaPoliciesSection() {
         <div>
           <label className="block text-xs font-medium text-slate-500 mb-1">Prioridad</label>
           <select className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm" value={priority} onChange={(e) => setPriority(e.target.value)}>
-            {Object.entries(PRIORITY_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            {codeOptions("maintenance.priority").map(({ code: v, label: l }) => <option key={v} value={v}>{l}</option>)}
           </select>
         </div>
         <div>
@@ -653,7 +653,7 @@ function SlaPoliciesSection() {
         </button>
       </div>
       <div className="flex flex-wrap gap-2">
-        {Object.entries(PRIORITY_LABEL).map(([p, label]) => (
+        {codeOptions("maintenance.priority").map(({ code: p, label }) => (
           <span key={p} className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
             {label}: {configured.has(p) ? `${configured.get(p)}h` : "sin configurar"}
           </span>
@@ -754,18 +754,8 @@ function CrewsSection() {
 
 // ── Track D, Sprint D0.3 -- paquetes y nivel de instrumentacion ──────────
 
-const PACK_KIND_LABEL: Record<string, string> = {
-  core: "Núcleo", regulatory: "Normativo", program: "Programa",
-};
 const SEVERITY_STYLE: Record<string, string> = {
   ok: "bg-emerald-50 text-emerald-700", alert: "bg-amber-50 text-amber-700", critical: "bg-red-50 text-red-700",
-};
-const MODULE_LABEL: Record<string, string> = {
-  metering: "Medición", water_balance: "Balance de agua", quality: "Calidad del agua",
-  maintenance: "Mantenimiento", network: "Red", billing: "Cobro",
-};
-const LEVEL_LABEL: Record<string, string> = {
-  basic: "Básico — sin medidores", intermediate: "Intermedio — macromedidor y lectura manual", advanced: "Avanzado — telemedida, SIG, modelo",
 };
 
 function bandRange(bands: { upper: number | null; upper_inclusive?: boolean }[], index: number): string {
@@ -813,7 +803,7 @@ function PacksSection() {
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-sm font-semibold text-slate-800">{p.name}</span>
-                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600">{PACK_KIND_LABEL[p.kind]}</span>
+                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600">{codeLabel("pack.kind", p.kind)}</span>
                   {p.country && <span className="text-[11px] text-slate-500">{p.country} · v{p.version}</span>}
                   {p.is_default && <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-medium text-indigo-700" title="Viene activo en todas las organizaciones">Base de la plataforma</span>}
                 </div>
@@ -888,11 +878,11 @@ function InstrumentationSection() {
   return (
     <SectionCard
       title="Nivel de instrumentación"
-      description="Con qué cuenta el sistema en cada módulo. Una junta sin medidores trabaja en básico y sube de nivel cuando instala un macromedidor, sin cambiar de plataforma. Un módulo sin nivel declarado no asume ninguno."
+      description="Con qué cuenta el sistema en cada módulo. Un sistema sin medidores trabaja en básico y sube de nivel cuando instala un macromedidor, sin cambiar de plataforma. Un módulo sin nivel declarado no asume ninguno."
     >
       {error && <p className="text-sm text-red-600 mb-2">{error}</p>}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        {Object.entries(MODULE_LABEL).map(([module, label]) => (
+        {codeOptions("instrumentation.module").map(({ code: module, label }) => (
           <div key={module}>
             <label htmlFor={`instr-${module}`} className="block text-xs font-medium text-slate-500 mb-1">{label}</label>
             <select
@@ -902,11 +892,105 @@ function InstrumentationSection() {
               onChange={(e) => e.target.value && mutation.mutate({ [module]: e.target.value })}
             >
               <option value="">Sin declarar</option>
-              {Object.entries(LEVEL_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              {codeOptions("instrumentation.level").map(({ code: v, label: l }) => <option key={v} value={v}>{l}</option>)}
             </select>
           </div>
         ))}
       </div>
+    </SectionCard>
+  );
+}
+
+function RegionSettingsSection() {
+  const queryClient = useQueryClient();
+  const cat = catalog();
+  const [currency, setCurrency] = useState(cat?.currency?.code ?? "");
+  const [locale, setLocale] = useState(cat?.locale?.code ?? "");
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const mutation = useMutation({
+    mutationFn: () => setRegion({ currency, locale }),
+    onSuccess: async () => {
+      await reloadCatalog();
+      queryClient.invalidateQueries();
+      setMsg({ ok: true, text: "Guardado. Los montos y números ya usan esta moneda y región." });
+    },
+    onError: (err) => setMsg({ ok: false, text: err instanceof ApiError ? err.message : "No se pudo guardar." }),
+  });
+  return (
+    <SectionCard
+      title="Región y moneda"
+      description="La moneda de los montos y el formato de números y fechas de esta organización. Sin definirlas, los montos se muestran sin moneda."
+    >
+      <div className="flex flex-wrap items-end gap-3">
+        <div>
+          <label htmlFor="org-currency" className="block text-xs font-medium text-slate-500 mb-1">Moneda</label>
+          <select id="org-currency" className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm w-64" value={currency} onChange={(e) => { setCurrency(e.target.value); setMsg(null); }}>
+            <option value="">— elija —</option>
+            {(cat?.currencies ?? []).map((c) => <option key={c.code} value={c.code}>{c.code} · {c.label}</option>)}
+          </select>
+        </div>
+        <div>
+          <label htmlFor="org-locale" className="block text-xs font-medium text-slate-500 mb-1">Región (números y fechas)</label>
+          <select id="org-locale" className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm w-64" value={locale} onChange={(e) => { setLocale(e.target.value); setMsg(null); }}>
+            <option value="">— elija —</option>
+            {(cat?.locales ?? []).map((l) => <option key={l.code} value={l.code}>{l.label}</option>)}
+          </select>
+        </div>
+        <button onClick={() => mutation.mutate()} disabled={mutation.isPending || !currency || !locale}
+          className="rounded-lg bg-indigo-600 text-white text-sm font-semibold px-4 py-1.5 hover:bg-indigo-700 disabled:opacity-50">Guardar</button>
+      </div>
+      {msg && <p className={`mt-2 text-sm ${msg.ok ? "text-emerald-700" : "text-red-600"}`}>{msg.text}</p>}
+    </SectionCard>
+  );
+}
+
+function TermsSettingsSection() {
+  const queryClient = useQueryClient();
+  const cat = catalog();
+  const terms = cat?.terms ?? {};
+  const [draft, setDraft] = useState<Record<string, { label: string; plural: string }>>({});
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const mutation = useMutation({
+    mutationFn: (changes: Record<string, { label: string; plural: string } | null>) => setTerms(changes),
+    onSuccess: async () => {
+      await reloadCatalog();
+      setDraft({});
+      queryClient.invalidateQueries();
+      setMsg({ ok: true, text: "Guardado." });
+    },
+    onError: (err) => setMsg({ ok: false, text: err instanceof ApiError ? err.message : "No se pudo guardar." }),
+  });
+  const SOURCE: Record<string, string> = { organization: "propio de la organización" };
+  return (
+    <SectionCard
+      title="Terminología"
+      description="Cómo se nombran el prestador, su directiva, la autoridad y las instituciones en esta organización. Lo trae el paquete adoptado; aquí se puede cambiar para esta organización."
+    >
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead><tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
+            <th className="py-2 pr-3">Término</th><th className="py-2 pr-3">Singular</th><th className="py-2 pr-3">Plural</th><th className="py-2 pr-3">Origen</th><th className="py-2" /></tr></thead>
+          <tbody>
+            {Object.entries(terms).map(([key, t]) => {
+              const d = draft[key] ?? { label: t.label, plural: t.plural };
+              const dirty = d.label !== t.label || d.plural !== t.plural;
+              return (
+                <tr key={key} className="border-b border-slate-100 last:border-0">
+                  <td className="py-2 pr-3 font-mono text-xs text-slate-500">{key}</td>
+                  <td className="py-2 pr-3"><input aria-label={`${key} singular`} className="rounded border border-slate-300 px-2 py-1 w-48" value={d.label} onChange={(e) => setDraft({ ...draft, [key]: { ...d, label: e.target.value } })} /></td>
+                  <td className="py-2 pr-3"><input aria-label={`${key} plural`} className="rounded border border-slate-300 px-2 py-1 w-48" value={d.plural} onChange={(e) => setDraft({ ...draft, [key]: { ...d, plural: e.target.value } })} /></td>
+                  <td className="py-2 pr-3 text-xs text-slate-500">{SOURCE[t.source] ?? `paquete ${t.source}`}</td>
+                  <td className="py-2 whitespace-nowrap">
+                    {dirty && <button onClick={() => mutation.mutate({ [key]: d })} className="text-xs font-semibold text-indigo-700 hover:underline">Guardar</button>}
+                    {!dirty && t.source === "organization" && <button onClick={() => mutation.mutate({ [key]: null })} className="text-xs text-slate-500 hover:text-red-600">Volver al del paquete</button>}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      {msg && <p className={`mt-2 text-sm ${msg.ok ? "text-emerald-700" : "text-red-600"}`}>{msg.text}</p>}
     </SectionCard>
   );
 }
@@ -1226,6 +1310,8 @@ export function ConfigurationPage() {
       <NavSection id="users"><UsersRolesSection /></NavSection>
       <NavSection id="session"><SessionSettingsSection /></NavSection>
       <NavSection id="timezone"><TimezoneSettingsSection /></NavSection>
+      <NavSection id="region"><RegionSettingsSection /></NavSection>
+      <NavSection id="terms"><TermsSettingsSection /></NavSection>
       <NavSection id="packs"><PacksSection /></NavSection>
       <NavSection id="instrumentation"><InstrumentationSection /></NavSection>
       <NavSection id="hes-settings"><HesSettingsSection /></NavSection>

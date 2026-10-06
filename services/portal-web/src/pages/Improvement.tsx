@@ -8,21 +8,13 @@ import {
 import { StagePage, EmptyState } from "../components/StagePage";
 import { NavSection, SectionNav } from "../components/SectionNav";
 import { sectionsFor } from "../navigation";
+import { badgeClass, label as codeLabel, options as codeOptions, appLocale, term, money, formSuffix, formLink, form, currencyCode } from "../catalog";
 
 // Plan mínimo de O&M, ficha 7G.2 y tablero 7H (Track D, D7; Guía 3 sección 4).
 // "Al finalizar esta guía, la JAAPS debe salir con un plan mínimo. No es un
 // documento complejo. Es una hoja de ruta inmediata."
 
 const SECTIONS = sectionsFor("/improvement");
-const PRODUCTS_TEMPLATE = "MA-G3-7H";
-const PRIORITY: Record<string, { label: string; cls: string }> = {
-  high: { label: "Alta", cls: "bg-red-50 text-red-700" },
-  medium: { label: "Media", cls: "bg-amber-50 text-amber-800" },
-  low: { label: "Baja", cls: "bg-slate-100 text-slate-600" },
-};
-const SUPPORT: Record<string, string> = {
-  community: "La comunidad", local_government: "Gobierno local", specialized: "Especializado",
-};
 
 function errText(err: unknown, fallback: string) {
   return err instanceof ApiError ? err.message : fallback;
@@ -63,7 +55,7 @@ function PlanRow({ row }: { row: MinimumPlanRow }) {
       )}
       <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_12rem_10rem_auto]">
         <textarea aria-label="Decisión" rows={2} className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm"
-          placeholder={row.example_decision ? `Ejemplo: ${row.example_decision}` : "Decisión concreta de la junta"}
+          placeholder={row.example_decision ? `Ejemplo: ${row.example_decision}` : "Decisión concreta"}
           value={f.decision} onChange={(e) => setF({ ...f, decision: e.target.value })} />
         <input aria-label="Responsable" className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm"
           placeholder={row.example_responsible ? `Ej.: ${row.example_responsible}` : "Responsable"}
@@ -85,7 +77,7 @@ function MinimumPlanSection() {
   if (!data) return null;
   return (
     <Card title="Plan mínimo de operación y mantenimiento"
-      description={`Hoja de ruta inmediata: una decisión concreta, un responsable y un plazo por fila. Bajo cada fila, lo que el sistema ya sabe de su junta. ${data.summary.decided} de ${data.summary.total} filas decididas.`}>
+      description={`Hoja de ruta inmediata: una decisión concreta, un responsable y un plazo por fila. Bajo cada fila, lo que el sistema ya sabe de su operación. ${data.summary.decided} de ${data.summary.total} filas decididas.`}>
       {data.rows.length === 0 && <EmptyState message="Ningún paquete adoptado trae un plan mínimo." />}
       <div className="space-y-3">{data.rows.map((r) => <PlanRow key={`${r.pack_id}:${r.code}:${r.entry?.updated_at ?? ""}`} row={r} />)}</div>
     </Card>
@@ -117,16 +109,16 @@ function InputEditor({ input }: { input: ImprovementInput }) {
   });
   return (
     <tr className="border-b border-slate-100 align-top last:border-0">
-      <td className="py-2 pr-3"><span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${PRIORITY[input.priority].cls}`}>{PRIORITY[input.priority].label}</span></td>
+      <td className="py-2 pr-3"><span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${badgeClass("priority", input.priority)}`}>{codeLabel("priority", input.priority)}</span></td>
       <td className="py-2 pr-3 font-medium text-slate-800">{input.problem}</td>
       <td className="py-2 pr-3 text-xs text-slate-600">{input.evidence ?? "—"}</td>
       <td className="py-2 pr-3 text-xs">
         {!open ? (
           <div className="space-y-0.5 text-slate-700">
             {input.proposed_action && <p><strong>Acción:</strong> {input.proposed_action}</p>}
-            {input.community_action && <p><strong>La junta:</strong> {input.community_action}</p>}
-            {(input.support_required || input.support_level) && <p><strong>Apoyo:</strong> {input.support_required ?? ""}{input.support_level ? ` (${SUPPORT[input.support_level]})` : ""}</p>}
-            <p><strong>Costo:</strong> {input.cost_estimate !== null ? `USD ${input.cost_estimate.toLocaleString("es")}` : "—"}{input.cost_note ? ` · ${input.cost_note}` : ""}
+            {input.community_action && <p><strong>{term("provider", { capital: true })}:</strong> {input.community_action}</p>}
+            {(input.support_required || input.support_level) && <p><strong>Apoyo:</strong> {input.support_required ?? ""}{input.support_level ? ` (${codeLabel("support_level", input.support_level)})` : ""}</p>}
+            <p><strong>Costo:</strong> {input.cost_estimate !== null ? money(input.cost_estimate) : "—"}{input.cost_note ? ` · ${input.cost_note}` : ""}
               {input.term && <> · <strong>Plazo:</strong> {input.term}</>}</p>
             <button onClick={() => setOpen(true)} className="mt-1 font-semibold text-indigo-700 hover:underline">Completar</button>
             <button onClick={() => remove.mutate()} className="ml-3 text-slate-500 hover:text-red-600">Quitar</button>
@@ -134,17 +126,17 @@ function InputEditor({ input }: { input: ImprovementInput }) {
         ) : (
           <div className="grid gap-1.5">
             <input aria-label="Acción propuesta" className="rounded border border-slate-300 px-2 py-1" placeholder="Acción propuesta" value={f.proposed_action} onChange={(e) => setF({ ...f, proposed_action: e.target.value })} />
-            <input aria-label="Qué puede hacer la junta" className="rounded border border-slate-300 px-2 py-1" placeholder="Qué puede hacer la junta" value={f.community_action} onChange={(e) => setF({ ...f, community_action: e.target.value })} />
+            <input aria-label="Qué se puede hacer con recursos propios" className="rounded border border-slate-300 px-2 py-1" placeholder="Qué se puede hacer con recursos propios" value={f.community_action} onChange={(e) => setF({ ...f, community_action: e.target.value })} />
             <input aria-label="Apoyo técnico o institucional" className="rounded border border-slate-300 px-2 py-1" placeholder="Apoyo técnico o institucional" value={f.support_required} onChange={(e) => setF({ ...f, support_required: e.target.value })} />
             <div className="grid grid-cols-2 gap-1.5">
               <select aria-label="Nivel de apoyo" className="rounded border border-slate-300 px-1 py-1" value={f.support_level} onChange={(e) => setF({ ...f, support_level: e.target.value })}>
                 <option value="">— nivel de apoyo —</option>
-                {Object.entries(SUPPORT).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                {codeOptions("support_level").map(({ code: k, label: v }) => <option key={k} value={k}>{v}</option>)}
               </select>
               <select aria-label="Prioridad" className="rounded border border-slate-300 px-1 py-1" value={f.priority} onChange={(e) => setF({ ...f, priority: e.target.value as ImprovementInput["priority"] })}>
-                {Object.entries(PRIORITY).map(([k, v]) => <option key={k} value={k}>Prioridad {v.label.toLowerCase()}</option>)}
+                {codeOptions("priority").map(({ code: k, ...v }) => <option key={k} value={k}>Prioridad {v.label.toLowerCase()}</option>)}
               </select>
-              <input aria-label="Costo estimado" type="number" min={0} step="any" className="rounded border border-slate-300 px-2 py-1" placeholder="Costo (USD)" value={f.cost_estimate} onChange={(e) => setF({ ...f, cost_estimate: e.target.value })} />
+              <input aria-label="Costo estimado" type="number" min={0} step="any" className="rounded border border-slate-300 px-2 py-1" placeholder={`Costo${currencyCode() ? ` (${currencyCode()})` : ""}`} value={f.cost_estimate} onChange={(e) => setF({ ...f, cost_estimate: e.target.value })} />
               <input aria-label="Nota del costo" className="rounded border border-slate-300 px-2 py-1" placeholder="por cotizar / estimación" value={f.cost_note} onChange={(e) => setF({ ...f, cost_note: e.target.value })} />
             </div>
             <input aria-label="Plazo" className="rounded border border-slate-300 px-2 py-1" placeholder="Plazo" value={f.term} onChange={(e) => setF({ ...f, term: e.target.value })} />
@@ -178,9 +170,9 @@ function Candidate({ c }: { c: ImprovementCandidate }) {
       </div>
       <select aria-label="Prioridad" className="rounded-lg border border-slate-300 px-2 py-1 text-xs" value={priority} onChange={(e) => setPriority(e.target.value)}>
         <option value="">— prioridad —</option>
-        {Object.entries(PRIORITY).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+        {codeOptions("priority").map(({ code: k, ...v }) => <option key={k} value={k}>{v.label}</option>)}
       </select>
-      <button onClick={() => move.mutate()} disabled={!priority || move.isPending} className="rounded-lg border border-indigo-300 px-3 py-1 text-xs font-semibold text-indigo-700 disabled:opacity-50">Llevar a la 7G.2</button>
+      <button onClick={() => move.mutate()} disabled={!priority || move.isPending} className="rounded-lg border border-indigo-300 px-3 py-1 text-xs font-semibold text-indigo-700 disabled:opacity-50">Llevar a los insumos{formSuffix("improvement_inputs")}</button>
     </li>
   );
 }
@@ -190,7 +182,6 @@ function InputsSection() {
   const { data } = useQuery({ queryKey: ["improvement-inputs"], queryFn: getImprovementInputs, retry: false });
   // La ficha es de la guía del tablero 7H: por defecto propone la evidencia de
   // esa etapa (y la que no tiene etapa); el resto, a pedido.
-  const { data: board } = useQuery({ queryKey: ["product-board", PRODUCTS_TEMPLATE], queryFn: () => getProductBoard(PRODUCTS_TEMPLATE), retry: false });
   const [allStages, setAllStages] = useState(false);
   const [manual, setManual] = useState({ problem: "", priority: "medium" });
   const [msg, setMsg] = useState<string | null>(null);
@@ -200,13 +191,13 @@ function InputsSection() {
     onError: (e) => setMsg(errText(e, "No se pudo agregar.")),
   });
   if (!data) return null;
-  const stage = board?.stage_code ?? null;
+  const stage = form("improvement_inputs")?.stage_code ?? null;
   const candidates = data.candidates.filter((c) => allStages || !stage || c.stage_code === null || c.stage_code === stage);
   const hidden = data.candidates.length - candidates.length;
   return (
-    <Card title="Ficha 7G.2: insumos para el Plan de Mejora"
-      description="Lista breve de problemas técnicos priorizados, con la evidencia que los respalda, lista para la matriz del Plan de Mejora (Guía 6). Los costos son referenciales: antes de aprobar una inversión, pida cotizaciones y, cuando corresponda, estudios o asistencia técnica.">
-      <p className="mb-2 text-xs text-slate-600">{data.summary.inputs} problemas · USD {data.summary.cost_estimate_total.toLocaleString("es")} estimados · {data.summary.to_quote} por cotizar</p>
+    <Card title={`Insumos para el Plan de Mejora${formSuffix("improvement_inputs")}`}
+      description="Lista breve de problemas técnicos priorizados, con la evidencia que los respalda, lista para la matriz del Plan de Mejora. Los costos son referenciales: antes de aprobar una inversión, pida cotizaciones y, cuando corresponda, estudios o asistencia técnica.">
+      <p className="mb-2 text-xs text-slate-600">{data.summary.inputs} problemas · {money(data.summary.cost_estimate_total)} estimados · {data.summary.to_quote} por cotizar</p>
       {data.inputs.length === 0 ? <EmptyState message="Todavía no hay problemas en la ficha. Lleve los de la evidencia de abajo." /> : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -219,7 +210,7 @@ function InputsSection() {
       <div className="mt-3 flex flex-wrap gap-2">
         <input aria-label="Problema manual" className="min-w-[16rem] flex-1 rounded-lg border border-slate-300 px-3 py-1.5 text-sm" placeholder="Otro problema priorizado" value={manual.problem} onChange={(e) => setManual({ ...manual, problem: e.target.value })} />
         <select aria-label="Prioridad manual" className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm" value={manual.priority} onChange={(e) => setManual({ ...manual, priority: e.target.value })}>
-          {Object.entries(PRIORITY).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+          {codeOptions("priority").map(({ code: k, ...v }) => <option key={k} value={k}>{v.label}</option>)}
         </select>
         <button onClick={() => add.mutate()} disabled={!manual.problem.trim()} className="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50">Agregar</button>
       </div>
@@ -239,14 +230,16 @@ function InputsSection() {
 }
 
 function ProductsSection() {
-  const { data, error } = useQuery({ queryKey: ["product-board", PRODUCTS_TEMPLATE], queryFn: () => getProductBoard(PRODUCTS_TEMPLATE), retry: false });
-  if (error) return <Card title="Productos finales (7H)"><p className="text-sm text-amber-800">{errText(error, "")}</p></Card>;
+  const templateId = form("products_board")?.template_id ?? null;
+  const { data, error } = useQuery({ queryKey: ["product-board", templateId], queryFn: () => getProductBoard(templateId as string), retry: false, enabled: !!templateId });
+  if (!templateId) return null;
+  if (error) return <Card title={`Productos finales${formSuffix("products_board")}`}><p className="text-sm text-amber-800">{errText(error, "")}</p></Card>;
   if (!data) return null;
   return (
     <Card title={data.title} description={data.purpose}>
       <p className="mb-2 text-xs text-slate-600">
         {data.summary.complete} de {data.summary.total} completos · {data.summary.with_evidence} con registro en el sistema
-        {data.last_run ? ` · última verificación ${new Date(data.last_run.performed_at).toLocaleDateString("es")} por ${data.last_run.performed_by.replace(/^portal:/, "")}` : " · nunca verificado"}
+        {data.last_run ? ` · última verificación ${new Date(data.last_run.performed_at).toLocaleDateString(appLocale())} por ${data.last_run.performed_by.replace(/^portal:/, "")}` : " · nunca verificado"}
       </p>
       <ul className="divide-y divide-slate-100">
         {data.items.map((i) => (
@@ -255,7 +248,7 @@ function ProductsSection() {
               {i.note && <span className="block text-xs text-slate-500">{i.note}</span>}
             </span>
             <span className={`text-xs ${i.has_evidence ? "text-slate-600" : "text-slate-400"}`}>
-              {i.has_evidence ? `${i.evidence.count} registro${i.evidence.count === 1 ? "" : "s"}${i.evidence.last_at ? ` · ${new Date(i.evidence.last_at).toLocaleDateString("es")}` : ""}` : "sin registro"}
+              {i.has_evidence ? `${i.evidence.count} registro${i.evidence.count === 1 ? "" : "s"}${i.evidence.last_at ? ` · ${new Date(i.evidence.last_at).toLocaleDateString(appLocale())}` : ""}` : "sin registro"}
             </span>
             <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${i.status === "complete" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800"}`}>
               {i.status === "complete" ? "Completo" : "Pendiente"}
@@ -264,7 +257,7 @@ function ProductsSection() {
           </li>
         ))}
       </ul>
-      <p className="mt-3 text-sm"><Link to="/inspections/G3" className="font-semibold text-indigo-700 hover:underline">Verificar los productos (lista 7H) ›</Link></p>
+      {formLink("products_board") && <p className="mt-3 text-sm"><Link to={formLink("products_board") as string} className="font-semibold text-indigo-700 hover:underline">Verificar los productos ›</Link></p>}
     </Card>
   );
 }

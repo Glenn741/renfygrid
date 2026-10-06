@@ -20,6 +20,8 @@ import { SectionNav } from "../components/SectionNav";
 import { NetworkMap } from "../components/NetworkMap";
 
 import { sectionsFor } from "../navigation";
+import { Icon } from "../components/Icon";
+import { label as codeLabel } from "../catalog";
 // Pulido de usabilidad (2026-09-14): 5 secciones reales apiladas (flota,
 // concentradores, cola de reintentos, eventos/alarmas, medidores) sin
 // forma de saltar entre ellas -- mismo patron de barra de secciones que
@@ -34,7 +36,6 @@ import { sectionsFor } from "../navigation";
 // DMA/smart metering (KROHNE, McCrometer -- ver docs/05-ejecucion.md).
 const SECTIONS = sectionsFor("/meters");
 
-const METER_TYPE_LABEL: Record<string, string> = { micro: "Micro (cliente)", macro: "Macro (sector)" };
 const METER_TYPE_COLOR: Record<string, string> = { micro: "#0ea5e9", macro: "#7c3aed" };
 const STALE_COLOR = { online: "#10b981", offline: "#ef4444", unknown: "#94a3b8" };
 
@@ -85,7 +86,7 @@ function MetersMapSection() {
         pointRadius={(p) => (p.meter_type === "macro" ? 11 : 6)}
         popupHtml={(p) => {
           const statusText = p.is_stale === null || p.is_stale === undefined ? "sin umbral configurado" : p.is_stale ? "caído" : "en línea";
-          return `<div style="font-size:12px"><strong>${p.account_number}</strong> (${METER_TYPE_LABEL[p.meter_type as string] ?? p.meter_type})<br/>` +
+          return `<div style="font-size:12px"><strong>${p.account_number}</strong> (${codeLabel("meter.type", p.meter_type as string)})<br/>` +
             `${p.brand ?? "—"} ${p.model ?? ""}<br/>Sector: ${p.zone_name ?? "sin asignar"}<br/>Estado: ${statusText}` +
             `${(p.invalid_count as number) > 0 ? `<br/><span style="color:#b45309">${p.invalid_count} excepción(es) pendiente(s)</span>` : ""}</div>`;
         }}
@@ -100,8 +101,8 @@ function MetersMapSection() {
         )}
         {layer === "type" && (
           <>
-            <span><span className="inline-block w-2.5 h-2.5 rounded-full mr-1" style={{ background: METER_TYPE_COLOR.micro }} />Micro (cliente)</span>
-            <span><span className="inline-block w-3 h-3 rounded-full mr-1" style={{ background: METER_TYPE_COLOR.macro }} />Macro (sector, círculo más grande)</span>
+            <span><span className="inline-block w-2.5 h-2.5 rounded-full mr-1" style={{ background: METER_TYPE_COLOR.micro }} />{codeLabel("meter.type", "micro")}</span>
+            <span><span className="inline-block w-3 h-3 rounded-full mr-1" style={{ background: METER_TYPE_COLOR.macro }} />{codeLabel("meter.type", "macro")} · círculo más grande</span>
           </>
         )}
         {layer === "brand" && <span>Color por marca — ver el detalle al hacer clic en cada punto.</span>}
@@ -227,14 +228,9 @@ const SEVERITY_CLASS: Record<string, string> = {
   info: "bg-slate-50 text-slate-500",
 };
 
-const EVENT_TYPE_LABEL: Record<string, string> = {
-  meter_alarm: "Alarma del medidor",
-  communication_success: "Comunicación exitosa",
-  communication_failure: "Falla de comunicación",
-};
 
 function eventTypeLabel(type: string): string {
-  return EVENT_TYPE_LABEL[type] ?? type;
+  return codeLabel("meter.event_type", type);
 }
 
 function relativeFromNow(iso: string): string {
@@ -465,7 +461,7 @@ export function MetersPage() {
       {retryQueueLoading && <p className="text-sm text-slate-500 mb-4">Cargando...</p>}
       {retryQueue && retryQueue.length === 0 && (
         <div className="mb-6">
-          <EmptyState message="Ningún medidor en cola de reintento. 👍" />
+          <EmptyState message="Ningún medidor en cola de reintento." />
         </div>
       )}
       {retryQueue && retryQueue.length > 0 && (
@@ -618,7 +614,7 @@ export function MetersPage() {
                     {meter.is_stale === null ? (
                       <span className="text-slate-400" title="Configura el umbral en Configuración → HES">Sin umbral</span>
                     ) : meter.is_stale ? (
-                      <span className="text-amber-700">⚠ Caído</span>
+                      <span className="inline-flex items-center gap-1 text-amber-700"><Icon name="alert" className="h-3.5 w-3.5" />Caído</span>
                     ) : (
                       <span className="text-slate-500">Activo</span>
                     )}

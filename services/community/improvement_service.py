@@ -24,8 +24,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "common"))
 
 import psycopg  # noqa: E402
 
+from catalog_service import form_code, number_separators  # noqa: E402
 from pack_engine import (  # noqa: E402
     InvalidRecordError,
+    format_number,
     improvement_candidates,
     minimum_plan_view,
     products_board,
@@ -62,8 +64,9 @@ def _clean(v: Any) -> Any:
     return (v.strip() or None) if isinstance(v, str) else v
 
 
-def _num(v: Any) -> str:
-    return f"{float(v):g}"
+def _num(v: Any, sep: tuple[str, str] | None) -> str:
+    """Numero con los separadores de la region de la organizacion."""
+    return format_number(v, sep)
 
 
 # ── Plan minimo ───────────────────────────────────────────────────────
@@ -122,10 +125,12 @@ def _suggestions(conn: psycopg.Connection, tenant_id: str, today: date, day_star
                 inputs = [r[0] for r in cur.fetchall()]
     sanitation = sanitation_overview(conn, tenant_id, today)
     items = list_items(conn, tenant_id, today)
+    sep = number_separators(conn, tenant_id)
+    log_form = form_code(conn, tenant_id, "operation_log")
 
     out: dict[str, list[str]] = {}
     out["daily_routine"] = ([f"Rutina del paquete: {', '.join(moments)}."] if moments else []) + [
-        f"Bitácora 7C con registros en {log_days} de los últimos 7 días."]
+        f"Bitácora de operación{f' ({log_form})' if log_form else ''}: registros en {log_days} de los últimos 7 días."]
     out["chlorine_points"] = [f"{kind}: {name}" for kind, name in points] or ["No hay puntos de medición configurados."]
     out["chlorine_points"] += [f"Sin cerrar: {d}" for d in reading_findings]
     out["monthly_maintenance"] = [
@@ -138,7 +143,7 @@ def _suggestions(conn: psycopg.Connection, tenant_id: str, today: date, day_star
     ] + [f"Descarga: {d['name']} ({d['activity_label']})" for d in sanitation["discharges"]
          if d["status"] in ("identified", "agreement")] + sanitation_findings
     out["warehouse_ppe"] = [
-        f"{i['name']}: {_num(i['stock'])} de mínimo {_num(i['min_stock'])}" for i in items if i["below_min"]
+        f"{i['name']}: {_num(i['stock'], sep)} de mínimo {_num(i['min_stock'], sep)}" for i in items if i["below_min"]
     ] + [f"{i['name']}: lote vence {l['expires_on']}" for i in items for l in i["expiring"]]
     out["likely_emergency"] = ([f"Activada antes: {label} ({n})" for label, n in activations]
                                or ([f"Tipos del plan: {', '.join(emergency_labels)}."] if emergency_labels else []))
@@ -151,9 +156,9 @@ def minimum_plan(conn: psycopg.Connection, tenant_id: str, today: date, day_star
     packs = active_pack_ids(conn, tenant_id)
     with conn.cursor() as cur:
         cur.execute("SELECT pack_id, code, sort_order, component, guidance, example_decision, example_responsible, example_term, "
-                    "suggestion_source FROM minimum_plan_row WHERE pack_id = ANY(%s) ORDER BY pack_id, sort_order", (packs,))
+                    "suggestion_source, stage_code FROM minimum_plan_row WHERE pack_id = ANY(%s) ORDER BY pack_id, sort_order", (packs,))
         cols = ("pack_id", "code", "sort_order", "component", "guidance", "example_decision", "example_responsible",
-                "example_term", "suggestion_source")
+                "example_term", "suggestion_source", "stage_code")
         rows = [dict(zip(cols, r)) for r in cur.fetchall()]
     with conn.transaction():
         with tenant_scope(conn, tenant_id):
@@ -171,7 +176,7 @@ def save_minimum_plan_entry(conn: psycopg.Connection, tenant_id: str, pack_id: s
                             due_date: date | None = None) -> dict:
     decision = _clean(decision)
     if not decision:
-        raise InvalidRecordError("Escriba la decisión concreta de la junta")
+        raise InvalidRecordError("Escriba la decisión concreta de la organización")
     if pack_id not in active_pack_ids(conn, tenant_id):
         raise ImprovementNotFoundError(f"El paquete {pack_id!r} no está adoptado")
     with conn.cursor() as cur:
@@ -207,6 +212,7 @@ def _labels(conn: psycopg.Connection, tenant_id: str) -> tuple[dict[str, str], d
 
 def _finding_candidates(conn: psycopg.Connection, tenant_id: str, labels: dict[str, str],
                         stages: dict[str, str | None]) -> list[dict]:
+    sep = number_separators(conn, tenant_id)
     templates = {t["id"]: t for t in list_checklist_templates(conn, tenant_id)}
     with conn.transaction():
         with tenant_scope(conn, tenant_id):
@@ -238,7 +244,7 @@ def _finding_candidates(conn: psycopg.Connection, tenant_id: str, labels: dict[s
             if vals:
                 unit, plabel, point = vals[0][1], vals[0][2], vals[0][3]
                 evidence = (f"{len(vals)} {'medición' if len(vals) == 1 else 'mediciones'} de {plabel}"
-                            f"{f' en {point}' if point else ''}: {'; '.join(_num(v[0]) for v in vals)} {unit or ''}".rstrip()
+                            f"{f' en {point}' if point else ''}: {'; '.join(_num(v[0], sep) for v in vals)} {unit or ''}".rstrip()
                             + f". {labels.get(src, '')}".rstrip())
             else:
                 evidence = labels.get(src)
@@ -263,6 +269,7 @@ def _finding_candidates(conn: psycopg.Connection, tenant_id: str, labels: dict[s
 
 def _derived_candidates(conn: psycopg.Connection, tenant_id: str, today: date, labels: dict[str, str],
                         stages: dict[str, str | None]) -> list[dict]:
+    sep = number_separators(conn, tenant_id)
     s = sanitation_overview(conn, tenant_id, today)
     out = []
     for c in s["components"]:
@@ -281,7 +288,7 @@ def _derived_candidates(conn: psycopg.Connection, tenant_id: str, today: date, l
                         "stage_code": stages.get("discharge"), "finding_id": None,
                         "problem": f"{d['name']} ({d['activity_label']}): {d['problem'] or 'descarga productiva sin controlar'}",
                         "evidence": f"{labels.get('discharge', '')}; estado: {d['status']}"
-                                    + "".join(f"; DBO {_num(m['bod5'])} / DQO {_num(m['cod'])} mg/L"
+                                    + "".join(f"; DBO {_num(m['bod5'], sep)} / DQO {_num(m['cod'], sep)} mg/L"
                                               for m in d["samples"] if m["bod5"] is not None and m["cod"] is not None),
                         "priority": None, "support_level": None, "since": d["created_at"], "location_text": d["location_text"]})
     return out
@@ -342,7 +349,7 @@ def create_improvement_input(conn: psycopg.Connection, tenant_id: str, actor: st
             raise ImprovementConflictError("Esa evidencia ya está en la ficha 7G.2")
         cand = next((c for c in overview["candidates"] if c["source_ref"] == source_ref), None)
         if cand is None:
-            raise ImprovementNotFoundError(f"No hay evidencia abierta {source_ref!r} para esta junta")
+            raise ImprovementNotFoundError(f"No hay evidencia abierta {source_ref!r} para esta organización")
         source_kind, finding_id = cand["source_kind"], cand["finding_id"]
         for k in ("problem", "evidence", "priority", "support_level"):
             if fields.get(k) is None and cand.get(k) is not None:

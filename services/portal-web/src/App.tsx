@@ -21,6 +21,7 @@ import { QualityPage } from "./pages/Quality";
 import { EmergenciesPage } from "./pages/Emergencies";
 import { WarehousePage } from "./pages/Warehouse";
 import { SanitationPage } from "./pages/Sanitation";
+import { CatalogGate } from "./catalog";
 import { ImprovementPage } from "./pages/Improvement";
 import { GroupPage } from "./pages/Group";
 import { ComplianceReportsPage } from "./pages/ComplianceReports";
@@ -30,7 +31,7 @@ import { InspectionsPage } from "./pages/Inspections";
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuth();
   if (!isAuthenticated) return <Navigate to="/login" replace />;
-  return <>{children}</>;
+  return <CatalogGate>{children}</CatalogGate>;
 }
 
 function AppRoutes() {

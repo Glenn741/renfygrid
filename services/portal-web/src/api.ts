@@ -2301,3 +2301,28 @@ export function setInstrumentation(levels: Record<string, string>): Promise<{ le
 }
 
 export { ApiError };
+
+
+// ── Catálogos de la organización (0045) ───────────────────────────────
+
+export interface UiCatalog {
+  currency: { code: string; label: string; decimals: number } | null;
+  locale: { code: string; label: string; decimal_sep: string; group_sep: string } | null;
+  terms: Record<string, { label: string; plural: string; source: string }>;
+  labels: Record<string, Record<string, { label: string; tone: string | null; sort: number }>>;
+  forms: Record<string, { code: string; title: string; stage_code: string | null; template_id: string | null }>;
+  currencies: { code: string; label: string; decimals: number }[];
+  locales: { code: string; label: string }[];
+}
+
+export function getUiCatalog(): Promise<UiCatalog> {
+  return request("/catalog/ui");
+}
+
+export function setRegion(body: { currency: string; locale: string }) {
+  return request("/settings/region", { method: "PUT", body: JSON.stringify(body) });
+}
+
+export function setTerms(changes: Record<string, { label: string; plural: string } | null>) {
+  return request("/settings/terms", { method: "PUT", body: JSON.stringify({ changes }) });
+}

@@ -25,8 +25,10 @@ export interface NetworkMapProps {
   emptyMessage?: string;
 }
 
-const DEFAULT_CENTER: [number, number] = [4.6, -74.1]; // Colombia, si no hay datos aun
-const DEFAULT_ZOOM = 6;
+// Sin datos todavia: vista del mundo, sin suponer un pais. Con datos, el
+// mapa se ajusta a ellos.
+const DEFAULT_CENTER: [number, number] = [0, 0];
+const DEFAULT_ZOOM = 2;
 
 export function NetworkMap({
   geojson, height = 420, pointColor, pointRadius, lineColor, lineWeight, popupHtml, emptyMessage,

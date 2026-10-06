@@ -131,7 +131,7 @@ def record_manual_meter_reading(
                 cur.execute("SELECT meter_type FROM meter WHERE id = %s AND tenant_id = %s", (meter_id, tenant_id))
                 meter = cur.fetchone()
                 if meter is None:
-                    raise MeterNotFoundError(f"No existe el medidor {meter_id} para esta junta")
+                    raise MeterNotFoundError(f"No existe el medidor {meter_id} para esta organización")
                 channels = _channels(cur, tenant_id, meter_id, meter[0])
                 known = {c["channel"]: c for c in channels}
                 if channel not in known:

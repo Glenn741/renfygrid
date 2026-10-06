@@ -27,6 +27,7 @@ import { StagePage, EmptyState } from "../components/StagePage";
 import { SectionNav } from "../components/SectionNav";
 
 import { sectionsFor } from "../navigation";
+import { badgeClass, label as codeLabel, options as codeOptions, appLocale, formSuffix, term } from "../catalog";
 // Gestion de Mantenimiento -- CMMS real (2026-09-14, docs/04-plan-sprints.md
 // SS9): el panel anterior (Sprint B7) generaba la orden y la enviaba a
 // BayForce, pero BayForce nunca tuvo un endpoint real que la recibiera
@@ -40,27 +41,6 @@ import { sectionsFor } from "../navigation";
 
 const SECTIONS = sectionsFor("/maintenance");
 
-const TYPE_LABEL: Record<string, string> = {
-  preventive: "Preventivo", corrective: "Correctivo", inspection: "Inspección", emergency: "Emergente",
-};
-const SOURCE_LABEL: Record<string, string> = {
-  asset_condition: "Condición del activo", simulation_result: "Resultado de simulación",
-  balance_anomaly: "Anomalía de balance", pm_schedule: "Preventivo programado", manual: "Manual", event: "Por evento",
-};
-const STATUS_LABEL: Record<string, string> = {
-  generated: "Generada", scheduled: "Programada", assigned: "Asignada", sent_to_bayforce: "Enviada a BayForce",
-  in_progress: "En progreso", completed: "Completada", cancelled: "Cancelada",
-};
-const STATUS_COLOR: Record<string, string> = {
-  generated: "#f59e0b", scheduled: "#0ea5e9", assigned: "#6366f1", sent_to_bayforce: "#3b82f6",
-  in_progress: "#8b5cf6", completed: "#10b981", cancelled: "#64748b",
-};
-const PRIORITY_LABEL: Record<string, string> = {
-  low: "Baja", medium: "Media", high: "Alta", emergency: "Emergencia",
-};
-const PRIORITY_COLOR: Record<string, string> = {
-  low: "#64748b", medium: "#0ea5e9", high: "#f59e0b", emergency: "#ef4444",
-};
 
 function CreateOrderForm() {
   const queryClient = useQueryClient();
@@ -107,19 +87,19 @@ function CreateOrderForm() {
         <div>
           <label className="block text-xs font-medium text-slate-500 mb-1">Tipo</label>
           <select className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm w-full bg-white" value={type} onChange={(e) => setType(e.target.value)}>
-            {Object.entries(TYPE_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            {codeOptions("maintenance.type").map(({ code: v, label: l }) => <option key={v} value={v}>{l}</option>)}
           </select>
         </div>
         <div>
           <label className="block text-xs font-medium text-slate-500 mb-1">Fuente</label>
           <select className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm w-full bg-white" value={source} onChange={(e) => setSource(e.target.value)}>
-            {Object.entries(SOURCE_LABEL).filter(([v]) => v !== "pm_schedule").map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            {codeOptions("maintenance.source").filter((o) => o.code !== "pm_schedule").map((o) => <option key={o.code} value={o.code}>{o.label}</option>)}
           </select>
         </div>
         <div>
           <label className="block text-xs font-medium text-slate-500 mb-1">Prioridad</label>
           <select className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm w-full bg-white" value={priority} onChange={(e) => setPriority(e.target.value)}>
-            {Object.entries(PRIORITY_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            {codeOptions("maintenance.priority").map(({ code: v, label: l }) => <option key={v} value={v}>{l}</option>)}
           </select>
         </div>
         <div>
@@ -243,18 +223,18 @@ function CloseOrderForm({ order, onDone }: { order: MaintenanceOrder; onDone: ()
               <input className="rounded-lg border border-slate-300 px-2 py-1 text-xs w-full" value={pending} onChange={(e) => setPending(e.target.value)} placeholder="lo que quedó por hacer" />
             </div>
             <div>
-              <label className="block text-[10px] font-medium text-slate-500 mb-1">Minga: personas</label>
+              <label className="block text-[10px] font-medium text-slate-500 mb-1">{term("community_work", { capital: true })}: personas</label>
               <input type="number" min={0} className="rounded-lg border border-slate-300 px-2 py-1 text-xs w-full" value={participants} onChange={(e) => setParticipants(e.target.value)} />
             </div>
             <div>
-              <label className="block text-[10px] font-medium text-slate-500 mb-1">Minga: horas donadas</label>
+              <label className="block text-[10px] font-medium text-slate-500 mb-1">{term("community_work", { capital: true })}: horas donadas</label>
               <input type="number" min={0} step="any" className="rounded-lg border border-slate-300 px-2 py-1 text-xs w-full" value={volunteerHours} onChange={(e) => setVolunteerHours(e.target.value)} />
             </div>
           </div>
         )}
         {status === "completed" && (
           <details className="mt-2">
-            <summary className="cursor-pointer text-[11px] font-medium text-slate-600">Saneamiento: residuos y lodos (ficha 7F)</summary>
+            <summary className="cursor-pointer text-[11px] font-medium text-slate-600">Saneamiento: residuos y lodos{formSuffix("sanitation_register")}</summary>
             <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-2">
               <input aria-label="Quién retiró los residuos" className="rounded-lg border border-slate-300 px-2 py-1 text-xs" placeholder="Quién retiró los residuos" value={wasteHandler} onChange={(e) => setWasteHandler(e.target.value)} />
               <input aria-label="Destino seguro" className="rounded-lg border border-slate-300 px-2 py-1 text-xs" placeholder="Destino seguro" value={wasteDestination} onChange={(e) => setWasteDestination(e.target.value)} />
@@ -315,18 +295,18 @@ function OrderRow({ order }: { order: MaintenanceOrder }) {
     <>
       <tr className={order.is_overdue ? "bg-red-50/40" : ""}>
         <td className="px-4 py-3 font-medium text-slate-900">
-          {TYPE_LABEL[order.type] ?? order.type}
+          {codeLabel("maintenance.type", order.type)}
           {order.priority && (
-            <span className="ml-2 rounded-full px-2 py-0.5 text-[10px] font-semibold" style={{ background: `${PRIORITY_COLOR[order.priority]}22`, color: PRIORITY_COLOR[order.priority] }}>
-              {PRIORITY_LABEL[order.priority] ?? order.priority}
+            <span className={`ml-2 rounded-full px-2 py-0.5 text-[10px] font-semibold ${badgeClass("maintenance.priority", order.priority)}`}>
+              {codeLabel("maintenance.priority", order.priority)}
             </span>
           )}
         </td>
-        <td className="px-4 py-3 text-slate-600">{SOURCE_LABEL[order.source] ?? order.source}</td>
+        <td className="px-4 py-3 text-slate-600">{codeLabel("maintenance.source", order.source)}</td>
         <td className="px-4 py-3 text-slate-600">{order.reason ?? "—"}</td>
         <td className="px-4 py-3">
-          <span className="rounded-full px-2 py-0.5 text-xs font-semibold" style={{ background: `${STATUS_COLOR[order.status]}22`, color: STATUS_COLOR[order.status] }}>
-            {STATUS_LABEL[order.status] ?? order.status}
+          <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${badgeClass("maintenance.status", order.status)}`}>
+            {codeLabel("maintenance.status", order.status)}
           </span>
           {order.is_overdue && (
             <span className="ml-2 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700" title={`Venció su SLA (${order.sla_due_at ? new Date(order.sla_due_at).toLocaleString() : ""})`}>
@@ -361,7 +341,7 @@ function OrderRow({ order }: { order: MaintenanceOrder }) {
             {order.status === "completed" && (order.steps_done?.length || order.community_participants) ? (
               <span className="text-[11px] text-slate-500">
                 {order.steps_done?.length ? `${order.steps_done.length} pasos` : ""}
-                {order.community_participants ? ` · minga ${order.community_participants} personas, ${order.volunteer_hours ?? 0} h` : ""}
+                {order.community_participants ? ` · ${term("community_work")}: ${order.community_participants} personas, ${order.volunteer_hours ?? 0} h` : ""}
                 {order.pending_notes ? ` · pendiente: ${order.pending_notes}` : ""}
               </span>
             ) : null}
@@ -471,7 +451,7 @@ function CreatePmPlanForm() {
         <div>
           <label className="block text-xs font-medium text-slate-500 mb-1">Prioridad</label>
           <select className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm w-full bg-white" value={priority} onChange={(e) => setPriority(e.target.value)}>
-            {Object.entries(PRIORITY_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            {codeOptions("maintenance.priority").map(({ code: v, label: l }) => <option key={v} value={v}>{l}</option>)}
           </select>
         </div>
         <div>
@@ -490,7 +470,7 @@ function CreatePmPlanForm() {
         </div>
         <div>
           <label className="block text-xs font-medium text-slate-500 mb-1">Responsable</label>
-          <input className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm w-full" value={responsible} onChange={(e) => setResponsible(e.target.value)} placeholder="p. ej. Operador + minga" />
+          <input className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm w-full" value={responsible} onChange={(e) => setResponsible(e.target.value)} placeholder={`p. ej. Operador + ${term("community_work")}`} />
         </div>
       </div>
       {(catalog?.event_types.length ?? 0) > 0 && (
@@ -583,10 +563,10 @@ function PmPlansSection() {
                         </span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-slate-600">{TYPE_LABEL[p.order_type] ?? p.order_type}</td>
+                    <td className="px-4 py-3 text-slate-600">{codeLabel("maintenance.type", p.order_type)}</td>
                     <td className="px-4 py-3">
-                      <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold" style={{ background: `${PRIORITY_COLOR[p.priority]}22`, color: PRIORITY_COLOR[p.priority] }}>
-                        {PRIORITY_LABEL[p.priority] ?? p.priority}
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${badgeClass("maintenance.priority", p.priority)}`}>
+                        {codeLabel("maintenance.priority", p.priority)}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-slate-600">cada {p.interval_days} días</td>
@@ -612,9 +592,9 @@ function CalendarSection() {
   const pctColor = (p: number | null) => (p === null ? "text-slate-400" : p >= 90 ? "text-emerald-700" : p >= 60 ? "text-amber-700" : "text-red-700");
   return (
     <>
-      <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-2">Calendario anual de mantenimiento, control y calidad (7G)</h2>
+      <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-2">Calendario anual de mantenimiento, control y calidad{formSuffix("annual_calendar")}</h2>
       <p className="mb-3 max-w-3xl text-sm text-slate-600">
-        Reúne lo que la junta ya programó: planes de mantenimiento, revisiones con frecuencia y análisis de laboratorio. La directiva y el operador revisan cada mes el cumplimiento. Las revisiones extraordinarias por lluvias o quejas se cuentan aparte.
+        Reúne lo ya programado: planes de mantenimiento, revisiones con frecuencia y análisis de laboratorio. La directiva y el operador revisan cada mes el cumplimiento. Las revisiones extraordinarias por lluvias o quejas se cuentan aparte.
       </p>
       {error && <p className="text-sm text-amber-800">{error instanceof ApiError ? error.message : "No se pudo cargar el calendario."}</p>}
       {data && (
@@ -656,7 +636,7 @@ function CalendarSection() {
                       <td className="px-4 py-3 tabular-nums text-slate-700">{i.done} de {i.expected}</td>
                       <td className={`px-4 py-3 font-semibold tabular-nums ${pctColor(i.compliance_pct)}`}>{i.compliance_pct === null ? "—" : `${i.compliance_pct}%`}</td>
                       <td className="px-4 py-3 text-slate-600">
-                        {i.next_due_at ? new Date(i.next_due_at).toLocaleDateString("es") : "—"}
+                        {i.next_due_at ? new Date(i.next_due_at).toLocaleDateString(appLocale()) : "—"}
                         {i.overdue && <span className="ml-2 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700">vencida</span>}
                       </td>
                     </tr>
@@ -708,7 +688,7 @@ function EventsSection() {
       <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white">
         {(events ?? []).map((e) => (
           <li key={e.event_id} className="px-4 py-2 text-sm text-slate-700">
-            <strong>{e.label}</strong> · {new Date(e.occurred_at).toLocaleString("es")} · {e.orders_generated} orden(es)
+            <strong>{e.label}</strong> · {new Date(e.occurred_at).toLocaleString(appLocale())} · {e.orders_generated} orden(es)
             {e.notes && <span className="block text-xs text-slate-500">{e.notes}</span>}
           </li>
         ))}
@@ -780,14 +760,14 @@ export function MaintenancePage() {
           <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-4">
               <div className="text-2xl font-bold text-emerald-800">{kpis.community.mingas}</div>
-              <div className="text-xs text-slate-600 mt-1">Mingas en {kpis.community.year}</div>
+              <div className="text-xs text-slate-600 mt-1">{term("community_work", { plural: true, capital: true })} en {kpis.community.year}</div>
             </div>
             <div className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-4">
               <div className="text-2xl font-bold text-emerald-800">{kpis.community.participants}</div>
               <div className="text-xs text-slate-600 mt-1">Personas que participaron</div>
             </div>
             <div className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-4">
-              <div className="text-2xl font-bold text-emerald-800">{kpis.community.volunteer_hours.toLocaleString("es")} h</div>
+              <div className="text-2xl font-bold text-emerald-800">{kpis.community.volunteer_hours.toLocaleString(appLocale())} h</div>
               <div className="text-xs text-slate-600 mt-1">Horas donadas por la comunidad</div>
             </div>
             <div className="rounded-xl border border-slate-200 bg-white p-4">

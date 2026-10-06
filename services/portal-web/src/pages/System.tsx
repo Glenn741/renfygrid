@@ -20,6 +20,7 @@ import { StagePage, EmptyState } from "../components/StagePage";
 import { NavSection, SectionNav } from "../components/SectionNav";
 
 import { sectionsFor } from "../navigation";
+import { badgeClass, dotClass, label as codeLabel, options as codeOptions, appLocale } from "../catalog";
 // "Mi sistema" -- Track D, Sprint D0.3 (docs/04-plan-sprints.md SS11.4).
 // Pantalla de operacion, no de formato: el recorrido, el semaforo, el tren
 // de tratamiento y los hallazgos salen de lo que la junta registra. Los
@@ -29,20 +30,6 @@ import { sectionsFor } from "../navigation";
 
 const SECTIONS = sectionsFor("/system");
 
-const SERVICE_LABEL: Record<string, string> = { water: "Agua potable", sanitation: "Saneamiento", support: "Soporte" };
-const STATUS_LABEL: Record<string, string> = { operational: "Operativo", maintenance: "En mantenimiento", out_of_service: "Fuera de servicio" };
-const STATUS_DOT: Record<string, string> = { operational: "bg-emerald-500", maintenance: "bg-amber-500", out_of_service: "bg-red-500" };
-const PRIORITY_LABEL: Record<string, string> = { high: "Alta", medium: "Media", low: "Baja" };
-const PRIORITY_STYLE: Record<string, string> = {
-  high: "bg-red-50 text-red-700", medium: "bg-amber-50 text-amber-700", low: "bg-slate-100 text-slate-600",
-};
-const FINDING_STATUS_LABEL: Record<string, string> = { open: "Abierto", in_progress: "En curso", closed: "Cerrado" };
-const SOURCE_LABEL: Record<string, string> = {
-  critical_point: "Punto crítico", checklist: "Lista de verificación", reading: "Lectura", manual: "Manual",
-};
-const SUPPORT_LABEL: Record<string, string> = {
-  community: "La comunidad puede resolverlo", local_government: "Apoyo del gobierno local", specialized: "Asistencia especializada",
-};
 
 function SectionCard({ title, description, action, children }: {
   title: string; description: string; action?: React.ReactNode; children: React.ReactNode;
@@ -112,7 +99,7 @@ function AddComponentForm() {
           <select id="comp-type" className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm w-full bg-white" value={type} onChange={(e) => setType(e.target.value)}>
             <option value="">— Elegir —</option>
             {grouped.map((g) => (
-              <optgroup key={g.service} label={SERVICE_LABEL[g.service]}>
+              <optgroup key={g.service} label={codeLabel("service", g.service)}>
                 {g.items.map((t) => <option key={t.code} value={t.code}>{t.label}</option>)}
               </optgroup>
             ))}
@@ -129,7 +116,7 @@ function AddComponentForm() {
         <div>
           <label htmlFor="comp-status" className="block text-xs font-medium text-slate-500 mb-1">Estado</label>
           <select id="comp-status" className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm w-full bg-white" value={status} onChange={(e) => setStatus(e.target.value)}>
-            {Object.entries(STATUS_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            {codeOptions("asset.status").map(({ code: v, label: l }) => <option key={v} value={v}>{l}</option>)}
           </select>
         </div>
       </div>
@@ -161,7 +148,7 @@ function RouteSection() {
       <div className="space-y-5">
         {services.map(([service, stages]) => (
           <div key={service}>
-            <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">{SERVICE_LABEL[service] ?? service}</div>
+            <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">{codeLabel("service", service)}</div>
             <ol className="flex flex-wrap items-stretch gap-2">
               {stages.map((stage, i) => (
                 <li key={stage.type} className="flex items-stretch gap-2">
@@ -170,8 +157,8 @@ function RouteSection() {
                     <ul className="mt-1 space-y-0.5">
                       {stage.assets.map((a) => (
                         <li key={a.asset_id} className="flex items-center gap-1.5 text-xs text-slate-600">
-                          <span className={`h-2 w-2 rounded-full ${STATUS_DOT[a.status] ?? "bg-slate-400"}`} title={STATUS_LABEL[a.status] ?? a.status} />
-                          {assetName(a) ?? STATUS_LABEL[a.status] ?? a.status}
+                          <span className={`h-2 w-2 rounded-full ${dotClass("asset.status", a.status)}`} title={codeLabel("asset.status", a.status)} />
+                          {assetName(a) ?? codeLabel("asset.status", a.status)}
                         </li>
                       ))}
                     </ul>
@@ -225,7 +212,7 @@ function TrafficLightSection() {
       {run && (
         <>
           <p className="text-xs text-slate-500 mb-3">
-            Revisión del {new Date(run.performed_at).toLocaleDateString("es")} · {run.performed_by.replace(/^portal:/, "")}
+            Revisión del {new Date(run.performed_at).toLocaleDateString(appLocale())} · {run.performed_by.replace(/^portal:/, "")}
           </p>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -342,14 +329,14 @@ function AddCriticalPointForm() {
         <div>
           <label htmlFor="cp-priority" className="block text-xs font-medium text-slate-500 mb-1">Prioridad</label>
           <select id="cp-priority" className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm w-full bg-white" value={priority} onChange={(e) => setPriority(e.target.value)}>
-            {Object.entries(PRIORITY_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            {codeOptions("priority").map(({ code: v, label: l }) => <option key={v} value={v}>{l}</option>)}
           </select>
         </div>
         <div className="lg:col-span-2">
           <label htmlFor="cp-support" className="block text-xs font-medium text-slate-500 mb-1">¿Quién puede resolverlo?</label>
           <select id="cp-support" className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm w-full bg-white" value={support} onChange={(e) => setSupport(e.target.value)}>
             <option value="">Sin definir todavía</option>
-            {Object.entries(SUPPORT_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            {codeOptions("support_level").map(({ code: v, label: l }) => <option key={v} value={v}>{l}</option>)}
           </select>
         </div>
       </div>
@@ -378,15 +365,15 @@ function FindingRow({ finding }: { finding: Finding }) {
     <li className="py-3 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2 mb-1">
-          <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${PRIORITY_STYLE[finding.priority]}`}>{PRIORITY_LABEL[finding.priority]}</span>
-          <span className="text-[11px] text-slate-500">{SOURCE_LABEL[finding.source_kind]}</span>
-          <span className="text-[11px] text-slate-500">· {FINDING_STATUS_LABEL[finding.status]}</span>
+          <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${badgeClass("priority", finding.priority)}`}>{codeLabel("priority", finding.priority)}</span>
+          <span className="text-[11px] text-slate-500">{codeLabel("finding.source", finding.source_kind)}</span>
+          <span className="text-[11px] text-slate-500">· {codeLabel("finding.status", finding.status)}</span>
           {finding.to_improvement_plan && <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-700">Plan de mejora</span>}
         </div>
         <p className="text-sm text-slate-800">{finding.description}</p>
         {(finding.location_text || finding.support_level) && (
           <p className="text-xs text-slate-500 mt-0.5">
-            {finding.location_text}{finding.location_text && finding.support_level ? " · " : ""}{finding.support_level ? SUPPORT_LABEL[finding.support_level] : ""}
+            {finding.location_text}{finding.location_text && finding.support_level ? " · " : ""}{finding.support_level ? codeLabel("support_level", finding.support_level) : ""}
           </p>
         )}
       </div>

@@ -73,7 +73,7 @@ def set_organization_kind(conn: psycopg.Connection, tenant_id: str, kind: str) -
                 cur.execute("SELECT count(*) FROM group_membership WHERE group_tenant_id = %s AND status IN ('invited', 'accepted')",
                             (tenant_id,))
                 if kind == "provider" and cur.fetchone()[0]:
-                    raise GroupConflictError("La agrupación todavía tiene juntas invitadas o activas; retírelas primero")
+                    raise GroupConflictError("La agrupación todavía tiene organizaciones invitadas o activas; retírelas primero")
                 cur.execute("SELECT count(*) FROM group_membership WHERE member_tenant_id = %s AND status IN ('invited', 'accepted')",
                             (tenant_id,))
                 if kind == "group" and cur.fetchone()[0]:
@@ -111,7 +111,7 @@ def memberships(conn: psycopg.Connection, tenant_id: str) -> dict:
 def invite_member(conn: psycopg.Connection, group_id: str, member_name: str, actor: str) -> dict:
     """Invita a una junta por su nombre de organizacion (el mismo del login)."""
     if _tenant(conn, group_id)["kind"] != "group":
-        raise GroupConflictError("Solo una organización de tipo agrupación puede invitar juntas")
+        raise GroupConflictError("Solo una organización de tipo agrupación puede invitar organizaciones")
     name = (member_name or "").strip()
     with conn.cursor() as cur:
         cur.execute("SELECT id, kind FROM tenant WHERE lower(name) = lower(%s) AND is_active", (name,))
@@ -122,7 +122,7 @@ def invite_member(conn: psycopg.Connection, group_id: str, member_name: str, act
     if member_id == group_id:
         raise GroupConflictError("La agrupación no puede invitarse a sí misma")
     if kind != "provider":
-        raise GroupConflictError("Solo se invitan juntas u operadores, no otra agrupación")
+        raise GroupConflictError("Solo se invitan organizaciones prestadoras, no otra agrupación")
     with conn.transaction():
         with tenant_scope(conn, group_id):
             with conn.cursor() as cur:
@@ -130,7 +130,7 @@ def invite_member(conn: psycopg.Connection, group_id: str, member_name: str, act
                             (group_id, member_id))
                 row = cur.fetchone()
                 if row and row[0] in ("invited", "accepted"):
-                    raise GroupConflictError("Esa junta ya está invitada o es miembro")
+                    raise GroupConflictError("Esa organización ya está invitada o es miembro")
                 cur.execute(
                     "INSERT INTO group_membership (group_tenant_id, member_tenant_id, status, shared, invited_by) "
                     "VALUES (%s, %s, 'invited', '{}', %s) ON CONFLICT (group_tenant_id, member_tenant_id) DO UPDATE SET "
@@ -142,7 +142,7 @@ def invite_member(conn: psycopg.Connection, group_id: str, member_name: str, act
 
 
 def remove_member(conn: psycopg.Connection, group_id: str, member_id: str, actor: str) -> dict:
-    member_id = _uuid(member_id, "la junta")
+    member_id = _uuid(member_id, "la organización")
     with conn.transaction():
         with tenant_scope(conn, group_id):
             with conn.cursor() as cur:
@@ -150,7 +150,7 @@ def remove_member(conn: psycopg.Connection, group_id: str, member_id: str, actor
                             "WHERE group_tenant_id = %s AND member_tenant_id = %s AND status IN ('invited', 'accepted') "
                             "RETURNING 1", (actor, group_id, member_id))
                 if cur.fetchone() is None:
-                    raise GroupNotFoundError("Esa junta no está invitada ni es miembro de la agrupación")
+                    raise GroupNotFoundError("Esa organización no está invitada ni es miembro de la agrupación")
     return next(m for m in _membership_rows(conn, group_id, True) if m["member_tenant_id"] == member_id)
 
 
@@ -228,7 +228,7 @@ def _indicator(conn: psycopg.Connection, member: dict, code: str, params: dict) 
         return {"open": n, "critical": crit}
     if code == "calendar":
         if now is None:
-            return {"compliance_pct": None, "note": "La junta no tiene zona horaria configurada"}
+            return {"compliance_pct": None, "note": "La organización no tiene zona horaria configurada"}
         s = annual_calendar(conn, mid, datetime(now.year, 1, 1, tzinfo=now.tzinfo), now)["summary"]
         return {"compliance_pct": s["compliance_pct"], "expected": s["expected"], "done": s["done"]}
     if code == "products":

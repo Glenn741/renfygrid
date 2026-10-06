@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, approveControlOrder, getControlOrders, getControlSummary, type ControlOrder } from "../api";
 import { StagePage, EmptyState } from "../components/StagePage";
+import { badgeClass, label as codeLabel } from "../catalog";
 
 // Control (SCR) -- Sprint C11-5, benchmark real (docs/05-ejecucion.md):
 // "utilities can configure KPI tracking... percentage of successful
@@ -11,29 +12,8 @@ import { StagePage, EmptyState } from "../components/StagePage";
 // comando -- y ninguna cuenta protegida contra suspension/desconexion
 // (Ley 142 + normas CRA/CREG en Colombia, Resolucion CREG 108/1997).
 
-const TYPE_LABEL: Record<string, string> = {
-  suspension: "Suspensión",
-  reconnection: "Reconexión",
-  disconnection: "Desconexión",
-};
 
-const STATUS_LABEL: Record<string, string> = {
-  requested: "Solicitada",
-  pending_approval: "Pendiente de aprobación",
-  approved: "Aprobada",
-  sent: "Enviada",
-  confirmed: "Confirmada",
-  failed: "Fallida",
-};
 
-const STATUS_CLASS: Record<string, string> = {
-  pending_approval: "bg-amber-50 text-amber-700",
-  confirmed: "bg-emerald-50 text-emerald-700",
-  failed: "bg-red-50 text-red-600",
-  approved: "bg-indigo-50 text-indigo-700",
-  sent: "bg-indigo-50 text-indigo-700",
-  requested: "bg-slate-50 text-slate-500",
-};
 
 type StatusFilter = "pending_approval" | "todas";
 
@@ -96,7 +76,7 @@ export function ControlPage() {
               <div className="flex flex-wrap gap-1.5">
                 {typeChips.map(([type, count]) => (
                   <span key={type} className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">
-                    {TYPE_LABEL[type] ?? type}: {count}
+                    {codeLabel("control.type", type)}: {count}
                   </span>
                 ))}
               </div>
@@ -155,10 +135,10 @@ export function ControlPage() {
                       </span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-slate-600">{TYPE_LABEL[order.type] ?? order.type}</td>
+                  <td className="px-4 py-3 text-slate-600">{codeLabel("control.type", order.type)}</td>
                   <td className="px-4 py-3">
-                    <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS_CLASS[order.status] ?? "bg-slate-50 text-slate-500"}`}>
-                      {STATUS_LABEL[order.status] ?? order.status}
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${badgeClass("control.status", order.status)}`}>
+                      {codeLabel("control.status", order.status)}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-slate-600">{order.requested_by}</td>

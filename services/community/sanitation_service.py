@@ -118,7 +118,7 @@ def verify_destination(conn: psycopg.Connection, tenant_id: str, order_id: str, 
                 )
                 row = cur.fetchone()
                 if row is None or row[2] != "sanitation":
-                    raise SanitationNotFoundError(f"No existe una intervención de saneamiento {order_id} en esta junta")
+                    raise SanitationNotFoundError(f"No existe una intervención de saneamiento {order_id} en esta organización")
                 if row[0] != "completed" or not row[1]:
                     raise InvalidRecordError("Solo se verifica una intervención completada con destino registrado")
                 cur.execute("UPDATE maintenance_order SET destination_verified_by = %s, destination_verified_at = now() WHERE id = %s",

@@ -17,6 +17,7 @@ import {
 import { StagePage, EmptyState } from "../components/StagePage";
 import { NavSection, SectionNav } from "../components/SectionNav";
 import { sectionsFor } from "../navigation";
+import { badgeClass, label as codeLabel, options as codeOptions, appLocale, isoDay, term } from "../catalog";
 
 // Calidad del agua y laboratorio (Track D, D2; Guia 3 §3.4 y calendario 7G).
 // Los limites salen de las reglas del paquete normativo; un parametro sin
@@ -30,20 +31,13 @@ const SEVERITY_STYLE: Record<string, string> = {
   alert: "bg-amber-50 text-amber-800",
   critical: "bg-red-100 text-red-800",
 };
-const PLAN_STATUS: Record<string, { label: string; cls: string }> = {
-  never: { label: "Sin muestra", cls: "bg-slate-100 text-slate-700" },
-  ok: { label: "Al día", cls: "bg-emerald-50 text-emerald-700" },
-  done: { label: "Al día", cls: "bg-emerald-50 text-emerald-700" },
-  overdue: { label: "Vencido", cls: "bg-red-50 text-red-700" },
-};
-const REASON: Record<string, string> = { plan: "Plan de muestreo", alert: "Por alerta", other: "Otro" };
 
 function errText(err: unknown, fallback: string) {
   return err instanceof ApiError ? err.message : fallback;
 }
 
 function dateTime(iso: string) {
-  return new Date(iso).toLocaleString("es", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  return new Date(iso).toLocaleString(appLocale(), { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
 function SectionCard({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
@@ -57,7 +51,7 @@ function SectionCard({ title, description, children }: { title: string; descript
 }
 
 function ResultChip({ r }: { r: LabResult }) {
-  const shown = `${r.qualifier === "=" ? "" : r.qualifier}${r.value.toLocaleString("es")} ${r.unit}`;
+  const shown = `${r.qualifier === "=" ? "" : r.qualifier}${r.value.toLocaleString(appLocale())} ${r.unit}`;
   const tag = r.interpretation === "interpreted"
     ? <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${SEVERITY_STYLE[r.severity ?? "ok"]}`}>{r.result_label}</span>
     : <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600">{r.interpretation === "inconclusive" ? "no concluyente" : "sin regla"}</span>;
@@ -73,7 +67,7 @@ function AlertsSection() {
   const { data } = useQuery({ queryKey: ["quality-overview"], queryFn: getQualityOverview });
   if (!data) return null;
   return (
-    <SectionCard title="Alertas de calidad" description="Mediciones y análisis fuera de rango con su hallazgo abierto. Un E. coli presente es una alerta crítica: informe a la directiva, corrija y coordine con el GAD, MSP o ARCA.">
+    <SectionCard title="Alertas de calidad" description="Mediciones y análisis fuera de rango con su hallazgo abierto. Un E. coli presente es una alerta crítica: informe a la directiva, corrija y coordine con las autoridades.">
       {data.alerts.length === 0 && <EmptyState message="No hay alertas de calidad abiertas." />}
       <ul className="space-y-2">
         {data.alerts.map((a) => (
@@ -156,7 +150,7 @@ function LabSection({ params }: { params: QualityParameter[] }) {
         </label>
         <label className="text-xs text-slate-600">Motivo
           <select className="mt-1 w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" value={reason} onChange={(e) => setReason(e.target.value)}>
-            {Object.entries(REASON).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            {codeOptions("sample.reason").map(({ code: k, label: v }) => <option key={k} value={k}>{v}</option>)}
           </select>
         </label>
       </div>
@@ -210,7 +204,7 @@ function PlanSection({ params }: { params: QualityParameter[] }) {
   });
   const toggle = useMutation({ mutationFn: (p: { id: string; active: boolean }) => updateLabPlanItem(p.id, { active: p.active }), onSuccess: invalidate });
   const review = useMutation({
-    mutationFn: () => reviewLabPlan({ reviewed_on: new Date().toLocaleDateString("en-CA"), notes: reviewNotes || null }),
+    mutationFn: () => reviewLabPlan({ reviewed_on: isoDay(), notes: reviewNotes || null }),
     onSuccess: () => { setReviewNotes(""); invalidate(); },
     onError: (err) => setMsg(errText(err, "No se pudo registrar la revisión.")),
   });
@@ -218,11 +212,11 @@ function PlanSection({ params }: { params: QualityParameter[] }) {
   const label = (code: string) => params.find((p) => p.code === code)?.label ?? code;
 
   return (
-    <SectionCard title="Plan de muestreo" description="Qué analizar, dónde y cada cuánto. La frecuencia la define la junta según su categoría poblacional y los lineamientos de ARCA o el GAD; anote de dónde sale.">
+    <SectionCard title="Plan de muestreo" description={`Qué analizar, dónde y cada cuánto. La frecuencia se define según la población servida y los lineamientos de ${term("regulator")} o ${term("local_government")}; anote de dónde sale.`}>
       {plan && (
         <div className={`mb-4 rounded-lg border p-3 text-sm ${plan.review.status === "ok" ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-amber-200 bg-amber-50 text-amber-900"}`}>
           <strong>Revisión del plan:</strong>{" "}
-          {plan.review.last_reviewed_on ? `última el ${new Date(`${plan.review.last_reviewed_on}T12:00:00`).toLocaleDateString("es")}` : "todavía no se revisó"}
+          {plan.review.last_reviewed_on ? `última el ${new Date(`${plan.review.last_reviewed_on}T12:00:00`).toLocaleDateString(appLocale())}` : "todavía no se revisó"}
           {plan.review.status === "overdue" && " · vencida"}
           {plan.review.source && <span className="block text-xs opacity-80">{plan.review.source}</span>}
           <span className="mt-2 flex flex-wrap gap-2">
@@ -231,16 +225,16 @@ function PlanSection({ params }: { params: QualityParameter[] }) {
           </span>
         </div>
       )}
-      {plan && plan.items.length === 0 && <EmptyState message="La junta todavía no definió su plan de muestreo." />}
+      {plan && plan.items.length === 0 && <EmptyState message="Todavía no hay plan de muestreo." />}
       <ul className="divide-y divide-slate-100">
         {(plan?.items ?? []).map((p) => (
           <li key={p.plan_item_id} className="flex flex-wrap items-center gap-3 py-2 text-sm">
-            <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${PLAN_STATUS[p.status].cls}`}>{PLAN_STATUS[p.status].label}</span>
+            <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${badgeClass("quality.plan_status", p.status)}`}>{codeLabel("quality.plan_status", p.status)}</span>
             <span className="min-w-0 flex-1 text-slate-800">
               {p.name}
               <span className="block text-xs text-slate-500">
                 {p.parameters.map(label).join(", ")} · cada {p.frequency_days} días{p.point_name ? ` · ${p.point_name}` : ""}
-                {p.last_sampled_at && ` · última muestra ${new Date(p.last_sampled_at).toLocaleDateString("es")}`}
+                {p.last_sampled_at && ` · última muestra ${new Date(p.last_sampled_at).toLocaleDateString(appLocale())}`}
                 {p.source_note && ` · ${p.source_note}`}
               </span>
             </span>
@@ -265,7 +259,7 @@ function PlanSection({ params }: { params: QualityParameter[] }) {
             </label>
           ))}
         </div>
-        <input aria-label="Fuente de la frecuencia" className="w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm" placeholder="De dónde sale la frecuencia (oficio ARCA, GAD, laboratorio)" value={source} onChange={(e) => setSource(e.target.value)} />
+        <input aria-label="Fuente de la frecuencia" className="w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm" placeholder={`De dónde sale la frecuencia (oficio de ${term("regulator")}, ${term("local_government")}, laboratorio)`} value={source} onChange={(e) => setSource(e.target.value)} />
         <button onClick={() => create.mutate()} disabled={!name.trim() || !selected.length || !freq || create.isPending} className="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50">
           Agregar al plan
         </button>
@@ -285,7 +279,7 @@ function ResultsSection() {
           <li key={s.sample_id} className="py-3">
             <p className="text-sm text-slate-800">
               <strong>{dateTime(s.sampled_at)}</strong> · {s.point_name ?? "sin punto"} · {s.laboratory}{s.report_ref ? ` · informe ${s.report_ref}` : ""}
-              <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600">{REASON[s.reason]}{s.plan_name ? ` · ${s.plan_name}` : ""}</span>
+              <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600">{codeLabel("sample.reason", s.reason)}{s.plan_name ? ` · ${s.plan_name}` : ""}</span>
             </p>
             <div className="mt-1 flex flex-wrap gap-x-5 gap-y-1">{s.results.map((r) => <ResultChip key={r.parameter_code} r={r} />)}</div>
           </li>

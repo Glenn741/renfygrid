@@ -56,7 +56,7 @@ def set_meter_stale_after_seconds(conn: psycopg.Connection, tenant_id: str, seco
             (STALE_AFTER_SECONDS_KEY, seconds, tenant_id),
         )
         if cur.rowcount == 0:
-            raise LookupError(f"No existe el tenant {tenant_id}")
+            raise LookupError(f"No existe la organización {tenant_id}")
 
 
 SESSION_TTL_KEY = "session_ttl_seconds"
@@ -88,7 +88,7 @@ def set_session_ttl_seconds(conn: psycopg.Connection, tenant_id: str, seconds: i
             (SESSION_TTL_KEY, seconds, tenant_id),
         )
         if cur.rowcount == 0:
-            raise LookupError(f"No existe el tenant {tenant_id}")
+            raise LookupError(f"No existe la organización {tenant_id}")
 
 
 TIMEZONE_KEY = "timezone"
@@ -118,7 +118,7 @@ def set_timezone(conn: psycopg.Connection, tenant_id: str, name: str) -> None:
             (TIMEZONE_KEY, name, tenant_id),
         )
         if cur.rowcount == 0:
-            raise LookupError(f"No existe el tenant {tenant_id}")
+            raise LookupError(f"No existe la organización {tenant_id}")
 
 
 def tenant_today(conn: psycopg.Connection, tenant_id: str) -> date:
