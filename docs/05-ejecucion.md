@@ -1696,6 +1696,12 @@ Corrección permanente: `semanage fcontext -a -t bin_t '/cdrs/renfygrid/portal-a
 + `restorecon`. **Regla para despliegues futuros:** no correr `restorecon -R` sobre
 `portal-api` completo; si hace falta, solo sobre los `.so` copiados.
 
+**Ajustes posteriores del mismo día (a pedido del usuario):** el usuario de `jaas001` pasó a
+ser `usr001@renfygrid.com` (los usuarios son correos; el campo del login volvió a
+`type="email"`), y el tenant demo de MDM `6e89ad29-…` se renombró de "RenfyGrid Demo" a
+**`col001`**. Ningún código lo busca por nombre (solo comentarios de semillas);
+`seed_demo_data.py` siempre crea un tenant nuevo en local.
+
 **Respaldos para revertir:** `essmarplapp02:/tmp/renfygrid_jaas_backup_20261005/` (código
 anterior) y `essmarplpxy03:/var/www/renfygrid.bak_before_jaas_20261005`. El `pg_dump` previo se
 eliminó con `shred` tras verificar.
