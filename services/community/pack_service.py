@@ -14,7 +14,7 @@ El paquete `core` aplica siempre, sin adoptarse.
 from __future__ import annotations
 
 import sys
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -25,7 +25,9 @@ import psycopg  # noqa: E402
 from psycopg.types.json import Json  # noqa: E402
 
 from pack_engine import (  # noqa: E402
+    checklist_status,
     evaluate_bands,
+    stage_summary,
     findings_from_answers,
     maturity_score,
     system_route,
@@ -210,13 +212,14 @@ def list_checklist_templates(conn: psycopg.Connection, tenant_id: str) -> list[d
     packs = active_pack_ids(conn, tenant_id)
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT id, pack_id, kind, title, purpose, scale, items FROM checklist_template "
+            "SELECT id, pack_id, kind, title, purpose, scale, items, stage_code, frequency_days FROM checklist_template "
             "WHERE pack_id = ANY(%s) ORDER BY id",
             (packs,),
         )
         rows = cur.fetchall()
     return [
-        {"id": r[0], "pack_id": r[1], "kind": r[2], "title": r[3], "purpose": r[4], "scale": r[5], "items": r[6]}
+        {"id": r[0], "pack_id": r[1], "kind": r[2], "title": r[3], "purpose": r[4], "scale": r[5], "items": r[6],
+         "stage_code": r[7], "frequency_days": r[8]}
         for r in rows
     ]
 
@@ -279,6 +282,8 @@ def submit_checklist_run(
 
 
 def list_checklist_runs(conn: psycopg.Connection, tenant_id: str, template_id: str | None = None) -> list[dict]:
+    """Historial con el puntaje y los hallazgos que dejo cada aplicacion,
+    para que el historial diga algo sin tener que abrir cada revision."""
     params: list[Any] = [tenant_id]
     clause = ""
     if template_id:
@@ -289,17 +294,75 @@ def list_checklist_runs(conn: psycopg.Connection, tenant_id: str, template_id: s
             with conn.cursor() as cur:
                 cur.execute(
                     "SELECT r.id, r.template_id, r.performed_at, r.performed_by, r.notes, "
-                    "count(a.item_key) FROM checklist_run r "
-                    "LEFT JOIN checklist_answer a ON a.run_id = r.id "
+                    "coalesce(jsonb_agg(jsonb_build_object('answer_code', a.answer_code)) "
+                    "         FILTER (WHERE a.item_key IS NOT NULL), '[]'::jsonb), "
+                    "(SELECT count(*) FROM finding f WHERE f.tenant_id = r.tenant_id AND f.source_ref LIKE r.id::text || ':%%') "
+                    "FROM checklist_run r LEFT JOIN checklist_answer a ON a.run_id = r.id "
                     f"WHERE r.tenant_id = %s {clause} GROUP BY r.id ORDER BY r.performed_at DESC",
                     params,
                 )
                 rows = cur.fetchall()
-    return [
-        {"run_id": str(r[0]), "template_id": r[1], "performed_at": r[2].isoformat(),
-         "performed_by": r[3], "notes": r[4], "answer_count": r[5]}
-        for r in rows
-    ]
+    templates = {t["id"]: t for t in list_checklist_templates(conn, tenant_id)}
+    result = []
+    for r in rows:
+        template = templates.get(r[1])
+        result.append({
+            "run_id": str(r[0]), "template_id": r[1], "performed_at": r[2].isoformat(),
+            "performed_by": r[3], "notes": r[4], "answer_count": len(r[5]),
+            "score": maturity_score(template, r[5]) if template else None,
+            "findings_count": r[6],
+        })
+    return result
+
+
+def process_route(conn: psycopg.Connection, tenant_id: str, now: datetime | None = None) -> dict:
+    """Ruta del programa (0023): las etapas de los paquetes de programa
+    adoptados, en orden, con sus listas y el estado de cada una (sin
+    aplicar, al dia, vencida, aplicada). Las listas sin etapa van aparte.
+    Las etapas sin listas todavia se muestran: la ruta completa es parte de
+    la informacion, aunque la plataforma aun no cubra esa etapa."""
+    now = now or datetime.now(timezone.utc)
+    packs = active_pack_ids(conn, tenant_id)
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT pack_id, code, sort_order, title, source_ref, purpose, products FROM process_stage "
+            "WHERE pack_id = ANY(%s) ORDER BY pack_id, sort_order",
+            (packs,),
+        )
+        stage_rows = cur.fetchall()
+    with conn.transaction():
+        with tenant_scope(conn, tenant_id):
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT DISTINCT ON (template_id) template_id, id, performed_at FROM checklist_run "
+                    "WHERE tenant_id = %s ORDER BY template_id, performed_at DESC",
+                    (tenant_id,),
+                )
+                last_runs = {r[0]: (str(r[1]), r[2]) for r in cur.fetchall()}
+
+    def describe(t: dict) -> dict:
+        run_id, last_at = last_runs.get(t["id"], (None, None))
+        st = checklist_status(t["frequency_days"], last_at, now)
+        return {
+            "template_id": t["id"], "title": t["title"], "kind": t["kind"], "purpose": t["purpose"],
+            "item_count": len(t["items"]), "frequency_days": t["frequency_days"],
+            "last_run_id": run_id, "last_run_at": last_at.isoformat() if last_at else None,
+            "status": st["status"], "days_to_due": st["days_to_due"],
+            "next_due_at": st["next_due_at"].isoformat() if st["next_due_at"] else None,
+        }
+
+    templates = list_checklist_templates(conn, tenant_id)
+    stages = []
+    staged: set[str] = set()
+    for pack_id, code, order, title, source_ref, purpose, products in stage_rows:
+        lists = [describe(t) for t in templates if t["pack_id"] == pack_id and t["stage_code"] == code]
+        staged.update(item["template_id"] for item in lists)
+        stages.append({
+            "pack_id": pack_id, "code": code, "order": order, "title": title, "source_ref": source_ref,
+            "purpose": purpose, "products": products, "lists": lists, "summary": stage_summary(lists),
+        })
+    other = [describe(t) for t in templates if t["id"] not in staged]
+    return {"stages": stages, "other_lists": other}
 
 
 def get_checklist_run(conn: psycopg.Connection, tenant_id: str, run_id: str) -> dict:

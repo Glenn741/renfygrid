@@ -1097,6 +1097,40 @@ export interface ChecklistTemplate {
   purpose: string;
   scale: ScaleEntry[];
   items: { key: string; text: string; component_service?: string }[];
+  stage_code: string | null;
+  frequency_days: number | null;
+}
+
+export type ListStatus = "never" | "done" | "ok" | "overdue";
+
+export interface RouteList {
+  template_id: string;
+  title: string;
+  kind: ChecklistTemplate["kind"];
+  purpose: string;
+  item_count: number;
+  frequency_days: number | null;
+  last_run_id: string | null;
+  last_run_at: string | null;
+  status: ListStatus;
+  days_to_due: number | null;
+  next_due_at: string | null;
+}
+
+export interface RouteStageInfo {
+  pack_id: string;
+  code: string;
+  order: number;
+  title: string;
+  source_ref: string;
+  purpose: string;
+  products: string[];
+  lists: RouteList[];
+  summary: { total: number; never: number; done: number; ok: number; overdue: number; applied: number };
+}
+
+export function getProcessRoute(): Promise<{ stages: RouteStageInfo[]; other_lists: RouteList[] }> {
+  return request("/process-route");
 }
 
 export function getChecklistTemplates(): Promise<ChecklistTemplate[]> {
@@ -1134,6 +1168,8 @@ export interface ChecklistRunSummary {
   performed_by: string;
   notes: string | null;
   answer_count: number;
+  score: Score | null;
+  findings_count: number;
 }
 
 export function getChecklistRuns(templateId?: string): Promise<ChecklistRunSummary[]> {

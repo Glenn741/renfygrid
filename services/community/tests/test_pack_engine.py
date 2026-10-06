@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import sys
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -14,9 +15,11 @@ from pack_engine import (  # noqa: E402
     InvalidAnswersError,
     InvalidInstrumentationError,
     InvalidRuleError,
+    checklist_status,
     evaluate_bands,
     findings_from_answers,
     maturity_score,
+    stage_summary,
     system_route,
     treatment_train,
     validate_answers,
@@ -205,6 +208,32 @@ class TreatmentTrainTests(unittest.TestCase):
         self.assertEqual(filt["open_findings"][0]["finding_id"], "f1")
         self.assertFalse(disinf["exists"])
         self.assertIsNone(disinf["works"])
+
+
+NOW = datetime(2026, 10, 5, 12, 0, tzinfo=timezone.utc)
+
+
+class ChecklistStatusTests(unittest.TestCase):
+    def test_never_applied(self):
+        self.assertEqual(checklist_status(30, None, NOW)["status"], "never")
+
+    def test_applied_without_frequency_is_done(self):
+        self.assertEqual(checklist_status(None, NOW - timedelta(days=400), NOW)["status"], "done")
+
+    def test_within_frequency_is_ok_with_days_left(self):
+        s = checklist_status(90, NOW - timedelta(days=30), NOW)
+        self.assertEqual((s["status"], s["days_to_due"]), ("ok", 60))
+
+    def test_past_frequency_is_overdue_with_negative_days(self):
+        s = checklist_status(30, NOW - timedelta(days=35), NOW)
+        self.assertEqual((s["status"], s["days_to_due"]), ("overdue", -5))
+
+    def test_half_day_late_counts_as_one_day(self):
+        self.assertEqual(checklist_status(30, NOW - timedelta(days=30, hours=12), NOW)["days_to_due"], -1)
+
+    def test_stage_summary_counts(self):
+        lists = [{"status": "never"}, {"status": "ok"}, {"status": "overdue"}, {"status": "done"}]
+        self.assertEqual(stage_summary(lists), {"total": 4, "never": 1, "done": 1, "ok": 1, "overdue": 1, "applied": 3})
 
 
 class InstrumentationTests(unittest.TestCase):

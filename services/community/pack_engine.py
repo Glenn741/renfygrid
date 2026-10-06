@@ -13,6 +13,8 @@ y llama aca, igual que `order_service.py` con `maintenance_engine.py`.
 
 from __future__ import annotations
 
+import math
+from datetime import datetime, timedelta
 from typing import Any
 
 INSTRUMENTATION_MODULES = ("metering", "water_balance", "quality", "maintenance", "network", "billing")
@@ -196,6 +198,36 @@ def treatment_train(component_types: list[dict], assets: list[dict], open_findin
             ],
         })
     return rows
+
+
+# ── Ruta del programa (0023) ───────────────────────────────────────────
+
+def checklist_status(frequency_days: int | None, last_run_at: datetime | None, now: datetime) -> dict[str, Any]:
+    """Estado de una lista en la ruta. La frecuencia sale del catalogo del
+    paquete; sin frecuencia, la lista se aplica cuando corresponde y basta
+    con saber si ya se aplico.
+      never    -- nunca se aplico
+      done     -- aplicada, sin frecuencia definida
+      ok       -- aplicada y todavia dentro de su frecuencia
+      overdue  -- ya paso su proxima fecha
+    """
+    if last_run_at is None:
+        return {"status": "never", "next_due_at": None, "days_to_due": None}
+    if frequency_days is None:
+        return {"status": "done", "next_due_at": None, "days_to_due": None}
+    next_due = last_run_at + timedelta(days=frequency_days)
+    days = (next_due - now).total_seconds() / 86400
+    # Negativo = dias de atraso (medio dia vencida cuenta como 1 dia de atraso).
+    return {"status": "overdue" if days < 0 else "ok", "next_due_at": next_due, "days_to_due": math.floor(days)}
+
+
+def stage_summary(lists: list[dict]) -> dict[str, int]:
+    """Conteo por estado de las listas de una etapa (para el paso de la ruta)."""
+    counts = {"total": len(lists), "never": 0, "done": 0, "ok": 0, "overdue": 0}
+    for item in lists:
+        counts[item["status"]] += 1
+    counts["applied"] = counts["done"] + counts["ok"] + counts["overdue"]
+    return counts
 
 
 # ── Nivel de instrumentacion ───────────────────────────────────────────

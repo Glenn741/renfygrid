@@ -14,21 +14,46 @@ interface NavItem {
   icon: string;
 }
 
-const NAV_ITEMS: NavItem[] = [
-  { to: "/", label: "Vista general", icon: "⌂" },
-  { to: "/system", label: "Mi sistema", icon: "\u{1F6B0}" },
-  { to: "/inspections", label: "Revisiones", icon: "\u{1F4CB}" },
-  { to: "/meters", label: "HES / Ingesta", icon: "\u{1F4E1}" },
-  { to: "/vee", label: "VEE", icon: "✓" },
-  { to: "/consumption", label: "Consumo", icon: "\u{1F4C8}" },
-  { to: "/control", label: "Control (SCR)", icon: "⚡" },
-  { to: "/network-balance", label: "Balance de Red", icon: "\u{1F4A7}" },
-  { to: "/network-model", label: "Modelado Hidráulico", icon: "\u{1F30A}" },
-  { to: "/digital-twin", label: "Gemelo Digital", icon: "\u{1F5FA}" },
-  { to: "/maintenance", label: "Mantenimiento", icon: "\u{1F527}" },
-  { to: "/integrations", label: "Integraciones (CIS)", icon: "\u{1F517}" },
-  { to: "/observability", label: "Observabilidad", icon: "\u{1FA7A}" },
-  { to: "/configuration", label: "Configuración", icon: "⚙" },
+// Menu agrupado por proceso (2026-10-05, a pedido del usuario: "la vision
+// de proceso no es claramente visible en el menu"). Los grupos siguen el
+// recorrido del agua y de la gestion: operar el sistema, medir, entender las
+// perdidas de la red, mantener, y la plataforma. Son la estructura del
+// producto (vocabulario fijo del motor), no datos de un tenant.
+const NAV_GROUPS: { title: string | null; items: NavItem[] }[] = [
+  { title: null, items: [{ to: "/", label: "Vista general", icon: "⌂" }] },
+  {
+    title: "Operación del sistema",
+    items: [
+      { to: "/system", label: "Mi sistema", icon: "\u{1F6B0}" },
+      { to: "/inspections", label: "Ruta y revisiones", icon: "\u{1F4CB}" },
+      { to: "/maintenance", label: "Mantenimiento", icon: "\u{1F527}" },
+    ],
+  },
+  {
+    title: "Medición (MDM)",
+    items: [
+      { to: "/meters", label: "HES / Ingesta", icon: "\u{1F4E1}" },
+      { to: "/vee", label: "VEE", icon: "✓" },
+      { to: "/consumption", label: "Consumo", icon: "\u{1F4C8}" },
+      { to: "/control", label: "Control (SCR)", icon: "⚡" },
+    ],
+  },
+  {
+    title: "Red y pérdidas",
+    items: [
+      { to: "/network-balance", label: "Balance de Red", icon: "\u{1F4A7}" },
+      { to: "/digital-twin", label: "Gemelo Digital", icon: "\u{1F5FA}" },
+      { to: "/network-model", label: "Modelado Hidráulico", icon: "\u{1F30A}" },
+    ],
+  },
+  {
+    title: "Plataforma",
+    items: [
+      { to: "/integrations", label: "Integraciones (CIS)", icon: "\u{1F517}" },
+      { to: "/observability", label: "Observabilidad", icon: "\u{1FA7A}" },
+      { to: "/configuration", label: "Configuración", icon: "⚙" },
+    ],
+  },
 ];
 
 function isActive(pathname: string, to: string): boolean {
@@ -54,25 +79,35 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
         </div>
       </div>
 
-      <nav className="flex-1 px-3 space-y-0.5 overflow-y-auto">
-        {NAV_ITEMS.map((item) => {
-          const active = isActive(location.pathname, item.to);
-          return (
-            <Link
-              key={item.to}
-              to={item.to}
-              onClick={onNavigate}
-              className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                active
-                  ? "bg-indigo-600 text-white"
-                  : "text-slate-300 hover:bg-white/5 hover:text-white"
-              }`}
-            >
-              <span className="text-base leading-none">{item.icon}</span>
-              {item.label}
-            </Link>
-          );
-        })}
+      <nav className="flex-1 px-3 pb-4 overflow-y-auto" aria-label="Menú principal">
+        {NAV_GROUPS.map((group) => (
+          <div key={group.title ?? "inicio"} className="mb-3">
+            {group.title && (
+              <div className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wider text-slate-500">{group.title}</div>
+            )}
+            <div className="space-y-0.5">
+              {group.items.map((item) => {
+                const active = isActive(location.pathname, item.to);
+                return (
+                  <Link
+                    key={item.to}
+                    to={item.to}
+                    onClick={onNavigate}
+                    aria-current={active ? "page" : undefined}
+                    className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                      active
+                        ? "bg-indigo-600 text-white"
+                        : "text-slate-300 hover:bg-white/5 hover:text-white"
+                    }`}
+                  >
+                    <span className="text-base leading-none">{item.icon}</span>
+                    {item.label}
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </nav>
     </div>
   );

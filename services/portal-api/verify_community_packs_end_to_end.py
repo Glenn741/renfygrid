@@ -123,7 +123,20 @@ def run(dsn: str) -> None:
             foreign = dict(answers[0], asset_id=str(uuid.uuid4()))
             r = client.post("/checklist-runs", headers=h, json={"template_id": "MA-AP2", "answers": [foreign] + answers[1:]})
             check(r.status_code == 404, "activo ajeno o inexistente -> 404")
-            check(len(client.get("/checklist-runs?template_id=MA-AP2", headers=h).json()) == 1, "historial: 1 aplicacion")
+            history = client.get("/checklist-runs?template_id=MA-AP2", headers=h).json()
+            check(len(history) == 1, "historial: 1 aplicacion")
+            check(history[0]["findings_count"] == 5 and history[0]["score"]["max_score"] == 16,
+                  "historial trae puntaje y cantidad de hallazgos")
+
+            print("6b. Ruta del programa (0023)")
+            route = client.get("/process-route", headers=h).json()
+            check([s["code"] for s in route["stages"]] == ["G1", "G2", "G3", "G4", "G5", "G6"], "6 etapas en orden")
+            g3 = {i["template_id"]: i for i in route["stages"][2]["lists"]}
+            check(set(g3) == {"MA-G3-START", "MA-AP2", "MA-7A", "MA-7E", "MA-7G1"}, "la etapa G3 agrupa sus 5 listas")
+            check(g3["MA-AP2"]["status"] == "done" and g3["MA-7A"]["status"] == "never", "semáforo aplicado, 7A sin aplicar")
+            check(g3["MA-7A"]["frequency_days"] == 90 and g3["MA-7E"]["frequency_days"] == 30, "frecuencias del catálogo")
+            check(route["stages"][2]["summary"]["applied"] == 1, "resumen de la etapa: 1 aplicada")
+            check(route["stages"][0]["lists"] == [] and route["stages"][0]["products"], "etapa sin listas muestra sus productos")
 
             print("7. Reportes")
             light = client.get("/reports/traffic-light", headers=h).json()["run"]

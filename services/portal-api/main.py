@@ -186,6 +186,7 @@ from pack_service import (  # noqa: E402
     list_component_types,
     list_findings,
     list_packs,
+    process_route,
     set_instrumentation,
     submit_checklist_run,
     system_route_report,
@@ -1542,6 +1543,14 @@ def update_finding_endpoint(finding_id: str, body: FindingUpdateRequest, tenant_
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except InvalidFindingError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/process-route")
+def process_route_endpoint(tenant_id: str = Depends(get_tenant_id)) -> dict:
+    """Ruta del programa (0023): etapas en orden, sus listas y el estado de
+    cada una (sin aplicar / al día / vencida / aplicada)."""
+    with db_conn() as conn:
+        return process_route(conn, tenant_id)
 
 
 @app.get("/reports/system-route")

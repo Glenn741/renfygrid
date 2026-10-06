@@ -575,6 +575,53 @@ componentes + hallazgos con ubicación).
 | **D0.3** | Portal Web: "Mi sistema" (recorrido, semáforo, tren de tratamiento, hallazgos), "Revisiones" (aplicar una lista, historial) y paquetes/niveles en Configuración | ✅ En producción 2026-10-05 (falta revisión visual del usuario) |
 | **D0.4** | Junta demo (caso ficticio de la Guía 3) + despliegue a producción con respaldo previo (`pg_dump`) + verificación en vivo + bitácora en `05-ejecucion.md` | ✅ Hecho 2026-10-05 |
 
+### 11.4b Guías 1, 2, 5, 6 y 7 recibidas + Ruta del programa (2026-10-05)
+
+El usuario dejó en `Clientes\ARCA` las guías que faltaban y una Guía 7 que no conocíamos:
+- **G1** Diagnóstico participativo: sus fichas están integradas en las actividades (ficha de
+  datos básicos de la comunidad, mapa, diagnóstico, priorización, causas, primeras acciones).
+- **G2** Gobernanza: 7A roles y responsabilidades, 7B asamblea, 7C verificación legal e
+  institucional, 7D ruta de instrumentos y trámites, 7E alianza, 7F transparencia, 7G actores,
+  7H productos finales, 7I padrón simple; ficha de APC/ACC.
+- **G5** Ambiente, agua segura y WASH: ficha de diagnóstico ambiental y WASH, formatos 7A-7H.
+- **G6** Plan de Mejora: 7A consolidado de productos de G1-G5, 7B diagnóstico y priorización
+  por componentes, 7C alternativas, 7D matriz del Plan de Mejora, 7E presupuesto y cronograma,
+  7F perfil de proyecto y lista de 25 requisitos, 7G tablero de indicadores, 7H acta de
+  aprobación.
+- **G7** Formación de personas facilitadoras (del programa, no de la junta): la **ruta de 8
+  jornadas** (G1 → G6 → integración), el **pasaporte de productos** (T-07), la **CAP inicial y
+  final** (T-04/T-05: 18 preguntas de opción múltiple, 3 por guía, con clave de respuestas) y el
+  **seguimiento a 7, 30 y 90 días** (T-09).
+- **Diferencia por confirmar con el usuario:** G7 dice que la Guía 4 tiene "formatos 7A-7I y
+  plan mínimo de sostenibilidad financiera"; la G4 que tenemos trae 4A/4B. Puede haber una
+  versión más nueva de la G4.
+
+**Construido y desplegado — Ruta del programa (D0.5):** a pedido del usuario ("un usuario no
+logra percibir que debe hacer click", "la visión de proceso no es claramente visible"):
+- **Migración 0023:** catálogo `process_stage` (etapas G1-G6 del programa con sus productos,
+  tomadas de la ruta de G7) y en cada lista su `stage_code` y `frequency_days`. Solo las
+  frecuencias que las guías dicen explícitamente: 7A cada 90 días, 7E y 7G.1 cada 30.
+- **API `/process-route`:** etapas, listas y estado de cada una (sin aplicar / al día / vencida
+  / aplicada). El historial trae puntaje y número de hallazgos.
+- **Pantalla "Ruta y revisiones"** (reemplaza "Revisiones"):
+  - Pasos G1 → G6 con avance y vencidas.
+  - Tarjetas por lista con un botón explícito "Aplicar revisión".
+  - Formulario con botones de respuesta grandes con color e ícono, aviso de "genera un
+    hallazgo", barra fija con progreso, "ir al siguiente sin responder" y Guardar que dice
+    cuántos faltan.
+  - Historial con "Ver detalle ›".
+- **Menú lateral agrupado por proceso:** Operación del sistema, Medición (MDM), Red y
+  pérdidas, Plataforma.
+
+**Siguiente (D0.6, propuesto):**
+1. Cargar como listas del paquete los formatos de G2, G5 y G6 que son listas de verificación.
+2. La CAP como tipo "cuestionario". Requiere opciones por ítem, porque hoy la escala es una
+   sola por lista.
+3. El pasaporte T-07 como vista de productos por etapa.
+4. El seguimiento 7-30-90.
+
+Las matrices de G1 y G6 (priorización, Plan de Mejora, presupuesto) son D7, no listas.
+
 ### 11.5 Modelo comercial, criterio de éxito y pendientes
 
 **Modelo comercial (revisado 2026-10-05; reemplaza la hipótesis "la junta no paga").** El
