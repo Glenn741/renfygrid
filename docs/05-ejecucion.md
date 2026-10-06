@@ -1669,3 +1669,33 @@ rendición de cuentas y registro diario de cloro. La plataforma todavía no tien
 
 **Efecto conocido de mezclar en un solo tenant:** el recorrido cuenta 3 tanques (2 urbanos de
 la demo existente + el reservorio comunitario).
+
+**Revertido el mismo día a pedido del usuario** (ver la sección siguiente): los datos de las
+guías se movieron a un tenant propio, `jaas001`, y el tenant demo volvió a ser solo la demo de MDM.
+
+### Tenant `jaas001` (Gualaceo), login por nombre y duración de sesión configurable (2026-10-05)
+
+Pedido del usuario: separar la demo de juntas de la demo de MDM (Bogotá/Cali), concentrarla en un
+municipio pequeño de Ecuador (Gualaceo), con usuario `usr001`, y poder ajustar a mano la
+duración de la sesión ("dura solo unas horas").
+
+| Cambio | Detalle | Verificación |
+|---|---|---|
+| Duración de sesión configurable | Era un `3600` fijo en `create_token`. Ahora `RENFYGRID_SESSION_TTL_SECONDS` (`portal-api/config.py`, default 3600). En producción vive en un drop-in propio: `/etc/systemd/system/renfygrid-portal-api.service.d/session.conf` = **43200 (12 h)**; para cambiarla se edita ese valor y se hace `daemon-reload` + `restart` | `verify_login_tenant_name_and_ttl_end_to_end.py` → OK; en vivo `expires_in = 43200` |
+| Login por nombre de organización | `resolve_tenant_ref` (`renmeter_common/user_service.py`): UUID o nombre exacto sin distinguir mayúsculas; un nombre inexistente o repetido da el mismo 401 genérico. Antes, un tenant que no fuera UUID daba error 500 | Mismo E2E + regresión `F47/F48 OK` |
+| Login acepta usuario sin formato de correo | `Login.tsx`: "Organización" (nombre o id) y "Usuario" (`type="text"`) | Bundle `index-DFKllUs7.js` en vivo |
+| Perfiles en la semilla de las guías | `seed_demo_guias_tenant.PROFILES`: `san_jose` y `gualaceo` (nombres de componentes y coordenadas aproximadas ilustrativas al noreste de Gualaceo, Azuay) | — |
+| Quitar las guías del tenant demo | SQL transaccional que borra solo por marcas de la semilla (`attributes.system`, `performed_by`/`created_by = portal:seed-guias@…`, cuadrillas y códigos propios si nada los usa). Probado primero en local | Producción: el tenant quedó con 7 activos, 6 órdenes, 2 planes, 4 cuadrillas, 6 códigos, 0 paquetes (igual que antes de las guías) |
+| `jaas001` | `create_demo_junta_tenant.py` (tenant + usuario `usr001` + nivel básico + perfil `gualaceo`): `1a4e6bdd-241b-4e31-8a01-b7882e8c814c` | En vivo con `jaas001`/`usr001`: 3 paquetes, 9 revisiones, 45/1/9 hallazgos, 19 componentes en el mapa, 14 planes, 7 órdenes |
+
+**Incidente: API caída ~5 minutos (20:12 hora del servidor).** Causa: el script de instalación
+corrió `restorecon -R /cdrs/renfygrid/portal-api`, que reetiquetó en SELinux todo el venv a
+`default_t`; systemd no puede ejecutar `venv/bin/uvicorn` con esa etiqueta (`203/EXEC
+Permission denied`). La etiqueta ejecutable anterior no era persistente (venía de un `chcon`).
+Corrección permanente: `semanage fcontext -a -t bin_t '/cdrs/renfygrid/portal-api/venv/bin(/.*)?'`
++ `restorecon`. **Regla para despliegues futuros:** no correr `restorecon -R` sobre
+`portal-api` completo; si hace falta, solo sobre los `.so` copiados.
+
+**Respaldos para revertir:** `essmarplapp02:/tmp/renfygrid_jaas_backup_20261005/` (código
+anterior) y `essmarplpxy03:/var/www/renfygrid.bak_before_jaas_20261005`. El `pg_dump` previo se
+eliminó con `shred` tras verificar.

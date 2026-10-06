@@ -189,7 +189,7 @@ from pack_service import (  # noqa: E402
 from pack_service import AssetNotFoundError as PackAssetNotFoundError  # noqa: E402
 from renmeter_common.auth import create_token  # noqa: E402
 from renmeter_common.db import tenant_scope  # noqa: E402
-from renmeter_common.user_service import InvalidCredentialsError, authenticate  # noqa: E402
+from renmeter_common.user_service import InvalidCredentialsError, authenticate, resolve_tenant_ref  # noqa: E402
 from service_orders import list_service_orders  # noqa: E402
 from vee_rules_admin import create_vee_rule, deactivate_vee_rule, list_vee_rules  # noqa: E402
 from vee_rules_admin import RuleNotFoundError as VeeRuleNotFoundError  # noqa: E402
@@ -230,19 +230,25 @@ def login(body: LoginRequest) -> dict:
     el cliente lo diga, ver docs/03-diseno.md SS9.1)."""
     with db_conn() as conn:
         try:
-            identity = authenticate(conn, body.tenant_id, body.email, body.password)
+            # 2026-10-05: el tenant se puede indicar por su id o por su nombre
+            # exacto (p. ej. "jaas001"), para que una junta no tenga que
+            # escribir un UUID. Mismo mensaje generico si no se resuelve.
+            tenant_id = resolve_tenant_ref(conn, body.tenant_id)
+            identity = authenticate(conn, tenant_id, body.email, body.password)
         except InvalidCredentialsError as exc:
             raise HTTPException(status_code=401, detail=str(exc)) from exc
     token = create_token(
         {
-            "tenant_id": body.tenant_id,
+            "tenant_id": tenant_id,
             "role": identity["role"],
             "user_id": identity["user_id"],
             "email": body.email,  # Sprint C5: convencion real de origen (auth_dependency.requested_by_label)
         },
         app.state.settings.jwt_secret,
+        expires_in_seconds=app.state.settings.session_ttl_seconds,
     )
-    return {"access_token": token, "token_type": "bearer"}
+    return {"access_token": token, "token_type": "bearer", "tenant_id": tenant_id,
+            "expires_in": app.state.settings.session_ttl_seconds}
 
 
 @app.get("/dashboard/overview")

@@ -21,7 +21,7 @@ export function LoginPage() {
       setAuthenticated(response.access_token);
       navigate("/", { replace: true });
     } catch (err) {
-      setError(err instanceof ApiError ? "Email, contraseña o tenant incorrectos." : "No se pudo conectar con RenfyGrid.");
+      setError(err instanceof ApiError ? "Usuario, contraseña u organización incorrectos." : "No se pudo conectar con RenfyGrid.");
     } finally {
       setSubmitting(false);
     }
@@ -38,20 +38,22 @@ export function LoginPage() {
         </div>
         <p className="text-sm text-slate-500 mb-6">Portal operativo</p>
 
-        <label className="block text-sm font-medium text-slate-700 mb-1">Tenant</label>
+        <label htmlFor="login-tenant" className="block text-sm font-medium text-slate-700 mb-1">Organización</label>
         <input
+          id="login-tenant"
           name="tenant_id"
-          autoComplete="off"
+          autoComplete="organization"
           className="w-full rounded-lg border border-slate-300 px-3 py-2 mb-4 text-sm"
           value={tenantId}
           onChange={(e) => setTenantId(e.target.value)}
-          placeholder="id del tenant"
+          placeholder="nombre o id (p. ej. jaas001)"
           required
         />
 
-        <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
+        <label htmlFor="login-user" className="block text-sm font-medium text-slate-700 mb-1">Usuario</label>
         <input
-          type="email"
+          id="login-user"
+          type="text"
           name="username"
           autoComplete="username"
           className="w-full rounded-lg border border-slate-300 px-3 py-2 mb-4 text-sm"
@@ -60,8 +62,9 @@ export function LoginPage() {
           required
         />
 
-        <label className="block text-sm font-medium text-slate-700 mb-1">Contraseña</label>
+        <label htmlFor="login-password" className="block text-sm font-medium text-slate-700 mb-1">Contraseña</label>
         <input
+          id="login-password"
           type="password"
           name="password"
           autoComplete="current-password"

@@ -27,7 +27,8 @@ ordenes vencidas tengan sentido. Si el tenant ya tiene revisiones
 aplicadas, no hace nada.
 
 Uso:
-    python seed_demo_guias_tenant.py "<DSN>" "<TENANT_ID>"
+    python seed_demo_guias_tenant.py "<DSN>" "<TENANT_ID>" [perfil]
+    (perfil: san_jose por defecto, o gualaceo -- ver PROFILES)
 """
 
 from __future__ import annotations
@@ -89,6 +90,36 @@ SANITATION = [
 ]
 
 
+# Perfiles: el mismo caso de la guia ubicado en distintos lugares. Solo
+# cambian el nombre del sistema, los nombres de los componentes y (si se
+# dan) coordenadas aproximadas para el mapa -- siempre ilustrativas.
+PROFILES: dict[str, dict] = {
+    "san_jose": {"system": SYSTEM, "names": {}, "coords": {}},
+    "gualaceo": {
+        "system": "Sistema comunitario de agua y saneamiento — zona rural de Gualaceo, Azuay (ilustrativo)",
+        "names": {
+            "source": "Vertiente de la microcuenca alta",
+            "conveyance": "Conducción principal (cruce de quebrada)",
+            "tank": "Reservorio de 40 m³ de la comunidad",
+            "toilets_school": "Baterías sanitarias de la escuela de la comunidad",
+            "septic": "Fosa séptica de la casa comunal",
+            "discharge": "Descarga a quebrada afluente del río Santa Bárbara",
+            "warehouse": "Bodega de la junta en la casa comunal",
+        },
+        # [lon, lat] aproximados en la zona rural al noreste de Gualaceo (ilustrativos).
+        "coords": {
+            "source": [-78.7450, -2.8700], "intake": [-78.7470, -2.8710], "sand_trap": [-78.7490, -2.8720],
+            "conveyance": [-78.7550, -2.8760], "valve": [-78.7570, -2.8770], "sedimentation": [-78.7600, -2.8790],
+            "filtration": [-78.7605, -2.8795], "disinfection": [-78.7610, -2.8800], "tank": [-78.7615, -2.8805],
+            "warehouse": [-78.7618, -2.8808], "network_high": [-78.7640, -2.8820], "network_low": [-78.7680, -2.8860],
+            "toilets_school": [-78.7660, -2.8840], "grease_trap": [-78.7662, -2.8842], "box_school": [-78.7665, -2.8845],
+            "sewer": [-78.7690, -2.8860], "septic": [-78.7700, -2.8870], "wetland": [-78.7720, -2.8890],
+            "discharge": [-78.7740, -2.8900],
+        },
+    },
+}
+
+
 def _execute(conn: psycopg.Connection, tenant_id: str, sql: str, params: tuple) -> None:
     with conn.transaction():
         with tenant_scope(conn, tenant_id):
@@ -119,7 +150,18 @@ def _run(conn, tenant_id, template_id, answers, when, notes) -> dict:
     return run
 
 
-def main(dsn: str, tenant_id: str) -> None:
+def main(dsn: str, tenant_id: str, profile: str = "san_jose") -> None:
+    prof = PROFILES[profile]
+    system = prof["system"]
+
+    def asset(key: str, asset_type: str, default_name: str, status: str = "operational") -> str:
+        coords = prof["coords"].get(key)
+        return register_asset(
+            conn, tenant_id, asset_type, status=status,
+            attributes={"name": prof["names"].get(key, default_name), "system": system},
+            geometry={"type": "Point", "coordinates": coords} if coords else None,
+        )["asset_id"]
+
     with psycopg.connect(dsn, autocommit=True) as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT name FROM tenant WHERE id = %s", (tenant_id,))
@@ -144,18 +186,15 @@ def main(dsn: str, tenant_id: str) -> None:
         for route in (WATER, SANITATION):
             previous = None
             for key, asset_type, name, status in route:
-                ids[key] = register_asset(conn, tenant_id, asset_type, status=status,
-                                          attributes={"name": name, "system": SYSTEM})["asset_id"]
+                ids[key] = asset(key, asset_type, name, status)
                 if previous:
                     connect_assets(conn, tenant_id, ids[previous], ids[key], "flow")
                 previous = key
         for key, asset_type, name, status, upstream in WATER_EXTRA:
-            ids[key] = register_asset(conn, tenant_id, asset_type, status=status,
-                                      attributes={"name": name, "system": SYSTEM})["asset_id"]
+            ids[key] = asset(key, asset_type, name, status)
             if upstream:
                 connect_assets(conn, tenant_id, ids[upstream], ids[key], "flow")
-        ids["warehouse"] = register_asset(conn, tenant_id, "warehouse",
-                                          attributes={"name": "Bodega de la junta", "system": SYSTEM})["asset_id"]
+        ids["warehouse"] = asset("warehouse", "warehouse", "Bodega de la junta")
         print(f"Componentes: {len(ids)}")
 
         # ── Hallazgos: actividades 1, 3 y 5 + insumos 7G.2 ───────────────
@@ -377,7 +416,7 @@ def main(dsn: str, tenant_id: str) -> None:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 3:
+    if len(sys.argv) not in (3, 4):
         print(__doc__)
         sys.exit(2)
-    main(sys.argv[1], sys.argv[2])
+    main(sys.argv[1], sys.argv[2], *(sys.argv[3:]))

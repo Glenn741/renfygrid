@@ -8,6 +8,8 @@ de alta un tenant piloto) lo necesitan -- mismo criterio que
 
 from __future__ import annotations
 
+import uuid
+
 import psycopg
 
 from renmeter_common.db import tenant_scope
@@ -32,6 +34,25 @@ def create_app_user(
                 )
                 (user_id,) = cur.fetchone()
                 return str(user_id)
+
+
+def resolve_tenant_ref(conn: psycopg.Connection, tenant_ref: str) -> str:
+    """El tenant del login por su id (UUID) o por su nombre exacto, sin
+    distinguir mayusculas (2026-10-05: "jaas001" en vez de un UUID). Un
+    nombre que no existe o que no es unico da el mismo
+    `InvalidCredentialsError` generico que una clave incorrecta. `tenant` no
+    tiene RLS (tabla raiz), asi que el filtro es explicito aca."""
+    ref = (tenant_ref or "").strip()
+    try:
+        return str(uuid.UUID(ref))
+    except ValueError:
+        pass
+    with conn.cursor() as cur:
+        cur.execute("SELECT id FROM tenant WHERE lower(name) = lower(%s) AND is_active", (ref,))
+        rows = cur.fetchall()
+    if len(rows) != 1:
+        raise InvalidCredentialsError("Credenciales inválidas")
+    return str(rows[0][0])
 
 
 def authenticate(conn: psycopg.Connection, tenant_id: str, email: str, password: str) -> dict:

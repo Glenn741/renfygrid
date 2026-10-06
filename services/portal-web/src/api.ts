@@ -36,7 +36,8 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, { ...options, headers });
   if (!response.ok) {
     // Un 401 en cualquier endpoint que NO sea el login mismo significa
-    // sesion vencida (el JWT dura 1h, ver renmeter_common/auth.py) -- antes
+    // sesion vencida (el JWT dura RENFYGRID_SESSION_TTL_SECONDS, ver
+    // portal-api/config.py; 1h si no se configura) -- antes
     // se quedaba en la pantalla con las llamadas fallando en silencio
     // (visto en vivo: 401 repetido en consola sin que el usuario supiera
     // por que). Limpiar el token y mandar a /login en vez de dejarlo ahi.
