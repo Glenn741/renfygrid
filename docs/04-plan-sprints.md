@@ -722,7 +722,14 @@ Las matrices de G1 y G6 (priorización, Plan de Mejora, presupuesto) son D7, no 
   evidencia citada y filtrada por la guía.
 - Tablero 7H con detectores de evidencia por producto.
 
-**Siguiente en RenfyGrid:** D12 (tablero de la agrupación y reporte al ente rector).
+**D12.1, agrupación de juntas:** ✅ En producción 2026-10-06 (migración 0042).
+- Organización de tipo agrupación.
+- Cada junta acepta y elige qué indicadores comparte; puede cambiarlos o salir.
+- Tablero con solo lo compartido, leído con el alcance de cada junta.
+- Tarifa y morosidad declaradas como no disponibles hasta D9/D10 en `renfy_pool`.
+
+**Siguiente en RenfyGrid:** D12.2 (reporte de cumplimiento al ente rector; T-06, T-08 y T-10 del
+programa de facilitación).
 
 **D8–D11 (padrón, caja, costos y tarifa, recaudación, POA) van en `renfy_pool`.** Según este mismo
 plan, antes hay que cruzarlos con lo que ya existe allá; queda pendiente de esa revisión con el

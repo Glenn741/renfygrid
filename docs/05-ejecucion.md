@@ -2521,3 +2521,86 @@ pero la decisión sigue siendo de quien verifica.
 - El operador no puede quitar filas (403).
 - **Corrección hecha en vivo:** se quitaron 4 filas de la Guía 2 que la primera carga trasladó
   por error.
+
+
+### D12.1 Agrupación de juntas y su tablero (2026-10-06)
+
+Fuente: plan §11.2 (D12). "Para una agrupación de juntas (asociación, ACC) que comparte técnico,
+compras o laboratorio: índice de madurez inicial vs. actual, alertas de calidad abiertas,
+cumplimiento del calendario, tarifa frente a costos, morosidad agregada."
+
+**Modelo de confianza:**
+- La agrupación es una organización (tenant) de tipo `group`, con sus propios usuarios. Nunca ve
+  datos operativos de las juntas.
+- Una junta entra solo si su directiva acepta la invitación, y elige qué indicadores comparte.
+  Puede cambiarlos o salir cuando quiera, y la agrupación puede retirarla.
+- El tablero calcula cada indicador leyendo la junta con su propio alcance (`tenant_scope` y su
+  RLS), y solo los indicadores que esa junta compartió. Lo no compartido no se calcula ni se
+  devuelve, tampoco como cero.
+
+**Migración 0042:**
+- **`tenant.kind`:** `provider` o `group`.
+- **Catálogo `group_indicator`:** 9 indicadores. Su `params` dice de dónde salen; por ejemplo, qué
+  verificaciones forman el índice de madurez. Tarifa frente a costos (D9) y morosidad (D10) quedan
+  declaradas con `available = false` y su motivo: se calculan en `renfy_pool`, todavía no
+  integrado.
+- **`group_membership`:**
+  - estados `invited`, `accepted`, `declined`, `left` y `removed`;
+  - `shared text[]`, vacío salvo cuando la junta aceptó;
+  - RLS para las dos partes: la agrupación y la junta.
+- **Permisos:**
+  - `group.view`: administración y directiva;
+  - `group.manage`: administración;
+  - `group.consent`: administración y directiva de la junta.
+
+**Permisos sobre lecturas:** el guard ahora tiene `READ_RULES`. `/group/dashboard` pide
+`group.view` aunque sea una lectura, porque expone datos que no son de la propia organización.
+
+**Motor:**
+- `maturity_progress`: la primera aplicación frente a la última.
+- `group_rollup`: totales con su base ("N juntas lo comparten").
+
+**Servicio `group_service.py`:**
+- **Invitar:** por el nombre de la organización. No a sí misma, no a otra agrupación y no dos
+  veces; se puede reinvitar tras rechazo, salida o retiro, y la membresía vuelve a empezar de cero.
+- **Decidir la junta:** `accept`, `decline`, `share` o `leave`. Solo se comparten indicadores
+  disponibles.
+- **Indicadores:** reutilizan `annual_calendar`, `product_board`, `sanitation_overview`,
+  `list_activations` y `list_checklist_runs`.
+
+**API:**
+- `GET /group`;
+- `PUT /settings/organization-kind`;
+- `POST /group/members` y `DELETE /group/members/{id}`;
+- `POST /group/memberships/{group_id}`;
+- `GET /group/dashboard`.
+
+**Portal:** página "Agrupación".
+- **Para una agrupación:** tablero con KPIs y su base, detalle por junta e invitaciones.
+- **Para una junta:** invitaciones con casillas por indicador; los no disponibles se muestran
+  deshabilitados con su motivo. Botones para aceptar, rechazar, guardar lo que comparte o salir.
+
+**Verificación:**
+- Pruebas del motor.
+- E2E nuevo `verify_group_end_to_end.py`. Entre otras cosas, prueba que la alerta de cloro de una
+  junta que no compartió calidad no se cuenta.
+- **Regresión completa:** 31 E2E en verde.
+
+**Producción y demo:**
+- **Agrupación `agr001`:** creada como tipo `group`, con `usr001@renfygrid.com`.
+- **`jaas001` acepta y comparte 7 indicadores:**
+  - 2 alertas de calidad;
+  - calendario al 66,7 %;
+  - 22 de 47 productos 7H;
+  - 6 insumos 7G.2 (USD 380);
+  - 1 lodo vencido y 2 descargas;
+  - madurez: 5 verificaciones con una sola aplicación, sin cambio todavía.
+- **Comprobado en vivo:**
+  - el operador de la junta no puede aceptar (403);
+  - la tarifa se rechaza citando D9 (422);
+  - la junta no ve el tablero (409).
+- **`col001`:** se invitó y luego se retiró, porque es la demo MDM de Colombia.
+
+**Pendiente, D12.2:** reporte de cumplimiento para el ente rector, que la junta genera y decide
+enviar, y las herramientas del programa de facilitación T-06 (evaluación diaria), T-08 (rúbrica
+de microfacilitación) y T-10 (consolidado de observaciones).

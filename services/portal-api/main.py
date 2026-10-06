@@ -233,6 +233,16 @@ from permissions import (  # noqa: E402
     update_user,
 )
 from calendar_service import annual_calendar  # noqa: E402
+from group_service import (  # noqa: E402
+    GroupConflictError,
+    GroupNotFoundError,
+    decide_membership,
+    group_dashboard,
+    invite_member,
+    remove_member,
+    set_organization_kind,
+)
+from group_service import memberships as group_memberships  # noqa: E402
 from improvement_service import (  # noqa: E402
     ImprovementConflictError,
     ImprovementNotFoundError,
@@ -2803,6 +2813,86 @@ def product_board_endpoint(template_id: str, tenant_id: str = Depends(get_tenant
             return product_board(conn, tenant_id, template_id)
         except ImprovementNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+# ── Agrupacion de juntas (Track D, D12.1, 0042) ───────────────────────
+
+@app.get("/group")
+def group_memberships_endpoint(tenant_id: str = Depends(get_tenant_id)) -> dict:
+    """Tipo de organizacion, juntas de la agrupacion (si lo es), agrupaciones
+    a las que pertenece o que la invitaron, y el catalogo de indicadores."""
+    with db_conn() as conn:
+        return group_memberships(conn, tenant_id)
+
+
+class OrganizationKindRequest(BaseModel):
+    kind: str
+
+
+@app.put("/settings/organization-kind")
+def organization_kind_endpoint(body: OrganizationKindRequest, tenant_id: str = Depends(get_tenant_id)) -> dict:
+    with db_conn() as conn:
+        try:
+            return set_organization_kind(conn, tenant_id, body.kind)
+        except InvalidRecordError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except GroupConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+class GroupInviteRequest(BaseModel):
+    name: str
+
+
+@app.post("/group/members", status_code=201)
+def invite_group_member_endpoint(body: GroupInviteRequest, actor: dict = Depends(get_actor)) -> dict:
+    with db_conn() as conn:
+        try:
+            return invite_member(conn, actor["tenant_id"], body.name, requested_by_label(actor))
+        except GroupNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except GroupConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.delete("/group/members/{member_tenant_id}")
+def remove_group_member_endpoint(member_tenant_id: str, actor: dict = Depends(get_actor)) -> dict:
+    with db_conn() as conn:
+        try:
+            return remove_member(conn, actor["tenant_id"], member_tenant_id, requested_by_label(actor))
+        except GroupNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+class MembershipDecisionRequest(BaseModel):
+    action: str
+    shared: list[str] = []
+
+
+@app.post("/group/memberships/{group_tenant_id}")
+def decide_group_membership_endpoint(group_tenant_id: str, body: MembershipDecisionRequest,
+                                     actor: dict = Depends(get_actor)) -> dict:
+    """La junta acepta, rechaza, cambia lo que comparte o sale."""
+    with db_conn() as conn:
+        try:
+            return decide_membership(conn, actor["tenant_id"], group_tenant_id, requested_by_label(actor), body.action, body.shared)
+        except GroupNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except GroupConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except InvalidRecordError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/group/dashboard")
+def group_dashboard_endpoint(tenant_id: str = Depends(get_tenant_id)) -> dict:
+    """Tablero de la agrupacion: solo juntas que aceptaron y solo los
+    indicadores que cada una comparte."""
+    with db_conn() as conn:
+        try:
+            return group_dashboard(conn, tenant_id)
+        except GroupConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @app.get("/calendar")

@@ -737,3 +737,50 @@ def products_board(items: list[dict], answers: dict[str, dict], evidence: dict[s
                     "pending": sum(1 for r in rows if r["status"] != "complete"),
                     "with_evidence": sum(1 for r in rows if r["has_evidence"])},
     }
+
+
+
+# ── Tablero de la agrupacion (D12) ─────────────────────────────────────
+
+def maturity_progress(runs: list[dict]) -> dict[str, Any]:
+    """Primera aplicacion frente a la ultima de una verificacion.
+    `runs`: [{performed_at, score: {pct}}] en cualquier orden."""
+    scored = sorted((r for r in runs if r.get("score") and r["score"].get("pct") is not None), key=lambda r: r["performed_at"])
+    if not scored:
+        return {"runs": 0, "initial_pct": None, "current_pct": None, "change": None}
+    first, last = scored[0]["score"]["pct"], scored[-1]["score"]["pct"]
+    return {"runs": len(scored), "initial_pct": first, "current_pct": last,
+            "change": round(last - first, 1) if len(scored) > 1 else None}
+
+
+def group_rollup(members: list[dict]) -> dict[str, Any]:
+    """Totales de la agrupacion solo con lo que cada junta compartio.
+    `members`: [{indicators: {code: valor}}]; un indicador no compartido no
+    esta en el dict y no cuenta (ni como cero). Para cada indicador dice
+    cuantas juntas lo comparten, para leer los totales con su base."""
+    def shared(code):
+        return [m["indicators"][code] for m in members if code in m["indicators"] and m["indicators"][code] is not None]
+
+    out: dict[str, Any] = {"members": len(members)}
+    q = shared("quality_alerts")
+    out["quality_alerts"] = {"shared_by": len(q), "open": sum(x["open"] for x in q), "critical": sum(x["critical"] for x in q),
+                             "members_with_critical": sum(1 for x in q if x["critical"])}
+    c = [x for x in shared("calendar") if x.get("compliance_pct") is not None]
+    out["calendar"] = {"shared_by": len(c),
+                       "average_pct": round(sum(x["compliance_pct"] for x in c) / len(c), 1) if c else None,
+                       "lowest_pct": min((x["compliance_pct"] for x in c), default=None)}
+    p = shared("products")
+    out["products"] = {"shared_by": len(p), "complete": sum(x["complete"] for x in p), "total": sum(x["total"] for x in p)}
+    i = shared("improvement")
+    out["improvement"] = {"shared_by": len(i), "inputs": sum(x["inputs"] for x in i),
+                          "cost_estimate_total": sum(x["cost_estimate_total"] for x in i), "to_quote": sum(x["to_quote"] for x in i)}
+    s = shared("sanitation")
+    out["sanitation"] = {"shared_by": len(s), "sludge_overdue": sum(x["sludge_overdue"] for x in s),
+                         "open_discharges": sum(x["open_discharges"] for x in s)}
+    e = shared("emergencies")
+    out["emergencies"] = {"shared_by": len(e), "active": sum(x["active"] for x in e)}
+    m = shared("maturity")
+    changes = [t["change"] for x in m for t in x if t["change"] is not None]
+    out["maturity"] = {"shared_by": len(m), "evaluations_with_progress": len(changes),
+                       "average_change": round(sum(changes) / len(changes), 1) if changes else None}
+    return out

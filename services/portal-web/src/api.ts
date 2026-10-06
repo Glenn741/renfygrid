@@ -1680,6 +1680,68 @@ export function getProductBoard(templateId: string): Promise<ProductBoard> {
   return request(`/improvement/products/${templateId}`);
 }
 
+// ── Agrupación de juntas (0042) ───────────────────────────────────────
+
+export interface GroupIndicator { code: string; label: string; description: string; available: boolean; unavailable_note: string | null }
+
+export interface GroupMembership {
+  member_tenant_id: string; group_tenant_id: string; name: string;
+  status: "invited" | "accepted" | "declined" | "left" | "removed"; shared: string[];
+  invited_by: string; invited_at: string; decided_by: string | null; decided_at: string | null;
+}
+
+export function getGroup(): Promise<{
+  organization: { tenant_id: string; name: string; kind: "provider" | "group" };
+  members: GroupMembership[]; groups: GroupMembership[]; indicators: GroupIndicator[];
+}> {
+  return request("/group");
+}
+
+export function setOrganizationKind(kind: string) {
+  return request("/settings/organization-kind", { method: "PUT", body: JSON.stringify({ kind }) });
+}
+
+export function inviteGroupMember(name: string): Promise<GroupMembership> {
+  return request("/group/members", { method: "POST", body: JSON.stringify({ name }) });
+}
+
+export function removeGroupMember(memberTenantId: string): Promise<GroupMembership> {
+  return request(`/group/members/${memberTenantId}`, { method: "DELETE" });
+}
+
+export function decideGroupMembership(groupTenantId: string, action: string, shared: string[]): Promise<GroupMembership> {
+  return request(`/group/memberships/${groupTenantId}`, { method: "POST", body: JSON.stringify({ action, shared }) });
+}
+
+export interface GroupMemberIndicators {
+  quality_alerts?: { open: number; critical: number };
+  calendar?: { compliance_pct: number | null; expected?: number; done?: number; note?: string };
+  products?: { complete: number; total: number };
+  improvement?: { inputs: number; cost_estimate_total: number; to_quote: number };
+  sanitation?: { sludge_overdue: number; open_discharges: number } | null;
+  emergencies?: { active: number };
+  maturity?: { template_id: string; title: string; runs: number; initial_pct: number | null; current_pct: number | null; change: number | null }[];
+}
+
+export function getGroupDashboard(): Promise<{
+  organization: { tenant_id: string; name: string };
+  members: { member_tenant_id: string; name: string; shared: string[]; since: string | null; indicators: GroupMemberIndicators }[];
+  pending_invitations: number;
+  rollup: {
+    members: number;
+    quality_alerts: { shared_by: number; open: number; critical: number; members_with_critical: number };
+    calendar: { shared_by: number; average_pct: number | null; lowest_pct: number | null };
+    products: { shared_by: number; complete: number; total: number };
+    improvement: { shared_by: number; inputs: number; cost_estimate_total: number; to_quote: number };
+    sanitation: { shared_by: number; sludge_overdue: number; open_discharges: number };
+    emergencies: { shared_by: number; active: number };
+    maturity: { shared_by: number; evaluations_with_progress: number; average_change: number | null };
+  };
+  indicators: GroupIndicator[];
+}> {
+  return request("/group/dashboard");
+}
+
 // ── Bodega y EPP (0038) ───────────────────────────────────────────────
 
 export interface WarehouseItem {

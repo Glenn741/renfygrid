@@ -12,6 +12,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from pack_engine import (  # noqa: E402
+    group_rollup,
+    maturity_progress,
     improvement_candidates,
     minimum_plan_view,
     products_board,
@@ -634,6 +636,29 @@ class ImprovementPlanTests(unittest.TestCase):
                          [("complete", True, False), ("complete", False, True), ("pending", False, False)])
         self.assertEqual(b["summary"], {"total": 3, "complete": 2, "pending": 1, "with_evidence": 1})
         self.assertEqual(b["items"][2]["note"], "falta firma")
+
+
+class GroupRollupTests(unittest.TestCase):
+    def test_maturity_progress(self):
+        runs = [{"performed_at": "2026-09-01", "score": {"pct": 40.0}}, {"performed_at": "2026-07-01", "score": {"pct": 25.0}},
+                {"performed_at": "2026-08-01", "score": None}]
+        self.assertEqual(maturity_progress(runs), {"runs": 2, "initial_pct": 25.0, "current_pct": 40.0, "change": 15.0})
+        self.assertEqual(maturity_progress(runs[:1])["change"], None)
+        self.assertEqual(maturity_progress([])["runs"], 0)
+
+    def test_rollup_counts_only_shared(self):
+        a = {"indicators": {"quality_alerts": {"open": 3, "critical": 1}, "calendar": {"compliance_pct": 50.0},
+                            "maturity": [{"change": 10.0}, {"change": None}]}}
+        b = {"indicators": {"quality_alerts": {"open": 1, "critical": 0}, "calendar": {"compliance_pct": 90.0},
+                            "products": {"complete": 5, "total": 13}}}
+        c = {"indicators": {}}
+        r = group_rollup([a, b, c])
+        self.assertEqual(r["members"], 3)
+        self.assertEqual(r["quality_alerts"], {"shared_by": 2, "open": 4, "critical": 1, "members_with_critical": 1})
+        self.assertEqual(r["calendar"], {"shared_by": 2, "average_pct": 70.0, "lowest_pct": 50.0})
+        self.assertEqual(r["products"], {"shared_by": 1, "complete": 5, "total": 13})
+        self.assertEqual(r["maturity"], {"shared_by": 1, "evaluations_with_progress": 1, "average_change": 10.0})
+        self.assertEqual(r["emergencies"], {"shared_by": 0, "active": 0})
 
 
 if __name__ == "__main__":

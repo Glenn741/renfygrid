@@ -66,6 +66,8 @@ ROUTE_RULES: list[tuple[frozenset[str] | None, re.Pattern, str | None]] = [
     (None, re.compile(rf"^/sanitation/register/{_ID}/verify$"), "sanitation.verify"),
     (frozenset({"DELETE"}), re.compile(rf"^/improvement/inputs/{_ID}$"), "improvement.manage"),
     (None, re.compile(r"^/improvement/(minimum-plan|inputs)(/.*)?$"), "improvement.record"),
+    (None, re.compile(r"^/group/members(/.*)?$"), "group.manage"),
+    (None, re.compile(rf"^/group/memberships/{_ID}$"), "group.consent"),
     (None, re.compile(r"^/(users|roles)(/.*)?$"), USERS_PERMISSION),
     (None, re.compile(r"^/(settings|packs|vee-rules|consumption-anomaly-rules|control-approval-levels|obis-mappings)(/.*)?$"),
      "settings.manage"),
@@ -82,12 +84,19 @@ class UserNotFoundError(LookupError):
     """Usuario o rol inexistente para esta junta."""
 
 
+# Lecturas que piden permiso (D12): por defecto una lectura solo pide el
+# token; estas exponen datos que no son de la propia junta.
+READ_RULES: list[tuple[re.Pattern, str]] = [
+    (re.compile(r"^/group/dashboard$"), "group.view"),
+]
+
+
 def required_permission(method: str, path: str) -> str | None:
-    """Permiso que pide una escritura. Lecturas: ninguno (basta el token).
-    Escritura fuera de la tabla: `settings.manage`."""
+    """Permiso que pide una escritura. Lecturas: ninguno (basta el token),
+    salvo las de READ_RULES. Escritura fuera de la tabla: `settings.manage`."""
     method = method.upper()
     if method not in WRITE_METHODS:
-        return None
+        return next((perm for pattern, perm in READ_RULES if pattern.match(path)), None)
     for methods, pattern, permission in ROUTE_RULES:
         if (methods is None or method in methods) and pattern.match(path):
             return permission
