@@ -330,7 +330,10 @@ function RunForm({ template, onCancel, onDone }: { template: ChecklistTemplate; 
               <fieldset>
                 <legend className="flex gap-3 text-sm text-slate-900">
                   <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${entry ? "bg-indigo-600 text-white" : "bg-slate-200 text-slate-600"}`}>{idx + 1}</span>
-                  <span className="pt-0.5">{item.text}</span>
+                  <span className="pt-0.5">
+                    {item.text}
+                    {item.help && <span className="mt-0.5 block text-xs font-normal text-slate-500">Orienta: {item.help}</span>}
+                  </span>
                 </legend>
                 <div className={`mt-3 pl-9 ${isQuestionnaire ? "grid gap-2" : "flex flex-wrap gap-2"}`} role="radiogroup">
                   {options.map((s) => {

@@ -467,6 +467,26 @@ def sampling_points_status(points: list[dict], last_reading_on: dict[str, date],
     return rows
 
 
+# ── Calendario anual 7G (D3.2) ─────────────────────────────────────────
+
+def periods_elapsed(days_elapsed: float, frequency_days: int) -> int:
+    """Cuantas veces debio hacerse una actividad con frecuencia N dias en
+    los dias transcurridos del periodo (la primera vence al empezar)."""
+    if frequency_days <= 0:
+        raise InvalidRecordError("La frecuencia debe ser positiva")
+    if days_elapsed <= 0:
+        return 0
+    return math.ceil(days_elapsed / frequency_days)
+
+
+def compliance_pct(done: int, expected: int) -> float | None:
+    """% de cumplimiento: lo hecho (sin pasar de lo esperado) sobre lo
+    esperado. Nada esperado todavia -> None (no 100 %)."""
+    if expected <= 0:
+        return None
+    return round(100.0 * min(done, expected) / expected, 1)
+
+
 # ── Laboratorio (0034) ─────────────────────────────────────────────────
 
 QUALIFIERS = ("=", "<", ">")

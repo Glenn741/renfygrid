@@ -690,10 +690,19 @@ Las matrices de G1 y G6 (priorización, Plan de Mejora, presupuesto) son D7, no 
   - mingas, con participantes y horas donadas;
   - planes que también se disparan por evento (lluvias, deslizamientos, quejas);
   - KPIs del aporte comunitario.
-- **D3.2:** siguiente.
+- **D3.2:** ✅ En producción 2026-10-06 (migración 0036):
   - calendario anual 7G con % de cumplimiento;
   - ficha "Evaluar antes de comprar";
-  - timer que genera las órdenes preventivas vencidas.
+  - timer diario `renfygrid-pm-generator` que genera las órdenes preventivas vencidas.
+
+**D3 completo.**
+
+**Siguiente en RenfyGrid:** D5 (emergencias), D4 (bodega y EPP), D6 (saneamiento), D7 (plan mínimo
+y Plan de Mejora) y D12 (agrupación).
+
+**D8–D11 (padrón, caja, costos y tarifa, recaudación, POA) van en `renfy_pool`.** Según este mismo
+plan, antes hay que cruzarlos con lo que ya existe allá; queda pendiente de esa revisión con el
+usuario.
 
 ### 11.5 Modelo comercial, criterio de éxito y pendientes
 

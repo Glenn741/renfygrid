@@ -232,6 +232,7 @@ from permissions import (  # noqa: E402
     set_role_permissions,
     update_user,
 )
+from calendar_service import annual_calendar  # noqa: E402
 from quality_service import (  # noqa: E402
     QualityConflictError,
     QualityNotFoundError,
@@ -2383,6 +2384,17 @@ def get_lab_sample_endpoint(sample_id: str, tenant_id: str = Depends(get_tenant_
             return get_lab_sample(conn, tenant_id, sample_id)
         except QualityNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get("/calendar")
+def annual_calendar_endpoint(tenant_id: str = Depends(get_tenant_id)) -> dict:
+    """Calendario anual 7G (Track D, D3.2): mantenimiento, listas con
+    frecuencia y plan de muestreo, con el % de cumplimiento del ano en curso
+    en la zona horaria de la organizacion."""
+    with db_conn() as conn:
+        today, tz_name, _, _ = _tenant_day(conn, tenant_id)
+        tz = ZoneInfo(tz_name)
+        return annual_calendar(conn, tenant_id, datetime(today.year, 1, 1, tzinfo=tz), datetime.now(tz))
 
 
 @app.get("/settings/instrumentation")

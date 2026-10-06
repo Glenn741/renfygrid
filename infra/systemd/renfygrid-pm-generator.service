@@ -1,0 +1,7 @@
+[Unit]
+Description=RenfyGrid - generar ordenes de mantenimiento preventivo vencidas
+After=renfygrid-portal-api.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/renfygrid-pm-generate

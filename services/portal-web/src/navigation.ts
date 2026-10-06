@@ -109,6 +109,7 @@ export const NAV_GROUPS: { title: string | null; items: NavItemDef[] }[] = [
           { id: "orders", label: "Órdenes", badge: OVERDUE_ORDERS },
           { id: "pm-plans", label: "Mantenimiento preventivo" },
           { id: "events", label: "Eventos (lluvias, quejas)" },
+          { id: "calendar", label: "Calendario anual 7G" },
         ],
       },
     ],

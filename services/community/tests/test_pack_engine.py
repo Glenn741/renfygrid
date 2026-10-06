@@ -19,6 +19,7 @@ from pack_engine import (  # noqa: E402
     RegisterWentDownError,
     check_register,
     checklist_status,
+    compliance_pct,
     chlorine_product_per_day,
     dosing_guard_codes,
     evaluate_bands,
@@ -29,6 +30,7 @@ from pack_engine import (  # noqa: E402
     log_entry_status,
     passport_rows,
     passport_summary,
+    periods_elapsed,
     sampling_points_status,
     maturity_score,
     questionnaire_analysis,
@@ -535,6 +537,21 @@ class LabResultTests(unittest.TestCase):
             interpret_lab_result(LIMIT_TEST, 1, "~")
         with self.assertRaises(InvalidRecordError):
             interpret_lab_result(LIMIT_TEST, -1, "=")
+
+
+class CalendarTests(unittest.TestCase):
+    def test_periods(self):
+        self.assertEqual(periods_elapsed(0, 30), 0)
+        self.assertEqual(periods_elapsed(1, 30), 1, "la primera vence al empezar")
+        self.assertEqual(periods_elapsed(279, 30), 10)
+        self.assertEqual(periods_elapsed(279, 7), 40)
+        with self.assertRaises(InvalidRecordError):
+            periods_elapsed(10, 0)
+
+    def test_compliance(self):
+        self.assertEqual(compliance_pct(9, 10), 90.0)
+        self.assertEqual(compliance_pct(12, 10), 100.0, "hacer de mas no pasa de 100")
+        self.assertIsNone(compliance_pct(0, 0))
 
 
 if __name__ == "__main__":

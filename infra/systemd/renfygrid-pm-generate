@@ -1,0 +1,12 @@
+#!/bin/bash
+# RenfyGrid -- genera las ordenes de mantenimiento preventivo vencidas de todas
+# las organizaciones (Track D, D3.2). Lo llama renfygrid-pm-generator.timer.
+# La conexion se toma del proceso del Portal/API en marcha (sin copiar ni
+# mostrar secretos; una rotacion de credenciales rige sola).
+set -euo pipefail
+pid=$(systemctl show -p MainPID --value renfygrid-portal-api)
+if [ -z "$pid" ] || [ "$pid" -le 0 ]; then echo "renfygrid-portal-api no esta corriendo" >&2; exit 1; fi
+dsn=$(xargs -0 -n1 < "/proc/$pid/environ" | sed -n 's/^RENFYGRID_DSN=//p')
+if [ -z "$dsn" ]; then echo "No se encontro RENFYGRID_DSN en el Portal/API" >&2; exit 1; fi
+cd /cdrs/renfygrid/maintenance
+RENFYGRID_DSN="$dsn" exec /cdrs/renfygrid/portal-api/venv/bin/python -c "import sys; sys.path.insert(0, '.'); import run_due_pm; sys.exit(run_due_pm.main())"

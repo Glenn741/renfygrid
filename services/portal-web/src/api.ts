@@ -1034,6 +1034,34 @@ export interface MaintenanceCommunityCatalog {
   event_types: { pack_id: string; code: string; label: string }[];
 }
 
+export interface CalendarItem {
+  kind: "maintenance" | "checklist" | "lab";
+  ref: string;
+  activity: string;
+  frequency_days: number;
+  responsible: string | null;
+  trigger_events: string[];
+  expected: number;
+  done: number;
+  compliance_pct: number | null;
+  not_generated: number;
+  extraordinary: number;
+  extraordinary_done: number;
+  next_due_at: string | null;
+  overdue: boolean;
+}
+
+export interface AnnualCalendar {
+  year: number;
+  as_of: string;
+  items: CalendarItem[];
+  summary: { activities: number; expected: number; done: number; compliance_pct: number | null; overdue: number };
+}
+
+export function getAnnualCalendar(): Promise<AnnualCalendar> {
+  return request("/calendar");
+}
+
 export function getMaintenanceCommunityCatalog(): Promise<MaintenanceCommunityCatalog> {
   return request("/maintenance/community-catalog");
 }
@@ -1214,6 +1242,8 @@ export interface ChecklistItem {
   /** Escala propia del ítem (opción múltiple, 0026); si falta, se usa la de la lista. */
   options?: ScaleEntry[];
   groups?: Record<string, string>;
+  /** Que decision orienta la pregunta (texto de la guia, 0036). */
+  help?: string;
 }
 
 /** Dato que pide cada aplicación de la lista (0026), p. ej. momento y participante. */

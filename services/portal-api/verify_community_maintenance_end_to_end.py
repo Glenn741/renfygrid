@@ -143,6 +143,36 @@ def run(dsn: str) -> None:
             client.post(f"/maintenance-orders/{eo['order_id']}/close", headers=op, json={
                 "status": "completed", "steps_done": [1, 2, 4, 5], "community_participants": 6, "volunteer_hours": 12})
 
+            print("4b. Evaluar antes de comprar (Guia 3 §3.6)")
+            buy = next(t for t in client.get("/checklist-templates", headers=h).json() if t["id"] == "MA-G3-BUY")
+            check(len(buy["items"]) == 5 and buy["items"][3]["options"][1]["label"] == "Diseño"
+                  and buy["items"][0]["help"] == "Solicitar análisis y revisar capacidad.", "5 preguntas, cada una con su escala y su decisión")
+            r = client.post("/checklist-runs", headers=op, json={"template_id": "MA-G3-BUY", "answers": [
+                {"item_key": "source_changed", "answer_code": "unknown"}, {"item_key": "population_grew", "answer_code": "yes",
+                 "observation": "Llegaron 30 familias al sector alto"},
+                {"item_key": "unused_units", "answer_code": "yes", "observation": "Filtro lento abandonado"},
+                {"item_key": "operation_or_design", "answer_code": "operation"}, {"item_key": "supplier_manual", "answer_code": "no"}]})
+            check(r.status_code == 201 and r.json()["findings_created"] == [], "se aplica sin generar hallazgos (es ayuda para decidir)")
+            check(client.post("/checklist-runs", headers=op, json={"template_id": "MA-G3-BUY", "answers": [
+                {"item_key": "source_changed", "answer_code": "design"}, {"item_key": "population_grew", "answer_code": "yes"},
+                {"item_key": "unused_units", "answer_code": "yes"}, {"item_key": "operation_or_design", "answer_code": "operation"},
+                {"item_key": "supplier_manual", "answer_code": "no"}]}).status_code == 422, "respuesta de otra pregunta -> 422")
+
+            print("4c. Calendario anual 7G")
+            client.put("/settings/timezone", headers=h, json={"timezone": "America/Guayaquil"})
+            cal = client.get("/calendar", headers=h).json()
+            kinds = {i["kind"] for i in cal["items"]}
+            check({"maintenance", "checklist"} <= kinds, "reúne mantenimiento y listas con frecuencia")
+            capt = next(i for i in cal["items"] if i["activity"].startswith("Limpieza de captación"))
+            check(capt["frequency_days"] == 7 and capt["extraordinary"] == 1 and capt["extraordinary_done"] == 1
+                  and capt["trigger_events"] == ["heavy_rain"], "la orden por lluvia se cuenta como extraordinaria, aparte")
+            check(capt["expected"] == 0 and capt["compliance_pct"] is None and not capt["overdue"],
+                  "plan que todavía no vence: nada esperado, sin %")
+            seven_a = next(i for i in cal["items"] if i["ref"] == "MA-7A")
+            check(seven_a["frequency_days"] == 90 and seven_a["done"] == 0 and seven_a["expected"] == 1 and seven_a["compliance_pct"] == 0.0,
+                  "7A trimestral sin aplicar: 0 %, contando desde que la junta adoptó el paquete (1 esperada, no las del año)")
+            check(cal["summary"]["compliance_pct"] is not None and cal["summary"]["activities"] == len(cal["items"]), "resumen del año")
+
             print("4. KPIs del ano")
             k = client.get("/maintenance/kpis", headers=h).json()["community"]
             check(k == {"year": now.year, "mingas": 2, "participants": 20, "volunteer_hours": 54.0, "all_steps_pct": 50.0},
@@ -155,7 +185,7 @@ def run(dsn: str) -> None:
             for tid in (tenant_id, other_id):
                 with conn.transaction():
                     with tenant_scope(conn, tid):
-                        for table in ("maintenance_order", "maintenance_event", "maintenance_pm_plan", "maintenance_crew",
+                        for table in ("checklist_answer", "checklist_run", "maintenance_order", "maintenance_event", "maintenance_pm_plan", "maintenance_crew",
                                       "network_asset", "tenant_pack", "app_user"):
                             conn.execute(f"DELETE FROM {table} WHERE tenant_id = %s", (tid,))
                 conn.execute("DELETE FROM tenant WHERE id = %s", (tid,))

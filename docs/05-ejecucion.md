@@ -2224,3 +2224,52 @@ Fuente: Guía 3 §3.6 y fichas 7D y 7G.
 
 **Aporte del año:** 3 mingas, 16 personas, 43 horas. Solo el 16,7 % de los cierres tiene los 5
 pasos, porque las órdenes anteriores no los registraban; el dato es real.
+
+### D3.2 Calendario anual 7G, "Evaluar antes de comprar" y generador diario de preventivos (2026-10-06)
+
+**Migración 0036:** lista `MA-G3-BUY` "Evaluar antes de comprar" (Guía 3 §3.6, textos
+literales).
+- Cinco preguntas, cada una con su escala: Sí/No/No sabemos, Sí/No u Operación/Diseño/No
+  sabemos.
+- `items[].help` con lo que orienta cada una ("Solicitar análisis y revisar capacidad"…).
+- No genera hallazgos ni puntaje: es ayuda para decidir y pide observación.
+- El formulario de revisiones muestra "Orienta: …" bajo cada pregunta.
+
+**Calendario anual 7G (`calendar_service.py`, `GET /calendar`):** no es una tabla nueva. Reúne lo
+que la junta ya programó:
+- **planes de mantenimiento:**
+  - esperadas = órdenes que generó el plan en el año más los periodos vencidos sin generar;
+  - cumplidas = las completadas;
+  - las extraordinarias por evento se muestran aparte;
+- **listas con frecuencia del paquete:** 7A, 7E, 7G.1;
+- **plan de muestreo de laboratorio.**
+
+El % es lo hecho, sin pasar de lo esperado, sobre lo esperado; con 0 esperado no hay %.
+- **Hallazgo en vivo:** contar desde el 1 de enero hacía ver a `jaas001`, que empezó en octubre,
+  con "1 de 10" en la 7E. Ahora cada actividad cuenta desde que existe en la junta (adopción del
+  paquete o alta de la parte del plan de muestreo), y el E2E lo fija.
+- Año y "hoy" en la zona horaria de la organización.
+- Sección "Calendario anual 7G" en Mantenimiento.
+
+**Generador diario de preventivos:**
+- Antes las órdenes de un plan vencido solo se generaban con el botón "Generar órdenes
+  vencidas".
+- `maintenance/run_due_pm.py`, compilado, recorre las organizaciones activas con
+  `generate_due_pm_orders`; si una falla, sigue con las demás.
+- En el servidor:
+  - `/usr/local/bin/renfygrid-pm-generate`: toma `RENFYGRID_DSN` del proceso del Portal/API en
+    marcha, sin copiar ni mostrar secretos, así que una rotación rige sola;
+  - `renfygrid-pm-generator.service` (oneshot) y `.timer`, todos los días a las 05:30 hora del
+    servidor (-05), `Persistent=true`.
+- Primera corrida: 3 organizaciones, 4 órdenes vencidas generadas (2 en `col001`, 2 en
+  `jaas001`), 0 errores. La segunda corrida no genera nada (idempotente).
+
+**Verificación:**
+- Pruebas del motor (periodos y cumplimiento).
+- E2E D3.1 ampliado con "Evaluar antes de comprar" y el calendario.
+- D0.1 y D0.2 actualizados a 25 listas y G3 con 6.
+- En vivo:
+  - `jaas001`: cumplimiento 66,7 %;
+  - `col001`: muestra solo lo que le toca desde su adopción.
+- Demo: `jaas001` aplicó "Evaluar antes de comprar" antes de cotizar una planta compacta. Hay un
+  filtro lento abandonado y recuperable, y el problema es de operación.

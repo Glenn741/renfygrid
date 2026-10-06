@@ -8,6 +8,7 @@ import {
   createMaintenanceOrder,
   createPmPlan,
   generateDuePmOrders,
+  getAnnualCalendar,
   getCrews,
   getMaintenanceCommunityCatalog,
   getMaintenanceEvents,
@@ -589,6 +590,71 @@ function PmPlansSection() {
   );
 }
 
+function CalendarSection() {
+  const { data, error } = useQuery({ queryKey: ["annual-calendar"], queryFn: getAnnualCalendar, retry: false });
+  const KIND: Record<string, string> = { maintenance: "Mantenimiento", checklist: "Revisión", lab: "Laboratorio" };
+  const pctColor = (p: number | null) => (p === null ? "text-slate-400" : p >= 90 ? "text-emerald-700" : p >= 60 ? "text-amber-700" : "text-red-700");
+  return (
+    <>
+      <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-2">Calendario anual de mantenimiento, control y calidad (7G)</h2>
+      <p className="mb-3 max-w-3xl text-sm text-slate-600">
+        Reúne lo que la junta ya programó: planes de mantenimiento, revisiones con frecuencia y análisis de laboratorio. La directiva y el operador revisan cada mes el cumplimiento. Las revisiones extraordinarias por lluvias o quejas se cuentan aparte.
+      </p>
+      {error && <p className="text-sm text-amber-800">{error instanceof ApiError ? error.message : "No se pudo cargar el calendario."}</p>}
+      {data && (
+        <>
+          <div className="mb-3 flex flex-wrap gap-3 text-sm">
+            <span className="rounded-xl border border-slate-200 bg-white px-4 py-2">
+              <strong className={`text-xl ${pctColor(data.summary.compliance_pct)}`}>{data.summary.compliance_pct === null ? "—" : `${data.summary.compliance_pct}%`}</strong>
+              <span className="ml-2 text-slate-600">cumplimiento {data.year} ({data.summary.done} de {data.summary.expected})</span>
+            </span>
+            <span className={`rounded-xl border px-4 py-2 ${data.summary.overdue ? "border-red-200 bg-red-50 text-red-800" : "border-slate-200 bg-white text-slate-600"}`}>
+              {data.summary.overdue} actividad{data.summary.overdue === 1 ? "" : "es"} vencida{data.summary.overdue === 1 ? "" : "s"}
+            </span>
+          </div>
+          {data.items.length === 0 && <EmptyState message="Todavía no hay actividades programadas." />}
+          {data.items.length > 0 && (
+            <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                  <tr>
+                    <th className="px-4 py-3">Actividad</th>
+                    <th className="px-4 py-3">Frecuencia</th>
+                    <th className="px-4 py-3">Responsable</th>
+                    <th className="px-4 py-3">En el año</th>
+                    <th className="px-4 py-3">Cumplimiento</th>
+                    <th className="px-4 py-3">Próxima</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.items.map((i) => (
+                    <tr key={`${i.kind}-${i.ref}`} className={`border-t border-slate-100 ${i.overdue ? "bg-red-50/40" : ""}`}>
+                      <td className="px-4 py-3 text-slate-800">
+                        <span className="mr-2 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">{KIND[i.kind]}</span>
+                        {i.activity}
+                        {i.extraordinary > 0 && <span className="block text-[11px] text-indigo-700">+ {i.extraordinary} extraordinaria(s) por evento ({i.extraordinary_done} cumplidas)</span>}
+                        {i.not_generated > 0 && <span className="block text-[11px] text-red-700">{i.not_generated} vencida(s) sin orden generada</span>}
+                      </td>
+                      <td className="px-4 py-3 text-slate-600">cada {i.frequency_days} días</td>
+                      <td className="px-4 py-3 text-slate-600">{i.responsible ?? "—"}</td>
+                      <td className="px-4 py-3 tabular-nums text-slate-700">{i.done} de {i.expected}</td>
+                      <td className={`px-4 py-3 font-semibold tabular-nums ${pctColor(i.compliance_pct)}`}>{i.compliance_pct === null ? "—" : `${i.compliance_pct}%`}</td>
+                      <td className="px-4 py-3 text-slate-600">
+                        {i.next_due_at ? new Date(i.next_due_at).toLocaleDateString("es") : "—"}
+                        {i.overdue && <span className="ml-2 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700">vencida</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+    </>
+  );
+}
+
 function EventsSection() {
   const queryClient = useQueryClient();
   const { data: catalog } = useQuery({ queryKey: ["maintenance-community-catalog"], queryFn: getMaintenanceCommunityCatalog });
@@ -769,8 +835,12 @@ export function MaintenancePage() {
         <PmPlansSection />
       </div>
 
-      <div id="events" className="scroll-mt-24">
+      <div id="events" className="scroll-mt-24 mb-8">
         <EventsSection />
+      </div>
+
+      <div id="calendar" className="scroll-mt-24">
+        <CalendarSection />
       </div>
     </StagePage>
   );
