@@ -1007,6 +1007,19 @@ export function generateDuePmOrders(): Promise<MaintenanceOrder[]> {
   return request("/maintenance/pm-plans/generate-due", { method: "POST", body: "{}" });
 }
 
+export interface SessionInfo {
+  tenant_id: string;
+  tenant_name: string | null;
+  email: string;
+  role: string | null;
+  issued_at: string | null;
+  expires_at: string;
+}
+
+export function getSession(): Promise<SessionInfo> {
+  return request("/auth/me");
+}
+
 // ── Track D, Sprint D0 -- motor de paquetes (docs/04-plan-sprints.md SS11.4) ──
 
 export interface Pack {

@@ -287,12 +287,29 @@ def list_balances(conn: psycopg.Connection, tenant_id: str, zone_id: str | None 
     ]
 
 
+def latest_balance_per_zone(balances: list[dict]) -> dict[str, dict]:
+    """El balance del periodo mas reciente de cada zona. `period` es un
+    daterange de Postgres en texto ("[2026-09-05,2026-10-05)"), asi que el
+    orden de texto coincide con el cronologico."""
+    latest: dict[str, dict] = {}
+    for b in balances:
+        current = latest.get(b["zone_id"])
+        if current is None or b["period"] > current["period"]:
+            latest[b["zone_id"]] = b
+    return latest
+
+
 def balance_summary(conn: psycopg.Connection, tenant_id: str) -> dict:
     """Resumen a nivel de portafolio de zonas (Sprint B1-2) -- mismo patron
     de KPIs de resumen que el resto de paneles del proyecto: cuantas zonas
     hay, cuantas ya tienen un balance, el NRW% promedio de las mas
-    recientes, cuantas exceden su tope regulatorio, y el peor ILI."""
-    balances = list_balances(conn, tenant_id)
+    recientes, cuantas exceden su tope regulatorio, y el peor ILI.
+
+    Corregido 2026-10-05: antes contaba balances por (zona, periodo), asi
+    que una zona con 6 meses de balances contaba 6 veces (visto con la demo
+    de Gualaceo: 12 "zonas con balance" con 2 zonas). Ahora usa solo el
+    periodo mas reciente de cada zona."""
+    balances = list(latest_balance_per_zone(list_balances(conn, tenant_id)).values())
     with conn.transaction():
         with tenant_scope(conn, tenant_id):
             with conn.cursor() as cur:
@@ -321,7 +338,7 @@ def zones_geojson(conn: psycopg.Connection, tenant_id: str) -> dict:
     (`nrw_pct`/`ili`/`exceeds_threshold`), `None` si la zona aun no tiene
     ningun balance registrado."""
     zones = list_zones(conn, tenant_id)
-    balances_by_zone = {b["zone_id"]: b for b in list_balances(conn, tenant_id)}
+    balances_by_zone = latest_balance_per_zone(list_balances(conn, tenant_id))
 
     features = []
     for zone in zones:

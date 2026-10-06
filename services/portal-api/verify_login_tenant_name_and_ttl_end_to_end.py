@@ -66,6 +66,11 @@ def run(dsn: str) -> None:
             check(c["tenant_id"] == tenant_id and r.json()["tenant_id"] == tenant_id, "el token trae el tenant_id real")
             check(c["exp"] - c["iat"] == TTL and r.json()["expires_in"] == TTL, f"vence a los {TTL} s configurados")
             check(client.get("/packs", headers={"Authorization": f"Bearer {token}"}).status_code == 200, "el token sirve para la API")
+            me = client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})
+            check(me.status_code == 200 and me.json()["tenant_name"] == NAME and me.json()["email"] == "usr-e2e"
+                  and me.json()["role"] == "supervisor", "/auth/me devuelve organización, usuario y rol")
+            check(me.json()["expires_at"] > me.json()["issued_at"], "/auth/me devuelve inicio y vencimiento de la sesión")
+            check(client.get("/auth/me").status_code == 401, "/auth/me sin token -> 401")
 
             r = client.post("/auth/login", json={"tenant_id": tenant_id, "email": "usr-e2e", "password": "clave-e2e"})
             check(r.status_code == 200, "login por UUID sigue funcionando")

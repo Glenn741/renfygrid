@@ -60,6 +60,13 @@ def get_actor(request: Request, authorization: str | None = Header(default=None)
     }
 
 
+def get_session_claims(request: Request, authorization: str | None = Header(default=None)) -> dict:
+    """Todos los claims firmados del JWT, incluidos `iat`/`exp` -- para que
+    el Portal muestre la sesion (cuando empezo, cuando vence) sin
+    decodificar el token por su cuenta (2026-10-05)."""
+    return _decode(request, authorization)
+
+
 def requested_by_label(actor: dict) -> str:
     """La convencion real de origen (G1): `cis:<email>` para la cuenta de
     servicio de integracion, `portal:<email>` para cualquier humano. Nunca

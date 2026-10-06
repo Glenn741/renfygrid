@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { useAuth } from "../auth";
+import { SessionMenu, useSessionInfo } from "./SessionMenu";
 
 // Shell visual compartido (Sprint C9, docs/04-plan-sprints.md E18): rebranding
 // + navegacion lateral real para las 9 pantallas existentes -- capa puramente
@@ -38,7 +38,7 @@ function isActive(pathname: string, to: string): boolean {
 
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const location = useLocation();
-  const { logout } = useAuth();
+  const { data: session } = useSessionInfo();
 
   return (
     <div className="flex h-full flex-col">
@@ -46,9 +46,11 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
         <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600 text-white font-bold text-sm">
           R
         </span>
-        <div>
+        <div className="min-w-0">
           <div className="text-sm font-bold text-white leading-tight">RenfyGrid</div>
-          <div className="text-[11px] text-slate-400 leading-tight">Portal operativo</div>
+          <div className="text-[11px] text-slate-400 leading-tight truncate" title={session?.tenant_name ?? undefined}>
+            {session?.tenant_name ?? "Portal operativo"}
+          </div>
         </div>
       </div>
 
@@ -72,16 +74,6 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
           );
         })}
       </nav>
-
-      <div className="px-3 pb-4 pt-2 border-t border-white/10">
-        <button
-          onClick={logout}
-          className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-slate-300 hover:bg-white/5 hover:text-white"
-        >
-          <span className="text-base leading-none">&#8630;</span>
-          Cerrar sesión
-        </button>
-      </div>
     </div>
   );
 }
@@ -125,7 +117,8 @@ export function AppShell({ title, children }: AppShellProps) {
           >
             ☰
           </button>
-          <h1 className="text-base lg:text-lg font-bold text-slate-900">{title}</h1>
+          <h1 className="text-base lg:text-lg font-bold text-slate-900 truncate">{title}</h1>
+          <SessionMenu />
         </header>
         <main className="p-4 lg:p-6">{children}</main>
       </div>

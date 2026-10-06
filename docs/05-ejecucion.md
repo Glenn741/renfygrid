@@ -1702,6 +1702,43 @@ ser `usr001@renfygrid.com` (los usuarios son correos; el campo del login volvió
 **`col001`**. Ningún código lo busca por nombre (solo comentarios de semillas);
 `seed_demo_data.py` siempre crea un tenant nuevo en local.
 
+### `jaas001`: MDM, balance hídrico y gemelo digital de Gualaceo + sesión en el encabezado (2026-10-05)
+
+**Datos** (`services/community/seed_demo_gualaceo_mdm.py`, módulo compilado en producción;
+idempotente si el tenant ya tiene medidores):
+- **MDM:** 2 concentradores por radio, 96 micromedidores (Elster, Zenner, Sensus, Itron;
+  viviendas, tiendas, escuela, casa comunal, quesera) y 2 macromedidores de entrada de sector;
+  180 días de lectura diaria; 6 % de faltantes estimados por VEE, 155 excepciones pendientes
+  (3 corregidas a mano); eventos de 48 h y 3 alarmas; umbral de "caído" de 36 h.
+- **Balance hídrico:** 2 DMA ("Sector alto" y "Sector bajo"), 6 balances mensuales top-down
+  cada una. Sector alto: el agua no facturada sube de ~24 % a 32 % y supera el tope ilustrativo
+  de 25 % → orden de mantenimiento real por `balance_anomaly`. Sector bajo: ~17,6 %. Se usa la
+  definición IWA: el consumo autorizado no facturado (escuela, casa comunal) es agua no
+  facturada.
+- **Gemelo digital:** cotas en cada componente, sectores ligados a sus zonas, válvula de
+  sectorización, tanque rompepresión y tramos de PVC de 63 y 50 mm. Cada sector genera su
+  modelo EPANET desde el gemelo.
+- **Modelos** (por la API, `load_demo_models_via_api.py`): red rural completa dibujada a mano
+  (`network-model/demo/gualaceo_rural_sectores.inp`; presiones de 18 a 48 m en los nudos de
+  consumo) y un modelo por sector generado desde el gemelo; los tres simulados.
+- **Instrumentación de `jaas001`:** medición avanzada; balance, red y cobro intermedios.
+
+**Error real corregido:** `balance_summary` contaba balances por (zona, período), no por zona.
+Con un solo balance por zona (`col001`) no se notaba; con 6 meses por sector, la vista general
+decía "5 zonas sobre el tope" con 2 zonas. Ahora usa `latest_balance_per_zone` (también en el
+GeoJSON de zonas, que acertaba solo por el orden de la consulta). Desplegado y verificado: 1 zona
+sobre el tope.
+
+**Sesión en el encabezado** (pedido del usuario): `GET /auth/me` (organización, usuario, rol,
+inicio y vencimiento) y `SessionMenu.tsx` arriba a la derecha de todas las pantallas:
+organización, tiempo en sesión y tiempo restante (en ámbar con menos de 15 min), y un menú con
+el detalle y "Cerrar sesión". El menú lateral queda solo para navegar y muestra la organización
+bajo el logo. Al vencer la sesión, sale al login sin esperar un 401.
+
+**Despliegues de esta ronda:** `restorecon` solo sobre los archivos copiados y reinicio con
+espera activa de `/health` (respondió en 3 s cada vez). Respaldos del código anterior en
+`essmarplapp02:/tmp/renfygrid_balancefix_backup_20261005/` y `…_session_backup_20261005/`.
+
 **Respaldos para revertir:** `essmarplapp02:/tmp/renfygrid_jaas_backup_20261005/` (código
 anterior) y `essmarplpxy03:/var/www/renfygrid.bak_before_jaas_20261005`. El `pg_dump` previo se
 eliminó con `shred` tras verificar.

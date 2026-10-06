@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import sys
 from contextlib import contextmanager
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Iterator
 
@@ -44,7 +44,7 @@ from pydantic import BaseModel  # noqa: E402
 
 from approval_levels_admin import create_approval_level, list_approval_levels  # noqa: E402
 from approval_levels_cache import fetch_active_approval_levels  # noqa: E402
-from auth_dependency import get_actor, get_tenant_id, requested_by_label  # noqa: E402
+from auth_dependency import get_actor, get_session_claims, get_tenant_id, requested_by_label  # noqa: E402
 from billing_export import billing_ready_consumption, to_csv  # noqa: E402
 from config import Settings  # noqa: E402
 from consumption_anomaly_rules_admin import (  # noqa: E402
@@ -249,6 +249,26 @@ def login(body: LoginRequest) -> dict:
     )
     return {"access_token": token, "token_type": "bearer", "tenant_id": tenant_id,
             "expires_in": app.state.settings.session_ttl_seconds}
+
+
+@app.get("/auth/me")
+def session_me(claims: dict = Depends(get_session_claims)) -> dict:
+    """Datos de la sesion activa para el encabezado del Portal
+    (2026-10-05): organizacion, usuario, rol, inicio y vencimiento. El
+    nombre del tenant sale de la BD (no viaja en el token); `tenant` no
+    tiene RLS, el filtro por id es explicito."""
+    with db_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT name FROM tenant WHERE id = %s", (claims["tenant_id"],))
+            row = cur.fetchone()
+    return {
+        "tenant_id": claims["tenant_id"],
+        "tenant_name": row[0] if row else None,
+        "email": claims.get("email") or claims.get("user_id"),
+        "role": claims.get("role"),
+        "issued_at": datetime.fromtimestamp(claims["iat"], tz=timezone.utc).isoformat() if "iat" in claims else None,
+        "expires_at": datetime.fromtimestamp(claims["exp"], tz=timezone.utc).isoformat(),
+    }
 
 
 @app.get("/dashboard/overview")
