@@ -1,6 +1,63 @@
 import { useState, type ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import { getProcessRoute } from "../api";
 import { SessionMenu, useSessionInfo } from "./SessionMenu";
+import { ROUTE_QUERY_KEY, STAGE_STATE_STYLE, stageState } from "./routeStatus";
+
+const ROUTE_PATH = "/inspections";
+const ROUTE_OPEN_KEY = "renfygrid.nav.route.open";
+
+function readRouteOpen(): boolean {
+  try {
+    return window.localStorage.getItem(ROUTE_OPEN_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeRouteOpen(open: boolean): void {
+  try {
+    window.localStorage.setItem(ROUTE_OPEN_KEY, open ? "1" : "0");
+  } catch {
+    // preferencia de vista; si el navegador no deja guardar, no pasa nada
+  }
+}
+
+/** Submenu contextual de "Ruta y revisiones" (2026-10-05): las etapas de la
+ * ruta del paquete de la organizacion, con su estado. Solo aparece dentro del
+ * modulo o si el usuario lo despliega; sin ruta (p. ej. un tenant solo MDM)
+ * no muestra nada. */
+function RouteSubmenu({ pathname, onNavigate }: { pathname: string; onNavigate?: () => void }) {
+  const { data } = useQuery({ queryKey: ROUTE_QUERY_KEY, queryFn: getProcessRoute, staleTime: 60_000 });
+  if (!data || data.stages.length === 0) return null;
+  return (
+    <ol className="mt-0.5 mb-1 ml-5 space-y-0.5 border-l border-white/10 pl-2" aria-label="Etapas de la ruta">
+      {data.stages.map((s) => {
+        const to = `${ROUTE_PATH}/${s.code}`;
+        const active = pathname === to;
+        const style = STAGE_STATE_STYLE[stageState(s)];
+        return (
+          <li key={s.code}>
+            <Link
+              to={to}
+              onClick={onNavigate}
+              aria-current={active ? "page" : undefined}
+              title={`${s.title} · ${style.label}`}
+              className={`flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px] transition-colors ${
+                active ? "bg-white/10 font-semibold text-white" : "text-slate-400 hover:bg-white/5 hover:text-white"
+              }`}
+            >
+              <span className="w-3 shrink-0 text-right text-[11px] tabular-nums text-slate-500">{s.order}</span>
+              <span className="min-w-0 flex-1 truncate">{s.title}</span>
+              <span className={`h-2 w-2 shrink-0 rounded-full ${style.dot}`} aria-label={style.label} />
+            </Link>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
 
 // Shell visual compartido (Sprint C9, docs/04-plan-sprints.md E18): rebranding
 // + navegacion lateral real para las 9 pantallas existentes -- capa puramente
@@ -64,6 +121,14 @@ function isActive(pathname: string, to: string): boolean {
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const location = useLocation();
   const { data: session } = useSessionInfo();
+  const [routeOpen, setRouteOpen] = useState(readRouteOpen);
+  const inRoute = isActive(location.pathname, ROUTE_PATH);
+  const toggleRoute = () => {
+    setRouteOpen((open) => {
+      writeRouteOpen(!open);
+      return !open;
+    });
+  };
 
   return (
     <div className="flex h-full flex-col">
@@ -88,21 +153,38 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
             <div className="space-y-0.5">
               {group.items.map((item) => {
                 const active = isActive(location.pathname, item.to);
+                const isRoute = item.to === ROUTE_PATH;
+                const expanded = isRoute && (inRoute || routeOpen);
                 return (
-                  <Link
-                    key={item.to}
-                    to={item.to}
-                    onClick={onNavigate}
-                    aria-current={active ? "page" : undefined}
-                    className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                      active
-                        ? "bg-indigo-600 text-white"
-                        : "text-slate-300 hover:bg-white/5 hover:text-white"
-                    }`}
-                  >
-                    <span className="text-base leading-none">{item.icon}</span>
-                    {item.label}
-                  </Link>
+                  <div key={item.to}>
+                    <div className="flex items-center">
+                      <Link
+                        to={item.to}
+                        onClick={onNavigate}
+                        aria-current={active && location.pathname === item.to ? "page" : undefined}
+                        className={`flex flex-1 items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                          active
+                            ? "bg-indigo-600 text-white"
+                            : "text-slate-300 hover:bg-white/5 hover:text-white"
+                        }`}
+                      >
+                        <span className="text-base leading-none">{item.icon}</span>
+                        {item.label}
+                      </Link>
+                      {isRoute && !inRoute && (
+                        <button
+                          onClick={toggleRoute}
+                          aria-expanded={expanded}
+                          aria-label={expanded ? "Ocultar las etapas de la ruta" : "Mostrar las etapas de la ruta"}
+                          title={expanded ? "Ocultar etapas" : "Mostrar etapas"}
+                          className="ml-1 flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-white/5 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+                        >
+                          <span aria-hidden className={`text-xs transition-transform ${expanded ? "rotate-90" : ""}`}>▸</span>
+                        </button>
+                      )}
+                    </div>
+                    {expanded && <RouteSubmenu pathname={location.pathname} onNavigate={onNavigate} />}
+                  </div>
                 );
               })}
             </div>

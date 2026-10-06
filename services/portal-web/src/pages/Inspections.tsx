@@ -13,7 +13,9 @@ import {
   type RouteStageInfo,
   type ScaleEntry,
 } from "../api";
+import { useNavigate, useParams } from "react-router-dom";
 import { StagePage, EmptyState } from "../components/StagePage";
+import { ROUTE_QUERY_KEY, STAGE_STATE_STYLE, stageState } from "../components/routeStatus";
 
 // Ruta y revisiones -- rediseno de usabilidad (2026-10-05, a pedido del
 // usuario: "un usuario no logra percibir que debe hacer click" y "la vision
@@ -69,13 +71,6 @@ function answerTone(scale: ScaleEntry[], entry: ScaleEntry) {
 
 // ── Ruta ──────────────────────────────────────────────────────────────
 
-function stageTone(stage: RouteStageInfo): string {
-  if (stage.summary.overdue > 0) return "bg-red-500 text-white";
-  if (stage.summary.total > 0 && stage.summary.applied === stage.summary.total) return "bg-emerald-600 text-white";
-  if (stage.summary.applied > 0) return "bg-indigo-600 text-white";
-  return "bg-slate-200 text-slate-700";
-}
-
 function RouteStepper({ stages, selected, onSelect }: { stages: RouteStageInfo[]; selected: string; onSelect: (code: string) => void }) {
   return (
     <nav aria-label="Etapas de la ruta" className="overflow-x-auto pb-1">
@@ -91,7 +86,7 @@ function RouteStepper({ stages, selected, onSelect }: { stages: RouteStageInfo[]
                   active ? "border-indigo-600 bg-indigo-50 shadow-sm" : "border-slate-200 bg-white hover:border-indigo-300 hover:bg-slate-50"
                 }`}
               >
-                <span className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${stageTone(s)}`}>{s.order}</span>
+                <span className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${STAGE_STATE_STYLE[stageState(s)].badge}`} title={STAGE_STATE_STYLE[stageState(s)].label}>{s.order}</span>
                 <span className="min-w-0">
                   <span className={`block text-sm font-semibold leading-tight ${active ? "text-indigo-900" : "text-slate-800"}`}>{s.title}</span>
                   <span className="mt-1 block text-[11px] text-slate-500">
@@ -215,9 +210,10 @@ function RunForm({ template, onCancel, onDone }: { template: ChecklistTemplate; 
       notes: notes || null,
     }),
     onSuccess: (result) => {
-      for (const key of ["checklist-runs", "traffic-light", "findings", "process-route"]) {
+      for (const key of ["checklist-runs", "traffic-light", "findings"]) {
         queryClient.invalidateQueries({ queryKey: [key] });
       }
+      queryClient.invalidateQueries({ queryKey: ROUTE_QUERY_KEY });
       const created = result.findings_created.length;
       onDone(`Revisión "${template.title}" guardada. Puntaje ${result.score.score} de ${result.score.max_score}. ${created === 0 ? "Sin hallazgos nuevos." : `${created} hallazgo${created === 1 ? "" : "s"} nuevo${created === 1 ? "" : "s"} en Mi sistema → Hallazgos.`}`);
     },
@@ -404,13 +400,28 @@ function defaultStage(stages: RouteStageInfo[]): string | undefined {
 }
 
 export function InspectionsPage() {
-  const { data: route, isLoading } = useQuery({ queryKey: ["process-route"], queryFn: getProcessRoute });
+  const { data: route, isLoading } = useQuery({ queryKey: ROUTE_QUERY_KEY, queryFn: getProcessRoute });
   const { data: templates } = useQuery({ queryKey: ["checklist-templates"], queryFn: getChecklistTemplates });
-  const [chosenStage, setStageCode] = useState<string | undefined>();
+  const params = useParams<{ stageCode?: string }>();
+  const navigate = useNavigate();
   const [view, setView] = useState<View>({ mode: "route" });
   const [message, setMessage] = useState<string | null>(null);
-  // Sin eleccion del usuario, la etapa que mas pide atencion (vencida, luego sin aplicar).
-  const stageCode = chosenStage ?? (route ? defaultStage(route.stages) : undefined);
+
+  // La etapa vive en la direccion (/inspections/G3): el submenu lateral, el
+  // boton Atras y los marcadores llevan a la misma etapa. Sin etapa en la
+  // direccion, se abre la que mas pide atencion (vencida, luego sin aplicar).
+  const validParam = route?.stages.some((s) => s.code === params.stageCode) ? params.stageCode : undefined;
+  const stageCode = validParam ?? (route ? defaultStage(route.stages) : undefined);
+  useEffect(() => {
+    if (route && stageCode && params.stageCode !== stageCode) navigate(`/inspections/${stageCode}`, { replace: true });
+  }, [route, stageCode, params.stageCode, navigate]);
+  const setStageCode = (code: string) => { setView({ mode: "route" }); navigate(`/inspections/${code}`); };
+  // Volver a la ruta si se elige una etapa desde el menu mientras se aplica una lista.
+  const [lastStage, setLastStage] = useState(params.stageCode);
+  if (params.stageCode !== lastStage) {
+    setLastStage(params.stageCode);
+    if (view.mode !== "route") setView({ mode: "route" });
+  }
 
   useEffect(() => { window.scrollTo({ top: 0 }); }, [view]);
 
