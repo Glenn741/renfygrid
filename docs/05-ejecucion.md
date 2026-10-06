@@ -1618,7 +1618,23 @@ paquete va en catálogos globales de solo lectura; lo que hace cada junta, en ta
   `match/case` conocido de `gurux-dlms` (parchado solo en el venv del servidor); no afecta a
   los módulos nuevos, que compilan y pasan sus pruebas en 3.9.
 
-**Pendiente (D0.4):** despliegue a producción. Pasos: `pg_dump` de respaldo → migración 0021
-en la BD `renfygrid` → compilar con Nuitka `community/` + `asset_service` → reiniciar
-`renfygrid-portal-api` → subir el build del Portal Web → sembrar la junta demo con credenciales
-propias → verificar en vivo.
+### D0.4 — Desplegado y verificado en producción (2026-10-05)
+
+| Paso | Resultado |
+|---|---|
+| Respaldo `pg_dump -Fc` de `renfygrid` | 5 MB, 34 tablas con datos, legible con `pg_restore -l`. Eliminado con `shred` tras verificar (contiene hashes; `/tmp` es compartido) |
+| Migración 0021 como `postgres` (`psql -1 -v ON_ERROR_STOP=1`) | 3 paquetes, 25 tipos, 4 reglas, 8 listas; `renfygrid_app` con SELECT en catálogos y DML en tablas de la junta; `network_asset_type_fk` validada sobre los 7 activos existentes |
+| Compilados (Nuitka, Py 3.9) a `/cdrs/renfygrid/` | `community/` nuevo (`pack_engine`, `pack_service`, `seed_demo_junta`), `digital-twin/asset_service`, `portal-api/main.py` (fuente, MD5 verificado). Respaldo de los reemplazados en `essmarplapp02:/tmp/renfygrid_d0_backup_20261005/` |
+| `systemctl restart renfygrid-portal-api` | `active`, `/health` 200, `/packs` 401 sin token, sin errores en el journal |
+| Junta demo (módulo compilado, sin `.py` en el servidor) | Tenant `d21aedcf-7103-47d9-9eec-277cde256684`, usuario `operador@junta-ejemplo.renfygrid.com`, clave aleatoria entregada al usuario (no versionada) |
+| Smoke test desde internet (login real) | 3 paquetes activos; cloro 0,2 → Bajo; 8 listas; 12 hallazgos abiertos; semáforo y tren de tratamiento del caso de la guía; recorrido Fuente → … → Red de distribución |
+| Regresión tenant demo original | Activos, GeoJSON, KPIs de mantenimiento y tablero OK; ve 0 hallazgos de la junta; sin paquete, evaluar cloro → 404 |
+| Portal Web a `essmarplpxy03:/var/www/renfygrid` | Bundle `index-ynYrZYKJ.js` servido, contiene "Mi sistema", "Revisiones", "Tren de tratamiento", "Paquetes"; `/system` e `/inspections` 200. Respaldo previo en `/var/www/renfygrid.bak_before_d0_20261005` |
+
+**Incidencias del despliegue:** el clasificador de modo automático bloqueó el primer acceso SSH
+("Credential Exploration"); el usuario agregó una regla permanente para despliegues de
+RenfyGrid en `~/.claude/settings.json`. El primer intento de aplicar la migración falló en el
+parseo de bash por comillas anidadas (no ejecutó nada): la verificación se pasó a un `.sql`
+subido con `pscp`.
+
+**Pendiente:** revisión visual de las pantallas en el navegador (hecha por el usuario).

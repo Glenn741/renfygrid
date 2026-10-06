@@ -570,10 +570,10 @@ componentes + hallazgos con ubicación).
 
 | Subsprint | Entrega | Estado |
 |---|---|---|
-| **D0.1** | Migración 0021 + semillas de los 3 paquetes + motor puro (`services/community/pack_engine.py`: evaluar regla, respuesta → hallazgo, validar aplicación, tren de tratamiento) con pruebas unitarias + servicio con BD + E2E local contra Postgres | ✅ Hecho 2026-10-05 (local) |
-| **D0.2** | Endpoints en `portal-api` (paquetes, tipos, reglas y evaluación, listas y aplicaciones, hallazgos, reportes, nivel de instrumentación) + `asset_service` leyendo el catálogo | ✅ Hecho 2026-10-05 (local) |
-| **D0.3** | Portal Web: "Mi sistema" (recorrido, semáforo, tren de tratamiento, hallazgos), "Revisiones" (aplicar una lista, historial) y paquetes/niveles en Configuración | 🔶 Construido, compila; falta revisión visual en navegador |
-| **D0.4** | Junta demo (caso ficticio de la Guía 3) + despliegue a producción con respaldo previo (`pg_dump`) + verificación en vivo + bitácora en `05-ejecucion.md` | 🔶 Semilla lista y probada en local; despliegue pendiente de autorización |
+| **D0.1** | Migración 0021 + semillas de los 3 paquetes + motor puro (`services/community/pack_engine.py`: evaluar regla, respuesta → hallazgo, validar aplicación, tren de tratamiento) con pruebas unitarias + servicio con BD + E2E local contra Postgres | ✅ En producción 2026-10-05 |
+| **D0.2** | Endpoints en `portal-api` (paquetes, tipos, reglas y evaluación, listas y aplicaciones, hallazgos, reportes, nivel de instrumentación) + `asset_service` leyendo el catálogo | ✅ En producción 2026-10-05 |
+| **D0.3** | Portal Web: "Mi sistema" (recorrido, semáforo, tren de tratamiento, hallazgos), "Revisiones" (aplicar una lista, historial) y paquetes/niveles en Configuración | ✅ En producción 2026-10-05 (falta revisión visual del usuario) |
+| **D0.4** | Junta demo (caso ficticio de la Guía 3) + despliegue a producción con respaldo previo (`pg_dump`) + verificación en vivo + bitácora en `05-ejecucion.md` | ✅ Hecho 2026-10-05 |
 
 ### 11.5 Modelo comercial, criterio de éxito y pendientes
 
@@ -607,4 +607,4 @@ cuentas generada por la herramienta, no en papel.
 - Págs. 58-67 (G3) y 39-48 (G4) no tienen texto extraíble; probablemente son imágenes o
   contraportada. Revisarlas visualmente.
 
-Estado: **aprobado, plan revisado 2026-10-05, D0 en curso** (ver §11.4).
+Estado: **aprobado, plan revisado 2026-10-05, D0 en producción** (ver §11.4); siguiente: D1.
