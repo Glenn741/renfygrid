@@ -1787,3 +1787,43 @@ vivo, `col001` y `jaas001` dan lo mismo: paquetes `core` + EC-ARCA + EC-MUNICIPI
 turbiedad y pH. Lo que cambia son solo los datos y los niveles declarados. Respaldo del
 código anterior en `essmarplapp02:/tmp/renfygrid_parity_backup_20261005/`; el `pg_dump`
 previo se eliminó con `shred` después de verificar.
+
+### CAP como cuestionario, D0.6 (2026-10-05)
+
+Fuente: Guía 7 de Municipios Azules.
+- **T-04:** 18 preguntas de opción múltiple, 3 por guía, textos literales.
+- **T-05:** clave de 2 puntos a la opción esperada y 0 a las demás; matriz por guía y por
+  dimensión; rangos Alto 80 %, Medio 50 % y Bajo 0 %.
+
+Los cambios al modelo son genéricos: sirven a cualquier cuestionario de cualquier programa.
+- **Migración 0026:**
+  - tipo `questionnaire`;
+  - `items[].options`, una escala propia por ítem cuya clave de respuestas es el `score` de
+    cada opción (dato del paquete);
+  - `items[].groups`;
+  - `checklist_template.run_fields` y `analysis`;
+  - `checklist_run.context`;
+  - etapa `INT` de la ruta (jornada 8 y seguimiento).
+- **Migración 0027:** `analysis.group_by[].values` pasa a ser una lista, porque un objeto
+  `jsonb` no conserva el orden de las claves y las dimensiones salían desordenadas.
+- **Motor:**
+  - `item_scale`, de la que dependen la validación, los hallazgos y el puntaje;
+  - `validate_run_context`;
+  - `questionnaire_analysis`: promedio, porcentaje, nivel y diferencia entre momentos.
+- **Servicio y API:** `questionnaire_report` cuenta la última aplicación de cada participante
+  en cada momento e informa cuántos tienen las dos. Nuevos `GET
+  /checklist-templates/{id}/analysis` y `context` en `POST /checklist-runs`.
+- **Portal:**
+  - datos de la aplicación arriba del formulario;
+  - opciones en tono neutro, para no delatar la respuesta esperada;
+  - "Ver análisis" con la matriz por guía, por dimensión y total;
+  - el historial y el detalle muestran el momento y el participante.
+
+**Verificación:**
+- 37 pruebas del motor y los E2E D0.1 y D0.2: clave tal cual la guía, 422 sin momento o
+  participante, análisis con valores calculados a mano.
+- En vivo, `col001` y `jaas001` ven 24 listas y las etapas G1–G6 + INT.
+
+**Demo en `jaas001`:** CAP de 10 participantes (GUA-01 a GUA-10), inicial y final. El total
+pasa de 38 % a 82 %. G6 (Plan de Mejora) queda en Medio, 53 %, como el caso de refuerzo que la
+Guía 7 pide revisar.

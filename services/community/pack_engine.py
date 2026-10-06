@@ -79,45 +79,80 @@ def _band_result(band: dict) -> dict[str, Any]:
 
 # ── Listas de verificacion ─────────────────────────────────────────────
 
+def item_scale(template: dict, item: dict) -> list[dict]:
+    """Escala de un item: la propia si la trae (`options`, p. ej. las
+    preguntas de opcion multiple de la CAP, cada opcion con su puntaje de la
+    clave) o la comun de la lista."""
+    return item.get("options") or template["scale"]
+
+
+def answer_label(template: dict, item: dict, code: str) -> str:
+    return {e["code"]: e["label"] for e in item_scale(template, item)}[code]
+
+
 def validate_answers(template: dict, answers: list[dict]) -> None:
     """Toda aplicacion de una lista es completa: cada item respondido una
-    sola vez con un codigo de la escala. Una inspeccion a medias no deja
+    sola vez con un codigo de su escala. Una inspeccion a medias no deja
     ver que quedo sin revisar."""
-    item_keys = [item["key"] for item in template["items"]]
-    scale_codes = {entry["code"] for entry in template["scale"]}
+    items = {item["key"]: item for item in template["items"]}
     seen: set[str] = set()
     for answer in answers:
         key = answer.get("item_key")
-        if key not in item_keys:
+        if key not in items:
             raise InvalidAnswersError(f"Item desconocido para {template['id']}: {key!r}")
         if key in seen:
             raise InvalidAnswersError(f"Item respondido dos veces: {key!r}")
-        if answer.get("answer_code") not in scale_codes:
+        codes = {entry["code"] for entry in item_scale(template, items[key])}
+        if answer.get("answer_code") not in codes:
             raise InvalidAnswersError(
-                f"Respuesta {answer.get('answer_code')!r} fuera de la escala (validas: {sorted(scale_codes)})"
+                f"Respuesta {answer.get('answer_code')!r} fuera de la escala de {key!r} (validas: {sorted(codes)})"
             )
         seen.add(key)
-    missing = [key for key in item_keys if key not in seen]
+    missing = [key for key in items if key not in seen]
     if missing:
         raise InvalidAnswersError(f"Faltan items por responder: {missing}")
+
+
+def validate_run_context(template: dict, context: dict | None) -> dict:
+    """Datos de la aplicacion que define la plantilla (`run_fields`): p. ej.
+    momento inicial/final y codigo de participante de la CAP. Devuelve solo
+    los campos declarados, sin espacios sobrantes; un campo con `options`
+    acepta solo esos codigos."""
+    context = context or {}
+    fields = {f["key"]: f for f in template.get("run_fields") or []}
+    unknown = sorted(set(context) - set(fields))
+    if unknown:
+        raise InvalidAnswersError(f"Datos de la aplicacion no definidos para {template['id']}: {unknown}")
+    clean: dict[str, str] = {}
+    for key, field in fields.items():
+        value = context.get(key)
+        value = value.strip() if isinstance(value, str) else value
+        if value in (None, ""):
+            if field.get("required"):
+                raise InvalidAnswersError(f"Falta {field['label']!r}")
+            continue
+        options = field.get("options")
+        if options and value not in {o["code"] for o in options}:
+            raise InvalidAnswersError(f"{field['label']}: {value!r} no es una opcion valida")
+        clean[key] = value
+    return clean
 
 
 def findings_from_answers(template: dict, answers: list[dict]) -> list[dict[str, Any]]:
     """Un hallazgo por cada respuesta cuya entrada de la escala tiene
     `finding` verdadero. La prioridad sale de la escala del paquete. La
     descripcion junta el texto del item, la respuesta y la observacion."""
-    scale = {entry["code"]: entry for entry in template["scale"]}
     items = {item["key"]: item for item in template["items"]}
     findings = []
     for answer in answers:
-        entry = scale[answer["answer_code"]]
+        item = items[answer["item_key"]]
+        entry = {e["code"]: e for e in item_scale(template, item)}[answer["answer_code"]]
         if not entry.get("finding"):
             continue
         if not entry.get("finding_priority"):
             raise InvalidAnswersError(
                 f"La escala de {template['id']} marca {entry['code']!r} como hallazgo sin finding_priority"
             )
-        item = items[answer["item_key"]]
         description = f"{item['text']} — {entry['label']}"
         if answer.get("observation"):
             description += f". {answer['observation']}"
@@ -132,15 +167,83 @@ def findings_from_answers(template: dict, answers: list[dict]) -> list[dict[str,
     return findings
 
 
+def _item_points(template: dict, items: list[dict], answers: list[dict]) -> tuple[int, int]:
+    """Puntos obtenidos y maximo posible sobre `items` (cada item con el
+    mejor puntaje de su propia escala)."""
+    by_key = {a["item_key"]: a["answer_code"] for a in answers}
+    total = maximum = 0
+    for item in items:
+        scale = {e["code"]: e.get("score", 0) for e in item_scale(template, item)}
+        maximum += max(scale.values(), default=0)
+        if item["key"] in by_key:
+            total += scale.get(by_key[item["key"]], 0)
+    return total, maximum
+
+
 def maturity_score(template: dict, answers: list[dict]) -> dict[str, Any]:
-    """Puntaje sobre el maximo posible con la escala de la plantilla. Sirve
-    para la verificacion inicial y final y para 4A/4B (indice de madurez)."""
-    scale = {entry["code"]: entry for entry in template["scale"]}
-    best = max(entry.get("score", 0) for entry in template["scale"])
-    total = sum(scale[a["answer_code"]].get("score", 0) for a in answers)
-    maximum = best * len(template["items"])
+    """Puntaje sobre el maximo posible. Sirve para la verificacion inicial y
+    final, 4A/4B (indice de madurez) y la CAP (clave de T-05).
+    `answers`: [{item_key, answer_code}]."""
+    total, maximum = _item_points(template, template["items"], answers)
     pct = round(100.0 * total / maximum, 1) if maximum else None
     return {"score": total, "max_score": maximum, "pct": pct}
+
+
+def _level(levels: list[dict], pct: float | None) -> str | None:
+    if pct is None:
+        return None
+    for band in sorted(levels, key=lambda b: b["min_pct"], reverse=True):
+        if pct >= band["min_pct"]:
+            return band["label"]
+    return None
+
+
+def questionnaire_analysis(template: dict, runs: list[dict]) -> dict[str, Any]:
+    """Matriz de analisis de un cuestionario (p. ej. T-05 de la CAP): por
+    cada agrupacion que declara la plantilla (guia, dimension) y por cada
+    momento a comparar (inicial, final), el puntaje promedio, el porcentaje,
+    el nivel segun los rangos del paquete y la diferencia entre el primer y
+    el ultimo momento. `runs`: [{context, answers: [{item_key, answer_code}]}].
+    Todo nombre de grupo, momento y rango sale de `template["analysis"]`."""
+    spec = template.get("analysis")
+    if not spec:
+        raise InvalidAnswersError(f"{template['id']} no define analisis")
+    compare_by = spec["compare_by"]
+    moments = [m["code"] for m in spec["compare"]]
+    levels = spec.get("levels") or []
+    by_moment = {m: [r for r in runs if (r.get("context") or {}).get(compare_by) == m] for m in moments}
+
+    def cell(items: list[dict], moment: str) -> dict[str, Any]:
+        maximum = _item_points(template, items, [])[1]
+        points = [_item_points(template, items, r["answers"])[0] for r in by_moment[moment]]
+        if not points:
+            return {"n": 0, "avg_score": None, "max_score": maximum, "pct": None, "level": None}
+        avg = sum(points) / len(points)
+        pct = round(100.0 * avg / maximum, 1) if maximum else None
+        return {"n": len(points), "avg_score": round(avg, 2), "max_score": maximum, "pct": pct, "level": _level(levels, pct)}
+
+    def row(code: str, label: str, items: list[dict]) -> dict[str, Any]:
+        cells = {m: cell(items, m) for m in moments}
+        first, last = cells[moments[0]]["pct"], cells[moments[-1]]["pct"]
+        return {
+            "code": code, "label": label, "items": [i["key"] for i in items], "moments": cells,
+            "difference_pct": round(last - first, 1) if first is not None and last is not None else None,
+        }
+
+    groupings = []
+    for g in spec.get("group_by") or []:
+        # `values` es una LISTA [{code, label}]: el orden es el de la guia (un
+        # objeto jsonb no conserva el orden de sus claves).
+        rows = [
+            row(v["code"], v["label"], [i for i in template["items"] if (i.get("groups") or {}).get(g["key"]) == v["code"]])
+            for v in g["values"]
+        ]
+        groupings.append({"key": g["key"], "label": g["label"], "rows": rows})
+    return {
+        "template_id": template["id"], "compare_by": compare_by, "moments": spec["compare"], "levels": levels,
+        "groupings": groupings, "total": row("total", "Total", template["items"]),
+        "participants": {m: len(by_moment[m]) for m in moments},
+    }
 
 
 # ── Recorrido del sistema y tren de tratamiento ────────────────────────

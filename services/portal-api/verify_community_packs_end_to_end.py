@@ -89,7 +89,7 @@ def run(dsn: str) -> None:
             check(r.status_code == 404, "sin paquete normativo no hay regla de cloro -> 404")
             r = client.post("/packs/EC-ARCA/adopt", headers=h)
             check(r.status_code == 200 and len(r.json()["active_packs"]) == 3, "3 paquetes activos de nuevo")
-            check(len(client.get("/checklist-templates", headers=h).json()) == 23, "23 listas disponibles (G2-G6)")
+            check(len(client.get("/checklist-templates", headers=h).json()) == 24, "24 listas disponibles (G2-G6 y CAP)")
             g6_req = next(t for t in client.get("/checklist-templates", headers=h).json() if t["id"] == "MA-G6-7F")
             check(len(g6_req["items"]) == 25 and g6_req["stage_code"] == "G6", "7F de la Guía 6: 25 requisitos en la etapa G6")
             check(len(client.get("/parameter-rules", headers=h).json()) == 4, "4 reglas vigentes")
@@ -135,7 +135,7 @@ def run(dsn: str) -> None:
 
             print("6b. Ruta del programa (0023)")
             route = client.get("/process-route", headers=h).json()
-            check([s["code"] for s in route["stages"]] == ["G1", "G2", "G3", "G4", "G5", "G6"], "6 etapas en orden")
+            check([s["code"] for s in route["stages"]] == ["G1", "G2", "G3", "G4", "G5", "G6", "INT"], "7 etapas en orden")
             g3 = {i["template_id"]: i for i in route["stages"][2]["lists"]}
             check(set(g3) == {"MA-G3-START", "MA-AP2", "MA-7A", "MA-7E", "MA-7G1"}, "la etapa G3 agrupa sus 5 listas")
             check(g3["MA-AP2"]["status"] == "done" and g3["MA-7A"]["status"] == "never", "semáforo aplicado, 7A sin aplicar")
@@ -143,7 +143,7 @@ def run(dsn: str) -> None:
             check(route["stages"][2]["summary"]["applied"] == 1, "resumen de la etapa: 1 aplicada")
             check(route["stages"][0]["lists"] == [] and route["stages"][0]["products"], "etapa sin listas muestra sus productos")
             counts = {s["code"]: s["summary"]["total"] for s in route["stages"]}
-            check(counts == {"G1": 0, "G2": 4, "G3": 5, "G4": 3, "G5": 7, "G6": 4}, f"listas por etapa {counts}")
+            check(counts == {"G1": 0, "G2": 4, "G3": 5, "G4": 3, "G5": 7, "G6": 4, "INT": 1}, f"listas por etapa {counts}")
 
             print("6c. Lista de productos (0024): 'Falta' no genera hallazgo")
             products = [{"item_key": k, "answer_code": "pending" if i % 2 else "ready"} for i, k in enumerate(
@@ -158,6 +158,50 @@ def run(dsn: str) -> None:
                  "minutes_book", "technical_archive", "budget_poa_approved", "tariff_reviewed", "accountability_presented",
                  "claims_register"]]})
             check(r.status_code == 201 and len(r.json()["findings_created"]) == 1, "7C: AUA 'Falta' genera 1 hallazgo")
+
+            print("6d. CAP como cuestionario (0026)")
+            cap = next(t for t in client.get("/checklist-templates", headers=h).json() if t["id"] == "MA-CAP")
+            check(cap["kind"] == "questionnaire" and len(cap["items"]) == 18 and cap["scale"] == [],
+                  "CAP: 18 preguntas, cada una con sus opciones")
+            key = {i["key"]: next(o["code"] for o in i["options"] if o["score"] == 2) for i in cap["items"]}
+            check("".join(key.values()) == "bbabbabbbaaabbabba", "clave de T-05 tal cual la guía")
+            wrong = {k: ("c" if v != "c" else "a") for k, v in key.items()}
+
+            def cap_answers(correct_keys: set[str]) -> list[dict]:
+                return [{"item_key": k, "answer_code": key[k] if k in correct_keys else wrong[k]} for k in key]
+
+            all_keys = set(key)
+            g1_g3 = {f"q{n:02d}" for n in range(1, 10)}
+            r = client.post("/checklist-runs", headers=h, json={"template_id": "MA-CAP", "answers": cap_answers(g1_g3)})
+            check(r.status_code == 422, "sin momento ni participante -> 422")
+            r = client.post("/checklist-runs", headers=h, json={"template_id": "MA-CAP", "answers": cap_answers(g1_g3),
+                                                                 "context": {"moment": "mitad", "participant_code": "P-01"}})
+            check(r.status_code == 422, "momento fuera de las opciones -> 422")
+            for code, moment, correct in (("P-01", "initial", g1_g3), ("P-02", "initial", set()),
+                                          ("P-01", "final", all_keys), ("P-02", "final", g1_g3)):
+                r = client.post("/checklist-runs", headers=h, json={
+                    "template_id": "MA-CAP", "answers": cap_answers(correct),
+                    "context": {"moment": moment, "participant_code": code}})
+                check(r.status_code == 201 and r.json()["findings_created"] == [], f"CAP {moment} {code}: 201 sin hallazgos")
+            check(r.json()["score"] == {"score": 18, "max_score": 36, "pct": 50.0}, "puntaje con la clave: 9 aciertos = 18/36")
+            detail = client.get(f"/checklist-runs/{r.json()['run_id']}", headers=h).json()
+            check(detail["context"] == {"moment": "final", "participant_code": "P-02"}, "la aplicación guarda momento y participante")
+            check(detail["answers"][0]["answer_label"].startswith("b) "), "etiqueta de la opción del ítem")
+            analysis = client.get("/checklist-templates/MA-CAP/analysis", headers=h).json()
+            check(analysis["participants"] == {"initial": 2, "final": 2} and analysis["paired_participants"] == 2,
+                  "2 participantes con inicial y final")
+            guides = {row["code"]: row for row in analysis["groupings"][0]["rows"]}
+            check(guides["G1"]["moments"]["initial"]["pct"] == 50.0 and guides["G1"]["moments"]["final"]["level"] == "Alto",
+                  "Guía 1: inicial 50 %, final Alto")
+            check(guides["G4"]["moments"]["initial"]["level"] == "Bajo" and guides["G4"]["difference_pct"] == 50.0,
+                  "Guía 4: de Bajo a +50 puntos")
+            dims = {row["code"]: row for row in analysis["groupings"][1]["rows"]}
+            check(set(dims) == {"knowledge", "attitude", "practice"} and dims["knowledge"]["moments"]["final"]["max_score"] == 12,
+                  "3 dimensiones, 12 puntos máximos cada una")
+            check(analysis["total"]["moments"]["initial"]["avg_score"] == 9.0 and analysis["total"]["difference_pct"] == 50.0,
+                  "total: 9/36 inicial, +50 puntos al final")
+            check(client.get("/checklist-templates/MA-7A/analysis", headers=h).status_code == 404,
+                  "una lista sin análisis -> 404")
 
             print("7. Reportes")
             light = client.get("/reports/traffic-light", headers=h).json()["run"]

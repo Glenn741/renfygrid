@@ -25,7 +25,10 @@ import psycopg  # noqa: E402
 from psycopg.types.json import Json  # noqa: E402
 
 from pack_engine import (  # noqa: E402
+    answer_label,
     checklist_status,
+    questionnaire_analysis,
+    validate_run_context,
     evaluate_bands,
     stage_summary,
     findings_from_answers,
@@ -230,14 +233,15 @@ def list_checklist_templates(conn: psycopg.Connection, tenant_id: str) -> list[d
     packs = active_pack_ids(conn, tenant_id)
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT id, pack_id, kind, title, purpose, scale, items, stage_code, frequency_days FROM checklist_template "
+            "SELECT id, pack_id, kind, title, purpose, scale, items, stage_code, frequency_days, run_fields, analysis "
+            "FROM checklist_template "
             "WHERE pack_id = ANY(%s) ORDER BY id",
             (packs,),
         )
         rows = cur.fetchall()
     return [
         {"id": r[0], "pack_id": r[1], "kind": r[2], "title": r[3], "purpose": r[4], "scale": r[5], "items": r[6],
-         "stage_code": r[7], "frequency_days": r[8]}
+         "stage_code": r[7], "frequency_days": r[8], "run_fields": r[9], "analysis": r[10]}
         for r in rows
     ]
 
@@ -256,13 +260,16 @@ def submit_checklist_run(
     answers: list[dict],
     performed_by: str,
     notes: str | None = None,
+    context: dict | None = None,
 ) -> dict:
     """Guarda una aplicacion completa de la lista y crea, en la misma
     transaccion, un hallazgo por cada respuesta que la escala marca como
     hallazgo. `answers`: [{item_key, answer_code, observation?, action?,
-    responsible?, due_date?, asset_id?}]."""
+    responsible?, due_date?, asset_id?}]. `context`: los datos que pide la
+    plantilla en `run_fields` (p. ej. momento y codigo de participante)."""
     template = _template(conn, tenant_id, template_id)
     validate_answers(template, answers)
+    clean_context = validate_run_context(template, context)
     pending_findings = findings_from_answers(template, answers)
     asset_by_item = {a["item_key"]: a.get("asset_id") for a in answers}
     _assert_assets_belong(conn, tenant_id, {a for a in asset_by_item.values() if a})
@@ -271,9 +278,9 @@ def submit_checklist_run(
         with tenant_scope(conn, tenant_id):
             with conn.cursor() as cur:
                 cur.execute(
-                    "INSERT INTO checklist_run (tenant_id, template_id, performed_by, notes) "
-                    "VALUES (%s, %s, %s, %s) RETURNING id, performed_at",
-                    (tenant_id, template_id, performed_by, notes),
+                    "INSERT INTO checklist_run (tenant_id, template_id, performed_by, notes, context) "
+                    "VALUES (%s, %s, %s, %s, %s) RETURNING id, performed_at",
+                    (tenant_id, template_id, performed_by, notes, Json(clean_context)),
                 )
                 run_id, performed_at = cur.fetchone()
                 for a in answers:
@@ -295,7 +302,7 @@ def submit_checklist_run(
 
     return {
         "run_id": str(run_id), "template_id": template_id, "performed_at": performed_at.isoformat(),
-        "score": maturity_score(template, answers), "findings_created": finding_ids,
+        "context": clean_context, "score": maturity_score(template, answers), "findings_created": finding_ids,
     }
 
 
@@ -312,9 +319,10 @@ def list_checklist_runs(conn: psycopg.Connection, tenant_id: str, template_id: s
             with conn.cursor() as cur:
                 cur.execute(
                     "SELECT r.id, r.template_id, r.performed_at, r.performed_by, r.notes, "
-                    "coalesce(jsonb_agg(jsonb_build_object('answer_code', a.answer_code)) "
+                    "coalesce(jsonb_agg(jsonb_build_object('item_key', a.item_key, 'answer_code', a.answer_code)) "
                     "         FILTER (WHERE a.item_key IS NOT NULL), '[]'::jsonb), "
-                    "(SELECT count(*) FROM finding f WHERE f.tenant_id = r.tenant_id AND f.source_ref LIKE r.id::text || ':%%') "
+                    "(SELECT count(*) FROM finding f WHERE f.tenant_id = r.tenant_id AND f.source_ref LIKE r.id::text || ':%%'), "
+                    "r.context "
                     "FROM checklist_run r LEFT JOIN checklist_answer a ON a.run_id = r.id "
                     f"WHERE r.tenant_id = %s {clause} GROUP BY r.id ORDER BY r.performed_at DESC",
                     params,
@@ -328,7 +336,7 @@ def list_checklist_runs(conn: psycopg.Connection, tenant_id: str, template_id: s
             "run_id": str(r[0]), "template_id": r[1], "performed_at": r[2].isoformat(),
             "performed_by": r[3], "notes": r[4], "answer_count": len(r[5]),
             "score": maturity_score(template, r[5]) if template else None,
-            "findings_count": r[6],
+            "findings_count": r[6], "context": r[7],
         })
     return result
 
@@ -388,7 +396,7 @@ def get_checklist_run(conn: psycopg.Connection, tenant_id: str, run_id: str) -> 
         with tenant_scope(conn, tenant_id):
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT template_id, performed_at, performed_by, notes FROM checklist_run "
+                    "SELECT template_id, performed_at, performed_by, notes, context FROM checklist_run "
                     "WHERE id = %s AND tenant_id = %s",
                     (run_id, tenant_id),
                 )
@@ -402,7 +410,6 @@ def get_checklist_run(conn: psycopg.Connection, tenant_id: str, run_id: str) -> 
                 )
                 answer_rows = cur.fetchall()
     template = _template(conn, tenant_id, run[0])
-    scale = {s["code"]: s for s in template["scale"]}
     by_key = {r[0]: r for r in answer_rows}
     answers = []
     for item in template["items"]:
@@ -411,15 +418,49 @@ def get_checklist_run(conn: psycopg.Connection, tenant_id: str, run_id: str) -> 
             continue
         answers.append({
             "item_key": item["key"], "text": item["text"], "answer_code": r[1],
-            "answer_label": scale[r[1]]["label"], "observation": r[2], "action": r[3],
+            "answer_label": answer_label(template, item, r[1]), "observation": r[2], "action": r[3],
             "responsible": r[4], "due_date": r[5].isoformat() if r[5] else None,
         })
     return {
         "run_id": run_id, "template_id": run[0], "title": template["title"], "kind": template["kind"],
-        "performed_at": run[1].isoformat(), "performed_by": run[2], "notes": run[3],
+        "performed_at": run[1].isoformat(), "performed_by": run[2], "notes": run[3], "context": run[4],
         "answers": answers,
-        "score": maturity_score(template, [{"answer_code": a["answer_code"]} for a in answers]),
+        "score": maturity_score(template, answers),
     }
+
+
+def questionnaire_report(conn: psycopg.Connection, tenant_id: str, template_id: str) -> dict:
+    """Analisis de un cuestionario (CAP: clave y matriz T-05) con todas las
+    aplicaciones de la junta. Si un participante respondio dos veces en el
+    mismo momento, cuenta su ultima aplicacion."""
+    template = _template(conn, tenant_id, template_id)
+    if not template.get("analysis"):
+        raise TemplateNotAvailableError(f"La lista {template_id!r} no tiene análisis de cuestionario")
+    with conn.transaction():
+        with tenant_scope(conn, tenant_id):
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT r.id, r.context, r.performed_at, "
+                    "coalesce(jsonb_agg(jsonb_build_object('item_key', a.item_key, 'answer_code', a.answer_code)) "
+                    "         FILTER (WHERE a.item_key IS NOT NULL), '[]'::jsonb) "
+                    "FROM checklist_run r LEFT JOIN checklist_answer a ON a.run_id = r.id "
+                    "WHERE r.tenant_id = %s AND r.template_id = %s GROUP BY r.id ORDER BY r.performed_at",
+                    (tenant_id, template_id),
+                )
+                rows = cur.fetchall()
+    compare_by = template["analysis"]["compare_by"]
+    participant_key = template["analysis"].get("participant_field")
+    latest: dict[tuple, dict] = {}
+    for run_id, context, _at, answers in rows:
+        key = (context.get(compare_by), context.get(participant_key)) if participant_key else (str(run_id),)
+        latest[key] = {"context": context, "answers": answers}
+    report = questionnaire_analysis(template, list(latest.values()))
+    if participant_key:
+        moments = [m["code"] for m in template["analysis"]["compare"]]
+        sets = [{k[1] for k in latest if k[0] == m} for m in moments]
+        report["paired_participants"] = len(set.intersection(*sets)) if sets else 0
+    report["title"] = template["title"]
+    return report
 
 
 def latest_traffic_light(conn: psycopg.Connection, tenant_id: str) -> dict | None:

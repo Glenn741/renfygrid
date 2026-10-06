@@ -187,6 +187,7 @@ from pack_service import (  # noqa: E402
     list_findings,
     list_packs,
     process_route,
+    questionnaire_report,
     set_instrumentation,
     submit_checklist_run,
     system_route_report,
@@ -1469,6 +1470,7 @@ class ChecklistRunRequest(BaseModel):
     template_id: str
     answers: list[ChecklistAnswerRequest]
     notes: str | None = None
+    context: dict[str, str] = {}
 
 
 @app.post("/checklist-runs", status_code=201)
@@ -1479,12 +1481,22 @@ def submit_checklist_run_endpoint(body: ChecklistRunRequest, actor: dict = Depen
         try:
             return submit_checklist_run(
                 conn, actor["tenant_id"], body.template_id,
-                [a.model_dump() for a in body.answers], requested_by_label(actor), body.notes,
+                [a.model_dump() for a in body.answers], requested_by_label(actor), body.notes, body.context,
             )
         except (TemplateNotAvailableError, PackAssetNotFoundError) as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except InvalidAnswersError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/checklist-templates/{template_id}/analysis")
+def questionnaire_analysis_endpoint(template_id: str, tenant_id: str = Depends(get_tenant_id)) -> dict:
+    """Analisis de un cuestionario (CAP: matriz T-05) por grupo y momento."""
+    with db_conn() as conn:
+        try:
+            return questionnaire_report(conn, tenant_id, template_id)
+        except TemplateNotAvailableError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @app.get("/checklist-runs")

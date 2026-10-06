@@ -1096,16 +1096,50 @@ export interface ScaleEntry {
   score: number;
 }
 
+export interface ChecklistItem {
+  key: string;
+  text: string;
+  component_service?: string;
+  /** Escala propia del ítem (opción múltiple, 0026); si falta, se usa la de la lista. */
+  options?: ScaleEntry[];
+  groups?: Record<string, string>;
+}
+
+/** Dato que pide cada aplicación de la lista (0026), p. ej. momento y participante. */
+export interface RunField {
+  key: string;
+  label: string;
+  required?: boolean;
+  help?: string;
+  options?: { code: string; label: string }[];
+}
+
+export interface QuestionnaireAnalysisSpec {
+  source?: string;
+  note?: string;
+  compare_by: string;
+  participant_field?: string;
+  compare: { code: string; label: string }[];
+  levels: { min_pct: number; label: string }[];
+}
+
 export interface ChecklistTemplate {
   id: string;
   pack_id: string;
-  kind: "inspection" | "traffic_light" | "self_assessment" | "products";
+  kind: "inspection" | "traffic_light" | "self_assessment" | "products" | "questionnaire";
   title: string;
   purpose: string;
   scale: ScaleEntry[];
-  items: { key: string; text: string; component_service?: string }[];
+  items: ChecklistItem[];
   stage_code: string | null;
   frequency_days: number | null;
+  run_fields: RunField[];
+  analysis: QuestionnaireAnalysisSpec | null;
+}
+
+/** Escala de un ítem: la propia si la trae, si no la común de la lista. */
+export function itemScale(template: ChecklistTemplate, item: ChecklistItem): ScaleEntry[] {
+  return item.options && item.options.length > 0 ? item.options : template.scale;
 }
 
 export type ListStatus = "never" | "done" | "ok" | "overdue";
@@ -1164,6 +1198,7 @@ export function submitChecklistRun(body: {
   template_id: string;
   answers: ChecklistAnswerInput[];
   notes?: string | null;
+  context?: Record<string, string>;
 }): Promise<{ run_id: string; template_id: string; performed_at: string; score: Score; findings_created: string[] }> {
   return request("/checklist-runs", { method: "POST", body: JSON.stringify(body) });
 }
@@ -1177,6 +1212,39 @@ export interface ChecklistRunSummary {
   answer_count: number;
   score: Score | null;
   findings_count: number;
+  context: Record<string, string>;
+}
+
+export interface AnalysisCell {
+  n: number;
+  avg_score: number | null;
+  max_score: number;
+  pct: number | null;
+  level: string | null;
+}
+
+export interface AnalysisRow {
+  code: string;
+  label: string;
+  items: string[];
+  moments: Record<string, AnalysisCell>;
+  difference_pct: number | null;
+}
+
+export interface QuestionnaireAnalysis {
+  template_id: string;
+  title: string;
+  compare_by: string;
+  moments: { code: string; label: string }[];
+  levels: { min_pct: number; label: string }[];
+  groupings: { key: string; label: string; rows: AnalysisRow[] }[];
+  total: AnalysisRow;
+  participants: Record<string, number>;
+  paired_participants?: number;
+}
+
+export function getQuestionnaireAnalysis(templateId: string): Promise<QuestionnaireAnalysis> {
+  return request(`/checklist-templates/${encodeURIComponent(templateId)}/analysis`);
 }
 
 export function getChecklistRuns(templateId?: string): Promise<ChecklistRunSummary[]> {
@@ -1191,6 +1259,7 @@ export interface ChecklistRunDetail {
   performed_at: string;
   performed_by: string;
   notes: string | null;
+  context: Record<string, string>;
   answers: {
     item_key: string;
     text: string;

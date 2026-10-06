@@ -639,8 +639,10 @@ Tampoco las "verificaciones rápidas de aprendizajes" del cierre de cada guía.
 
 **Siguiente (D0.6, propuesto):**
 1. ~~Cargar los formatos de G2, G5 y G6 que son listas de verificación.~~ Hecho (0024).
-2. La CAP como tipo "cuestionario". Requiere opciones por ítem, porque hoy la escala es una
-   sola por lista.
+2. ~~La CAP como tipo "cuestionario".~~ Hecho (0026/0027): tipo `questionnaire`, escala propia
+   por ítem (`options`, la clave T-05 como `score`), datos de cada aplicación (`run_fields`:
+   momento y código de participante), análisis por guía y por dimensión con los rangos del
+   paquete (`analysis`), etapa INT "Integración, evaluación y seguimiento".
 3. El pasaporte T-07 como vista de productos por etapa.
 4. El seguimiento 7-30-90.
 
