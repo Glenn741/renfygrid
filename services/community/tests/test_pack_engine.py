@@ -20,8 +20,11 @@ from pack_engine import (  # noqa: E402
     evaluate_bands,
     findings_from_answers,
     follow_up_schedule,
+    interpret_reading,
+    log_entry_status,
     passport_rows,
     passport_summary,
+    sampling_points_status,
     maturity_score,
     questionnaire_analysis,
     stage_summary,
@@ -391,6 +394,69 @@ class FollowUpScheduleTests(unittest.TestCase):
         sched = follow_up_schedule(MILESTONES, date(2026, 9, 1), {}, [], today=date(2026, 9, 8))
         self.assertEqual(sched[0]["status"], "due")
         self.assertEqual(sched[0]["days_to_due"], 0)
+
+
+# Bandas de 0030 (cloro): con accion y prioridad del hallazgo.
+CHLORINE_D1 = [
+    {"upper": 0.3, "upper_inclusive": False, "code": "low", "label": "Bajo", "severity": "alert",
+     "finding_priority": "high", "action": "Revisar dosificador"},
+    {"upper": 1.5, "upper_inclusive": True, "code": "adequate", "label": "Adecuado", "severity": "ok", "action": "Registrar"},
+    {"upper": None, "code": "high", "label": "Alto", "severity": "alert", "finding_priority": "medium", "action": "Revisar dosis"},
+]
+
+
+class ReadingInterpretationTests(unittest.TestCase):
+    def test_guide_example_15_07_2026(self):
+        # Actividad participativa 4: 0,8 y 0,5 adecuado; 0,2 bajo.
+        self.assertEqual(interpret_reading(CHLORINE_D1, 0.8)["code"], "adequate")
+        self.assertFalse(interpret_reading(CHLORINE_D1, 0.5)["out_of_range"])
+        low = interpret_reading(CHLORINE_D1, 0.2)
+        self.assertEqual((low["code"], low["out_of_range"], low["finding_priority"], low["action"]),
+                         ("low", True, "high", "Revisar dosificador"))
+
+    def test_in_range_has_no_finding_priority(self):
+        self.assertIsNone(interpret_reading(CHLORINE_D1, 1.0)["finding_priority"])
+
+    def test_out_of_range_band_without_priority_is_incomplete_rule(self):
+        incomplete = [dict(b) for b in CHLORINE_D1]
+        del incomplete[2]["finding_priority"]
+        with self.assertRaises(InvalidRuleError):
+            interpret_reading(incomplete, 2.0)
+
+
+class OperationLogTests(unittest.TestCase):
+    def test_low_chlorine_or_turbid_water_forces_alert(self):
+        self.assertEqual(log_entry_status("good", "alert", "clear"), "alert")
+        self.assertEqual(log_entry_status(None, "ok", "turbid"), "alert")
+        self.assertEqual(log_entry_status("good", "ok", "clear"), "good")
+        self.assertEqual(log_entry_status(None, None, None), "good")
+        self.assertEqual(log_entry_status("alert", "ok", "clear"), "alert", "el operador puede marcar alerta")
+
+    def test_invalid_values_rejected(self):
+        with self.assertRaises(InvalidRecordError):
+            log_entry_status("regular", None, None)
+        with self.assertRaises(InvalidRecordError):
+            log_entry_status(None, None, "verde")
+
+
+class SamplingPointsTests(unittest.TestCase):
+    def test_due_by_own_or_kind_frequency(self):
+        points = [
+            {"point_id": "t", "kind_frequency_days": 1, "frequency_days": None},
+            {"point_id": "m", "kind_frequency_days": None, "frequency_days": 7},
+            {"point_id": "f", "kind_frequency_days": None, "frequency_days": None},
+            {"point_id": "c", "kind_frequency_days": None, "frequency_days": 7},
+        ]
+        today = date(2026, 10, 5)
+        last = {"t": date(2026, 10, 4), "m": date(2026, 10, 1), "f": date(2026, 9, 1)}
+        rows = {r["point_id"]: r for r in sampling_points_status(points, last, today)}
+        self.assertEqual(rows["t"]["status"], "due", "salida del tanque: cada dia")
+        self.assertEqual(rows["m"]["status"], "ok")
+        self.assertEqual(rows["m"]["days_since"], 4)
+        self.assertEqual(rows["f"]["status"], "ok", "sin frecuencia: solo se informa")
+        self.assertEqual(rows["c"]["status"], "never")
+        last["t"] = today
+        self.assertEqual(sampling_points_status(points[:1], last, today)[0]["status"], "ok")
 
 
 if __name__ == "__main__":

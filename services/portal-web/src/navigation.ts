@@ -72,6 +72,16 @@ export const NAV_GROUPS: { title: string | null; items: NavItemDef[] }[] = [
     title: "Operación del sistema",
     items: [
       {
+        to: "/operations", label: "Operación diaria", icon: "\u{1F4A7}",
+        sections: [
+          { id: "today", label: "Hoy" },
+          { id: "measure", label: "Medir" },
+          { id: "log", label: "Bitácora 7C" },
+          { id: "readings", label: "Mediciones 7B" },
+          { id: "points", label: "Puntos de medición" },
+        ],
+      },
+      {
         to: "/system", label: "Mi sistema", icon: "\u{1F6B0}",
         sections: [
           { id: "route", label: "Recorrido" },

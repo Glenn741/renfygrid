@@ -32,6 +32,7 @@ from pack_engine import (  # noqa: E402
     questionnaire_analysis,
     validate_run_context,
     evaluate_bands,
+    matching_band,
     follow_up_schedule,
     passport_rows,
     passport_summary,
@@ -238,6 +239,7 @@ def evaluate_parameter(conn: psycopg.Connection, tenant_id: str, parameter_code:
     return {
         "parameter": rule["parameter"], "value": value,
         "result": evaluate_bands(rule["bands"], value),
+        "action": matching_band(rule["bands"], value).get("action"),
         "pack_id": rule["pack_id"], "citation": rule["citation"],
     }
 

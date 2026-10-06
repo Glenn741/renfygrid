@@ -656,6 +656,15 @@ programa, no de la operación de la junta, así que van con D12 (tablero del pro
 
 Las matrices de G1 y G6 (priorización, Plan de Mejora, presupuesto) son D7, no listas.
 
+**D1, operación diaria, en subsprints:**
+
+| Subsprint | Entrega | Estado |
+|---|---|---|
+| **D1.1** | Puntos de medición (tipos en `core`), mediciones 7B interpretadas con la regla vigente y hallazgo sin duplicados, bitácora 7C, rutina de 5 momentos (§3.3), pantalla "Operación diaria" (migración 0030) | ✅ En producción 2026-10-06 |
+| **D1.2** | Calculadora de dosificación (§3.5) con guardas: productos y dosis como datos, nunca subir la dosis con cloro alto o agua turbia | Siguiente |
+| **D1.3** | App del operador sin conexión (PWA): cola local con `client_id`, ya idempotente en la API | Pendiente |
+| **D1.4** | Lectura manual de micro y macromedidor; roles operador y directiva | Pendiente |
+
 ### 11.5 Modelo comercial, criterio de éxito y pendientes
 
 **Modelo comercial (revisado 2026-10-05; reemplaza la hipótesis "la junta no paga").** El

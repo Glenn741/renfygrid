@@ -1889,3 +1889,60 @@ Un id mal formado responde 404, no 500. `/process-route` devuelve los productos 
 - ciclo "Taller Municipios Azules · Gualaceo 2026" con cierre el 25 de septiembre y 8
   compromisos;
 - 7 días revisado el 3 de octubre, con el acta sin firmar reprogramada; 30 y 90 días por venir.
+
+### D1.1 Operación diaria: puntos, cloro 7B y bitácora 7C (2026-10-06)
+
+Fuente: Guía 3, §3.3 (rutina en 5 momentos), §3.4 (interpretación del cloro) y fichas 7B y 7C.
+
+**Migración 0030:**
+- **Reglas del paquete normativo:** cada tramo trae ahora `action` (el "qué hacer", texto de la
+  guía) y `finding_priority`. La prioridad es interpretación propia, con el mismo criterio que
+  las listas.
+- **Catálogos:**
+  - `sampling_point_kind` en `core`: salida del tanque (cada día, como dice la guía), punto
+    medio, punto lejano y punto crítico, estos tres sin frecuencia inventada;
+  - `operation_moment` en Municipios Azules: los 5 momentos.
+- **Tablas por junta con RLS:**
+  - `sampling_point`;
+  - `field_reading`: guarda la interpretación con su `rule_id`, para que un cambio de norma no
+    reescriba el historial; `client_id` único por junta;
+  - `operation_log_entry`.
+
+**Motor:**
+- `interpret_reading`: un tramo fuera de rango sin prioridad es una regla incompleta y da error.
+- `log_entry_status`: nunca "Bueno" con el cloro fuera de rango o el agua turbia o con color.
+- `sampling_points_status`.
+
+**Servicio (`operation_service.py`):**
+- Una medición fuera de rango abre un hallazgo o se suma al abierto del mismo punto y parámetro.
+  Repetir la medición es parte del procedimiento y no debe llenar la lista.
+- Un parámetro de laboratorio se rechaza con 422.
+- El mismo `client_id` devuelve lo ya guardado, ya preparado para la app sin conexión.
+- El día y la última medición se calculan con la zona de la organización.
+
+**API:**
+- `GET /operations/catalog` y `GET /operations/today`;
+- `GET/POST /sampling-points` y `PATCH /sampling-points/{id}`;
+- `POST/GET /field-readings` y `POST/GET /operation-log`;
+- `/parameter-rules/evaluate` ahora devuelve también `action`;
+- una hora sin zona responde 422.
+
+**Portal:** página "Operación diaria", primera del grupo Operación del sistema.
+- **Hoy:** la rutina con sus tomas, los puntos por medir y el resumen.
+- **Medir:** vista previa de la interpretación con los tramos del paquete mientras se escribe.
+- **Bitácora 7C**, **Mediciones 7B** con enlace al hallazgo y **Puntos de medición**.
+
+**Verificación:**
+- 47 pruebas del motor.
+- E2E nuevo `verify_operation_end_to_end.py` con el ejemplo 15/07/2026 de la Actividad
+  participativa 4, deduplicación, idempotencia, validaciones y aislamiento entre juntas.
+- Regresión D0.1 y D0.2 en verde.
+- En vivo, los dos tenants ven el mismo catálogo.
+
+**Demo en `jaas001`:**
+- 4 puntos de Gualaceo; la salida del tanque está ligada al componente del gemelo.
+- 14 días (22 de septiembre a 5 de octubre) con 24 mediciones y bitácora completa.
+- El 30 de septiembre, 0,2 mg/L en la vivienda del extremo abre un hallazgo; la repetición del
+  1 de octubre se suma al mismo, y el 2 de octubre ya da adecuado después de reparar una fuga.
+- El 27 de septiembre, una lluvia fuerte deja turbiedad de 8 UTN, con su hallazgo y "no se
+  aumentó el cloro".

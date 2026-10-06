@@ -20,7 +20,8 @@ from __future__ import annotations
 
 import sys
 from contextlib import contextmanager
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from pathlib import Path
 from typing import Iterator
 
@@ -209,6 +210,21 @@ from pack_service import (  # noqa: E402
     update_follow_up_item,
 )
 from pack_engine import InvalidRecordError  # noqa: E402
+from operation_service import (  # noqa: E402
+    OperationConflictError,
+    OperationNotFoundError,
+    create_log_entry,
+    create_sampling_point,
+    list_field_parameters,
+    list_field_readings,
+    list_log_entries,
+    list_operation_moments,
+    list_sampling_point_kinds,
+    list_sampling_points,
+    operation_day,
+    record_field_reading,
+    update_sampling_point,
+)
 from pack_service import AssetNotFoundError as PackAssetNotFoundError  # noqa: E402
 from renmeter_common.auth import create_token  # noqa: E402
 from renmeter_common.db import tenant_scope  # noqa: E402
@@ -1747,6 +1763,172 @@ def review_follow_up_milestone_endpoint(cycle_id: str, milestone_code: str, body
                                               requested_by_label(actor), body.summary)
         except FollowUpNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+# ── Operacion diaria: puntos, mediciones 7B y bitacora 7C (Track D, 0030) ──
+
+def _tenant_day(conn, tenant_id: str) -> tuple[date, str, datetime, datetime]:
+    """Hoy, la zona y los limites del dia en la zona de la organizacion
+    (0029). Sin zona horaria -> 409, nunca el dia UTC del servidor."""
+    try:
+        today = tenant_today(conn, tenant_id)
+    except TimezoneNotConfiguredError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    tz_name = get_timezone(conn, tenant_id)
+    tz = ZoneInfo(tz_name)
+    start = datetime.combine(today, datetime.min.time(), tzinfo=tz)
+    return today, tz_name, start, start + timedelta(days=1)
+
+
+@app.get("/operations/catalog")
+def operations_catalog_endpoint(tenant_id: str = Depends(get_tenant_id)) -> dict:
+    """Tipos de punto, rutina diaria y parametros de campo con su regla."""
+    with db_conn() as conn:
+        return {
+            "point_kinds": list_sampling_point_kinds(conn, tenant_id),
+            "moments": list_operation_moments(conn, tenant_id),
+            "parameters": list_field_parameters(conn, tenant_id),
+        }
+
+
+@app.get("/operations/today")
+def operations_today_endpoint(tenant_id: str = Depends(get_tenant_id)) -> dict:
+    """Vista "Hoy" del operador (rutina, puntos que toca medir, mediciones)."""
+    with db_conn() as conn:
+        today, tz_name, start, end = _tenant_day(conn, tenant_id)
+        return operation_day(conn, tenant_id, today, tz_name, start, end)
+
+
+@app.get("/sampling-points")
+def list_sampling_points_endpoint(tenant_id: str = Depends(get_tenant_id), include_inactive: bool = False) -> list[dict]:
+    with db_conn() as conn:
+        today, tz_name, _, _ = _tenant_day(conn, tenant_id)
+        return list_sampling_points(conn, tenant_id, today, tz_name, include_inactive)
+
+
+class SamplingPointRequest(BaseModel):
+    kind_code: str
+    name: str
+    asset_id: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+    frequency_days: int | None = None
+
+
+def _operation_errors(exc: Exception) -> HTTPException:
+    if isinstance(exc, (OperationNotFoundError, PackAssetNotFoundError)):
+        return HTTPException(status_code=404, detail=str(exc))
+    if isinstance(exc, OperationConflictError):
+        return HTTPException(status_code=409, detail=str(exc))
+    return HTTPException(status_code=422, detail=str(exc))
+
+
+_OPERATION_ERRORS = (OperationNotFoundError, PackAssetNotFoundError, OperationConflictError, InvalidRecordError)
+
+
+@app.post("/sampling-points", status_code=201)
+def create_sampling_point_endpoint(body: SamplingPointRequest, tenant_id: str = Depends(get_tenant_id)) -> dict:
+    with db_conn() as conn:
+        try:
+            return create_sampling_point(conn, tenant_id, body.kind_code, body.name, body.asset_id,
+                                         body.latitude, body.longitude, body.frequency_days)
+        except _OPERATION_ERRORS as exc:
+            raise _operation_errors(exc) from exc
+
+
+class SamplingPointUpdateRequest(BaseModel):
+    name: str | None = None
+    frequency_days: int | None = None
+    active: bool | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+    asset_id: str | None = None
+
+
+@app.patch("/sampling-points/{point_id}")
+def update_sampling_point_endpoint(point_id: str, body: SamplingPointUpdateRequest,
+                                   tenant_id: str = Depends(get_tenant_id)) -> dict:
+    """Solo cambia los campos enviados (un null explicito borra el valor)."""
+    with db_conn() as conn:
+        try:
+            return update_sampling_point(conn, tenant_id, point_id, **body.model_dump(exclude_unset=True))
+        except _OPERATION_ERRORS as exc:
+            raise _operation_errors(exc) from exc
+
+
+class FieldReadingRequest(BaseModel):
+    parameter_code: str
+    value: float
+    measured_at: datetime | None = None
+    sampling_point_id: str | None = None
+    action_taken: str | None = None
+    client_id: str | None = None
+
+
+@app.post("/field-readings", status_code=201)
+def record_field_reading_endpoint(body: FieldReadingRequest, actor: dict = Depends(get_actor)) -> dict:
+    """Medicion de campo (7B). Quien midio sale del JWT. `measured_at` sin
+    zona se rechaza: la app sin conexion manda la hora con su zona."""
+    measured_at = body.measured_at or datetime.now(timezone.utc)
+    if measured_at.tzinfo is None:
+        raise HTTPException(status_code=422, detail="measured_at debe incluir la zona horaria")
+    with db_conn() as conn:
+        try:
+            return record_field_reading(conn, actor["tenant_id"], body.parameter_code, body.value, measured_at,
+                                        requested_by_label(actor), body.sampling_point_id, body.action_taken,
+                                        body.client_id)
+        except _OPERATION_ERRORS as exc:
+            raise _operation_errors(exc) from exc
+
+
+@app.get("/field-readings")
+def list_field_readings_endpoint(
+    tenant_id: str = Depends(get_tenant_id), since: datetime | None = None, until: datetime | None = None,
+    point_id: str | None = None, parameter_code: str | None = None, limit: int = 200,
+) -> list[dict]:
+    with db_conn() as conn:
+        try:
+            return list_field_readings(conn, tenant_id, since, until, point_id, parameter_code, limit)
+        except OperationNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+class OperationLogRequest(BaseModel):
+    logged_at: datetime | None = None
+    moment_code: str | None = None
+    tank_level_pct: float | None = None
+    chlorine_applied: float | None = None
+    chlorine_applied_unit: str | None = None
+    reading_id: str | None = None
+    appearance: str | None = None
+    status: str | None = None
+    notes: str | None = None
+    client_id: str | None = None
+
+
+@app.post("/operation-log", status_code=201)
+def create_log_entry_endpoint(body: OperationLogRequest, actor: dict = Depends(get_actor)) -> dict:
+    """Toma de la bitacora diaria (7C)."""
+    logged_at = body.logged_at or datetime.now(timezone.utc)
+    if logged_at.tzinfo is None:
+        raise HTTPException(status_code=422, detail="logged_at debe incluir la zona horaria")
+    with db_conn() as conn:
+        try:
+            return create_log_entry(
+                conn, actor["tenant_id"], logged_at, requested_by_label(actor), body.moment_code, None,
+                body.tank_level_pct, body.chlorine_applied, body.chlorine_applied_unit, body.reading_id,
+                body.appearance, body.status, body.notes, body.client_id,
+            )
+        except _OPERATION_ERRORS as exc:
+            raise _operation_errors(exc) from exc
+
+
+@app.get("/operation-log")
+def list_log_entries_endpoint(
+    tenant_id: str = Depends(get_tenant_id), since: datetime | None = None, until: datetime | None = None, limit: int = 200,
+) -> list[dict]:
+    with db_conn() as conn:
+        return list_log_entries(conn, tenant_id, since, until, limit)
 
 
 @app.get("/settings/instrumentation")

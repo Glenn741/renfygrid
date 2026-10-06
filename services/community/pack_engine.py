@@ -57,20 +57,41 @@ def validate_bands(bands: list[dict]) -> None:
             raise InvalidRuleError("Cada tramo necesita code, label y severity")
 
 
-def evaluate_bands(bands: list[dict], value: float) -> dict[str, Any]:
+def matching_band(bands: list[dict], value: float) -> dict[str, Any]:
     """El primer tramo cuyo limite cubre el valor. Con `upper_inclusive`
     falso el limite se excluye (cloro 0,29 -> bajo; 0,3 -> adecuado)."""
     validate_bands(bands)
     for band in bands:
         upper = band.get("upper")
         if upper is None:
-            return _band_result(band)
+            return band
         if band.get("upper_inclusive", True):
             if value <= upper:
-                return _band_result(band)
+                return band
         elif value < upper:
-            return _band_result(band)
+            return band
     raise InvalidRuleError("Ningun tramo cubre el valor")  # inalcanzable si validate_bands paso
+
+
+def evaluate_bands(bands: list[dict], value: float) -> dict[str, Any]:
+    return _band_result(matching_band(bands, value))
+
+
+def interpret_reading(bands: list[dict], value: float) -> dict[str, Any]:
+    """Interpretacion completa de una medicion (7B): resultado, que hacer y
+    con que prioridad se abre un hallazgo si esta fuera de rango. Todo sale
+    del tramo del paquete; un tramo fuera de rango sin `finding_priority` es
+    una regla incompleta, no un valor a inventar."""
+    band = matching_band(bands, value)
+    out_of_range = band["severity"] != "ok"
+    if out_of_range and not band.get("finding_priority"):
+        raise InvalidRuleError(f"El tramo {band['code']!r} esta fuera de rango y no define finding_priority")
+    return {
+        **_band_result(band),
+        "action": band.get("action"),
+        "out_of_range": out_of_range,
+        "finding_priority": band.get("finding_priority") if out_of_range else None,
+    }
 
 
 def _band_result(band: dict) -> dict[str, Any]:
@@ -403,6 +424,47 @@ def follow_up_schedule(
             "pending_items": sum(1 for i in own if i["status"] == "pending"),
         })
     return result
+
+
+# ── Operacion diaria: 7B y 7C (0030) ───────────────────────────────────
+
+APPEARANCES = ("clear", "turbid", "colored")
+LOG_STATUSES = ("good", "alert")
+
+
+def log_entry_status(operator_status: str | None, reading_severity: str | None, appearance: str | None) -> str:
+    """Estado de una toma de la bitacora 7C (Bueno / Alerta). El operador
+    puede marcar alerta por cualquier novedad; nunca puede quedar "Bueno"
+    si el cloro esta fuera de rango o el agua se ve turbia o con color."""
+    if operator_status is not None and operator_status not in LOG_STATUSES:
+        raise InvalidRecordError(f"Estado invalido: {operator_status!r} (validos: {list(LOG_STATUSES)})")
+    if appearance is not None and appearance not in APPEARANCES:
+        raise InvalidRecordError(f"Aspecto invalido: {appearance!r} (validos: {list(APPEARANCES)})")
+    if reading_severity in ("alert", "critical") or appearance in ("turbid", "colored"):
+        return "alert"
+    return operator_status or "good"
+
+
+def sampling_points_status(points: list[dict], last_reading_on: dict[str, date], today: date) -> list[dict[str, Any]]:
+    """Que puntos toca medir hoy. Frecuencia: la del punto o, si no tiene,
+    la de su tipo (catalogo). Sin frecuencia, el punto rota cuando la junta
+    lo decide y solo se informa su ultima medicion.
+      never -- nunca se midio
+      due   -- ya paso su frecuencia
+      ok    -- medido dentro de su frecuencia (o sin frecuencia definida)"""
+    rows = []
+    for p in points:
+        freq = p.get("frequency_days") or p.get("kind_frequency_days")
+        last = last_reading_on.get(p["point_id"])
+        if last is None:
+            status = "never"
+        elif freq and (today - last).days >= freq:
+            status = "due"
+        else:
+            status = "ok"
+        rows.append({**p, "effective_frequency_days": freq, "last_reading_on": last.isoformat() if last else None,
+                     "days_since": (today - last).days if last else None, "status": status})
+    return rows
 
 
 # ── Nivel de instrumentacion ───────────────────────────────────────────

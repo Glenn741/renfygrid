@@ -1189,6 +1189,168 @@ export function getChecklistTemplates(): Promise<ChecklistTemplate[]> {
   return request("/checklist-templates");
 }
 
+// ── Operacion diaria: puntos, mediciones 7B y bitacora 7C (0030) ──────
+
+export interface RuleBand {
+  upper: number | null;
+  upper_inclusive?: boolean;
+  code: string;
+  label: string;
+  severity: "ok" | "alert" | "critical";
+  finding_priority?: string;
+  action?: string;
+}
+
+export interface FieldParameter {
+  code: string;
+  label: string;
+  unit: string;
+  bands: RuleBand[] | null;
+  citation: string | null;
+}
+
+export interface OperationMoment {
+  pack_id: string;
+  code: string;
+  label: string;
+  check_text: string;
+  record_text: string;
+}
+
+export interface OperationsCatalog {
+  point_kinds: { code: string; label: string; purpose: string; frequency_days: number | null }[];
+  moments: OperationMoment[];
+  parameters: FieldParameter[];
+}
+
+export function getOperationsCatalog(): Promise<OperationsCatalog> {
+  return request("/operations/catalog");
+}
+
+export interface SamplingPoint {
+  point_id: string;
+  kind_code: string;
+  kind_label: string;
+  name: string;
+  asset_id: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  frequency_days: number | null;
+  kind_frequency_days: number | null;
+  active: boolean;
+  effective_frequency_days: number | null;
+  last_reading_on: string | null;
+  days_since: number | null;
+  status: "never" | "due" | "ok";
+  last_chlorine: { measured_at: string; value: number; result_label: string | null; severity: string | null } | null;
+}
+
+export function getSamplingPoints(includeInactive = false): Promise<SamplingPoint[]> {
+  return request(`/sampling-points${includeInactive ? "?include_inactive=true" : ""}`);
+}
+
+export function createSamplingPoint(body: { kind_code: string; name: string; frequency_days?: number | null }): Promise<SamplingPoint> {
+  return request("/sampling-points", { method: "POST", body: JSON.stringify(body) });
+}
+
+export function updateSamplingPoint(
+  pointId: string,
+  body: Partial<Pick<SamplingPoint, "name" | "frequency_days" | "active">>,
+): Promise<SamplingPoint> {
+  return request(`/sampling-points/${pointId}`, { method: "PATCH", body: JSON.stringify(body) });
+}
+
+export interface FieldReading {
+  reading_id: string;
+  point_id: string | null;
+  point_name: string | null;
+  parameter_code: string;
+  parameter_label: string;
+  unit: string;
+  value: number;
+  measured_at: string;
+  measured_by: string;
+  result_code: string | null;
+  result_label: string | null;
+  severity: "ok" | "alert" | "critical" | null;
+  action_taken: string | null;
+  finding_id: string | null;
+}
+
+export interface FieldReadingResult extends FieldReading {
+  duplicate: boolean;
+  finding_created: boolean;
+  interpretation: { code: string; label: string; severity: string; action: string | null; out_of_range: boolean; finding_priority: string | null } | null;
+}
+
+export function recordFieldReading(body: {
+  parameter_code: string;
+  value: number;
+  sampling_point_id?: string | null;
+  action_taken?: string | null;
+  measured_at?: string;
+  client_id?: string;
+}): Promise<FieldReadingResult> {
+  return request("/field-readings", { method: "POST", body: JSON.stringify(body) });
+}
+
+export function getFieldReadings(params: { since?: string; until?: string; point_id?: string; parameter_code?: string; limit?: number } = {}): Promise<FieldReading[]> {
+  const q = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined && v !== "").map(([k, v]) => [k, String(v)]));
+  return request(`/field-readings${q.toString() ? `?${q}` : ""}`);
+}
+
+export interface OperationLogEntry {
+  entry_id: string;
+  logged_at: string;
+  pack_id: string | null;
+  moment_code: string | null;
+  moment_label: string | null;
+  tank_level_pct: number | null;
+  chlorine_applied: number | null;
+  chlorine_applied_unit: "g" | "ml" | null;
+  reading_id: string | null;
+  residual_chlorine: number | null;
+  residual_result: string | null;
+  residual_severity: string | null;
+  appearance: "clear" | "turbid" | "colored" | null;
+  status: "good" | "alert";
+  notes: string | null;
+  logged_by: string;
+}
+
+export function createOperationLogEntry(body: {
+  moment_code?: string | null;
+  tank_level_pct?: number | null;
+  chlorine_applied?: number | null;
+  chlorine_applied_unit?: "g" | "ml" | null;
+  reading_id?: string | null;
+  appearance?: "clear" | "turbid" | "colored" | null;
+  status?: "good" | "alert" | null;
+  notes?: string | null;
+  logged_at?: string;
+  client_id?: string;
+}): Promise<OperationLogEntry & { duplicate: boolean }> {
+  return request("/operation-log", { method: "POST", body: JSON.stringify(body) });
+}
+
+export function getOperationLog(params: { since?: string; until?: string; limit?: number } = {}): Promise<OperationLogEntry[]> {
+  const q = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined && v !== "").map(([k, v]) => [k, String(v)]));
+  return request(`/operation-log${q.toString() ? `?${q}` : ""}`);
+}
+
+export interface OperationDay {
+  date: string;
+  moments: (OperationMoment & { entries: OperationLogEntry[] })[];
+  unassigned_entries: OperationLogEntry[];
+  points: SamplingPoint[];
+  readings: FieldReading[];
+  summary: { points_due: number; readings_today: number; out_of_range_today: number; entries_today: number; alerts_today: number; open_reading_findings: number };
+}
+
+export function getOperationsToday(): Promise<OperationDay> {
+  return request("/operations/today");
+}
+
 // ── Pasaporte de productos (T-07) y seguimiento 7-30-90 (T-09), 0028 ──
 
 export type ProductStatus = "complete" | "to_validate" | "pending";
