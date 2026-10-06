@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ApiError,
   adoptPack,
+  unadoptPack,
   getInstrumentation,
   getPacks,
   getParameterRules,
@@ -772,15 +773,21 @@ function PacksSection() {
   const { data: rules } = useQuery({ queryKey: ["parameter-rules"], queryFn: getParameterRules });
   const [error, setError] = useState<string | null>(null);
 
+  const refresh = () => {
+    setError(null);
+    for (const key of ["packs", "parameter-rules", "checklist-templates", "component-types", "process-route"]) {
+      queryClient.invalidateQueries({ queryKey: [key] });
+    }
+  };
   const adoptMutation = useMutation({
     mutationFn: (packId: string) => adoptPack(packId),
-    onSuccess: () => {
-      setError(null);
-      for (const key of ["packs", "parameter-rules", "checklist-templates", "component-types"]) {
-        queryClient.invalidateQueries({ queryKey: [key] });
-      }
-    },
+    onSuccess: refresh,
     onError: (err) => setError(err instanceof ApiError ? err.message : "No se pudo activar el paquete."),
+  });
+  const unadoptMutation = useMutation({
+    mutationFn: (packId: string) => unadoptPack(packId),
+    onSuccess: refresh,
+    onError: (err) => setError(err instanceof ApiError ? err.message : "No se pudo desactivar el paquete."),
   });
 
   return (
@@ -799,11 +806,26 @@ function PacksSection() {
                   <span className="text-sm font-semibold text-slate-800">{p.name}</span>
                   <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600">{PACK_KIND_LABEL[p.kind]}</span>
                   {p.country && <span className="text-[11px] text-slate-500">{p.country} · v{p.version}</span>}
+                  {p.is_default && <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-medium text-indigo-700" title="Viene activo en todas las organizaciones">Base de la plataforma</span>}
                 </div>
                 <p className="text-xs text-slate-500 mt-0.5 max-w-3xl">{p.source_note}</p>
               </div>
               {active
-                ? <span className="shrink-0 text-xs font-semibold text-emerald-700">Activo</span>
+                ? (
+                  <div className="flex shrink-0 items-center gap-3">
+                    <span className="text-xs font-semibold text-emerald-700">Activo</span>
+                    {p.kind !== "core" && (
+                      <button
+                        onClick={() => unadoptMutation.mutate(p.pack_id)}
+                        disabled={unadoptMutation.isPending}
+                        className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                        title="Desactivar para esta organización (por ejemplo, para usar el paquete de otro país). Lo ya registrado se conserva."
+                      >
+                        Desactivar
+                      </button>
+                    )}
+                  </div>
+                )
                 : (
                   <button
                     onClick={() => adoptMutation.mutate(p.pack_id)}

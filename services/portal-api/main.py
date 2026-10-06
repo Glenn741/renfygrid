@@ -190,6 +190,7 @@ from pack_service import (  # noqa: E402
     set_instrumentation,
     submit_checklist_run,
     system_route_report,
+    unadopt_pack,
     treatment_train_report,
     update_finding,
 )
@@ -1400,6 +1401,16 @@ def adopt_pack_endpoint(pack_id: str, tenant_id: str = Depends(get_tenant_id)) -
     with db_conn() as conn:
         try:
             return adopt_pack(conn, tenant_id, pack_id)
+        except PackNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.delete("/packs/{pack_id}/adopt")
+def unadopt_pack_endpoint(pack_id: str, tenant_id: str = Depends(get_tenant_id)) -> dict:
+    """Desactiva un paquete para esta organizacion (0025). `core` no."""
+    with db_conn() as conn:
+        try:
+            return unadopt_pack(conn, tenant_id, pack_id)
         except PackNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 

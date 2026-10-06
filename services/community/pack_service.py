@@ -100,10 +100,11 @@ def _assert_assets_belong(conn: psycopg.Connection, tenant_id: str, asset_ids: s
 
 def list_packs(conn: psycopg.Connection) -> list[dict]:
     with conn.cursor() as cur:
-        cur.execute("SELECT id, kind, country, name, version, source_note FROM pack ORDER BY kind, id")
+        cur.execute("SELECT id, kind, country, name, version, source_note, is_default FROM pack ORDER BY kind, id")
         rows = cur.fetchall()
     return [
-        {"pack_id": r[0], "kind": r[1], "country": r[2], "name": r[3], "version": r[4], "source_note": r[5]}
+        {"pack_id": r[0], "kind": r[1], "country": r[2], "name": r[3], "version": r[4], "source_note": r[5],
+         "is_default": r[6]}
         for r in rows
     ]
 
@@ -115,6 +116,23 @@ def active_pack_ids(conn: psycopg.Connection, tenant_id: str) -> list[str]:
                 cur.execute("SELECT pack_id FROM tenant_pack WHERE tenant_id = %s ORDER BY adopted_at", (tenant_id,))
                 adopted = [r[0] for r in cur.fetchall()]
     return [CORE_PACK] + [p for p in adopted if p != CORE_PACK]
+
+
+def unadopt_pack(conn: psycopg.Connection, tenant_id: str, pack_id: str) -> dict:
+    """Desactiva un paquete para esta organizacion (0025): p. ej. para usar
+    el paquete normativo de otro pais en lugar del base. `core` no se
+    desactiva. Lo ya registrado (revisiones, hallazgos) se conserva."""
+    if pack_id == CORE_PACK:
+        raise PackNotFoundError("El paquete core no se puede desactivar")
+    with conn.cursor() as cur:
+        cur.execute("SELECT 1 FROM pack WHERE id = %s", (pack_id,))
+        if cur.fetchone() is None:
+            raise PackNotFoundError(f"No existe el paquete {pack_id!r}")
+    with conn.transaction():
+        with tenant_scope(conn, tenant_id):
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM tenant_pack WHERE tenant_id = %s AND pack_id = %s", (tenant_id, pack_id))
+    return {"pack_id": pack_id, "active_packs": active_pack_ids(conn, tenant_id)}
 
 
 def adopt_pack(conn: psycopg.Connection, tenant_id: str, pack_id: str) -> dict:

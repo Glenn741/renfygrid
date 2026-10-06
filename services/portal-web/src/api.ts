@@ -1037,10 +1037,15 @@ export interface Pack {
   name: string;
   version: string;
   source_note: string;
+  is_default: boolean;
 }
 
 export function getPacks(): Promise<{ packs: Pack[]; active: string[] }> {
   return request("/packs");
+}
+
+export function unadoptPack(packId: string): Promise<{ pack_id: string; active_packs: string[] }> {
+  return request(`/packs/${encodeURIComponent(packId)}/adopt`, { method: "DELETE" });
 }
 
 export function adoptPack(packId: string): Promise<{ pack_id: string; active_packs: string[] }> {

@@ -38,6 +38,7 @@ import psycopg  # noqa: E402
 
 from pack_engine import InvalidAnswersError, InvalidInstrumentationError  # noqa: E402
 from pack_service import (  # noqa: E402
+    unadopt_pack,
     AssetNotFoundError,
     InvalidFindingError,
     PackNotFoundError,
@@ -97,17 +98,20 @@ def main(dsn: str) -> None:
             cur.execute("INSERT INTO tenant (name) VALUES ('E2E Track D0 junta B') RETURNING id")
             tenant_b = str(cur.fetchone()[0])
         try:
-            print("1. Junta nueva: solo core")
-            check(active_pack_ids(conn, tenant_a) == ["core"], "paquetes activos = ['core']")
-            check(list_checklist_templates(conn, tenant_a) == [], "sin listas del programa")
-            expect(RuleNotFoundError, lambda: evaluate_parameter(conn, tenant_a, "free_chlorine", 0.5),
-                   "sin regla de cloro hasta adoptar el paquete normativo")
+            print("1. Junta nueva: nace con los paquetes base (0025)")
+            check(sorted(active_pack_ids(conn, tenant_a)) == ["EC-ARCA", "EC-MUNICIPIOS-AZULES", "core"],
+                  "paquetes base activos desde el alta (trigger en tenant)")
+            check(sorted(active_pack_ids(conn, tenant_b)) == sorted(active_pack_ids(conn, tenant_a)),
+                  "las dos juntas tienen el mismo modelo funcional")
 
-            print("2. Adopcion de paquetes")
+            print("2. Desactivar y volver a activar un paquete")
             expect(PackNotFoundError, lambda: adopt_pack(conn, tenant_a, "NO-EXISTE"), "paquete inexistente rechazado")
-            adopt_pack(conn, tenant_a, "EC-ARCA")
-            result = adopt_pack(conn, tenant_a, "EC-MUNICIPIOS-AZULES")
-            check(result["active_packs"] == ["core", "EC-ARCA", "EC-MUNICIPIOS-AZULES"], "3 paquetes activos")
+            expect(PackNotFoundError, lambda: unadopt_pack(conn, tenant_a, "core"), "core no se desactiva")
+            unadopt_pack(conn, tenant_a, "EC-ARCA")
+            expect(RuleNotFoundError, lambda: evaluate_parameter(conn, tenant_a, "free_chlorine", 0.5),
+                   "sin paquete normativo no hay regla de cloro (no se inventa un umbral)")
+            result = adopt_pack(conn, tenant_a, "EC-ARCA")
+            check(sorted(result["active_packs"]) == ["EC-ARCA", "EC-MUNICIPIOS-AZULES", "core"], "3 paquetes activos de nuevo")
             check(len(list_checklist_templates(conn, tenant_a)) == 23, "23 listas del programa visibles (G2-G6, 0021+0024)")
 
             print("3. Evaluacion con la regla del paquete")

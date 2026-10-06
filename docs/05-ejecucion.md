@@ -1765,3 +1765,25 @@ regresión de login, API y paquetes. En vivo: cambiar `jaas001` a 8 h → el sig
 **Respaldos para revertir:** `essmarplapp02:/tmp/renfygrid_jaas_backup_20261005/` (código
 anterior) y `essmarplpxy03:/var/www/renfygrid.bak_before_jaas_20261005`. El `pg_dump` previo se
 eliminó con `shred` tras verificar.
+### Paridad funcional entre tenants: paquetes base (2026-10-05)
+
+Hallazgo del usuario: "noto un ambiente funcional diferente al cambiar del tenant jaas001 al
+col001... la única diferencia entre ellos son los datos". **Causa:** el modelo ARCA (listas,
+reglas de calidad, ruta) vivía en `tenant_pack` y solo lo tenían los tenants que habían
+adoptado los paquetes a mano. `col001` nunca los adoptó y veía la ruta vacía.
+
+- **Migración 0025:** `pack.is_default` (EC-ARCA y EC-MUNICIPIOS-AZULES), un trigger
+  `AFTER INSERT ON tenant` que da los paquetes base a todo tenant nuevo (cualquier camino de
+  alta) y un backfill para los existentes. `tenant_pack` pasa a `ON DELETE CASCADE`.
+- **API:** `DELETE /packs/{id}/adopt` (`unadopt_pack`; `core` no se desactiva), para que un
+  tenant de otro país pueda cambiar de paquete normativo sin tocar código.
+- **Portal Web:** Configuración → Paquetes muestra "Base de la plataforma" y "Desactivar".
+- **Instrumentación de `col001`** declarada por la API: medición, red y balance avanzados;
+  facturación y mantenimiento intermedios; calidad básica.
+
+Verificación: E2E locales en verde (D0.1, D0.2, login, Sprint 8, gemelo, mantenimiento). En
+vivo, `col001` y `jaas001` dan lo mismo: paquetes `core` + EC-ARCA + EC-MUNICIPIOS-AZULES,
+23 listas, etapas G1–G6 (0/4/5/3/7/4 listas) y las mismas evaluaciones de cloro, E. coli,
+turbiedad y pH. Lo que cambia son solo los datos y los niveles declarados. Respaldo del
+código anterior en `essmarplapp02:/tmp/renfygrid_parity_backup_20261005/`; el `pg_dump`
+previo se eliminó con `shred` después de verificar.
