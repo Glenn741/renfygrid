@@ -1827,3 +1827,65 @@ Los cambios al modelo son genéricos: sirven a cualquier cuestionario de cualqui
 **Demo en `jaas001`:** CAP de 10 participantes (GUA-01 a GUA-10), inicial y final. El total
 pasa de 38 % a 82 %. G6 (Plan de Mejora) queda en Medio, 53 %, como el caso de refuerzo que la
 Guía 7 pide revisar.
+
+### Pasaporte de productos (T-07) y seguimiento 7-30-90 (T-09), D0.6 (2026-10-05)
+
+Fuente: Guía 7.
+- **T-07:** Producto, Evidencia, Completo, Validar, Pendiente y Pasa a G6.
+- **§11 y T-09:** momentos de 7, 30 y 90 días, con qué revisar y qué evidencia.
+
+**Migración 0028:**
+- **Catálogos del paquete:**
+  - `process_product`: los 42 productos que eran textos en `process_stage.products`, ahora con
+    código propio; la columna anterior se eliminó;
+  - `follow_up_milestone`: D7, D30 y D90, con la etapa INT y los textos literales.
+- **Tablas por junta con RLS:**
+  - `product_record`;
+  - `follow_up_cycle`: un ciclo por proceso formativo, contado desde la fecha de cierre;
+  - `follow_up_item`: compromiso, responsable, fecha, estado, situación, evidencia y ajuste;
+  - `follow_up_review`.
+
+**Migración 0029: zona horaria como parámetro de la organización** (`tenant.config.timezone`,
+nombre IANA).
+- **Hallazgo:** al probar a las 23:00 de Ecuador, en UTC ya era el día siguiente y un momento
+  salía vencido un día antes.
+- Se fijó solo donde se sabe: `col001` en Bogotá; `jaas001` y la junta de ejemplo de la G3 en
+  Guayaquil.
+- Si falta, el seguimiento responde 409 y lleva a Configuración → Zona horaria. La lista de
+  zonas sale del navegador, no del código.
+
+**Motor:** `passport_rows` y `passport_summary` (un producto sin registro cuenta como
+pendiente) y `follow_up_schedule`, que calcula la fecha de cierre + días del catálogo y el estado
+revisado, toca revisar o próximo.
+
+**API:**
+- `GET /passport` y `PUT /passport/{pack}/{product}`;
+- `GET /follow-up`;
+- `POST /follow-up/cycles` y `POST /follow-up/cycles/{id}/items`;
+- `PATCH /follow-up/items/{id}`: solo cambian los campos enviados;
+- `PUT /follow-up/cycles/{id}/milestones/{code}/review`;
+- `GET/PUT /settings/timezone`.
+
+Un id mal formado responde 404, no 500. `/process-route` devuelve los productos con su estado y
+`has_follow_up`.
+
+**Portal, en Ruta y revisiones:**
+- cada etapa muestra sus productos y se actualizan ahí mismo;
+- botón "Pasaporte de productos" con la vista completa del T-07;
+- la etapa INT tiene el panel de seguimiento: abrir ciclo, tarjetas por momento con qué revisar,
+  compromisos con su estado y "Registrar la revisión".
+
+**Verificación:**
+- 41 pruebas del motor.
+- E2E D0.1: aislamiento entre juntas del pasaporte y del seguimiento; el rol de aplicación no
+  edita los momentos.
+- E2E D0.2: 42 productos, estados válidos, 404 y 422, sin zona horaria → 409, fechas y estados
+  de cada momento.
+- Login sin cambios.
+- En vivo, los dos tenants ven el mismo pasaporte y el mismo seguimiento.
+
+**Demo en `jaas001`:**
+- pasaporte con 22 productos completos, 10 por validar, 10 pendientes y 7 que pasan a G6;
+- ciclo "Taller Municipios Azules · Gualaceo 2026" con cierre el 25 de septiembre y 8
+  compromisos;
+- 7 días revisado el 3 de octubre, con el acta sin firmar reprogramada; 30 y 90 días por venir.

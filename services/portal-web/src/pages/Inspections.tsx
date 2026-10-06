@@ -19,6 +19,8 @@ import {
 import { useNavigate, useParams } from "react-router-dom";
 import { StagePage, EmptyState } from "../components/StagePage";
 import { ROUTE_QUERY_KEY, STAGE_STATE_STYLE, stageState } from "../components/routeStatus";
+import { PassportView, StageProducts, passportText } from "../components/Passport";
+import { FollowUpPanel } from "../components/FollowUpPanel";
 
 // Ruta y revisiones -- rediseno de usabilidad (2026-10-05, a pedido del
 // usuario: "un usuario no logra percibir que debe hacer click" y "la vision
@@ -180,14 +182,9 @@ function StagePanel({ stage, onApply, onView, onAnalysis, withAnalysis }: {
         <span className="text-xs text-slate-500">{stage.source_ref}</span>
       </div>
       <p className="mt-1 max-w-3xl text-sm text-slate-600">{stage.purpose}</p>
-      <div className="mt-3 flex flex-wrap gap-1.5" aria-label="Productos de la etapa">
-        {stage.products.map((p) => (
-          <span key={p} className="rounded-full border border-slate-200 px-2.5 py-0.5 text-[11px] text-slate-600">{p}</span>
-        ))}
-      </div>
       {stage.lists.length === 0 ? (
         <div className="mt-4 rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-600">
-          Esta etapa todavía no tiene listas de revisión en la plataforma. Arriba están los productos que pide la guía; se irán incorporando.
+          Esta etapa todavía no tiene listas de revisión en la plataforma. Abajo están los productos que pide la guía: registre su avance en el pasaporte.
         </div>
       ) : (
         <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -202,6 +199,8 @@ function StagePanel({ stage, onApply, onView, onAnalysis, withAnalysis }: {
           ))}
         </div>
       )}
+      <StageProducts products={stage.products} summary={stage.products_summary} />
+      {stage.has_follow_up && <FollowUpPanel />}
     </section>
   );
 }
@@ -575,7 +574,8 @@ type View =
   | { mode: "route" }
   | { mode: "apply"; templateId: string }
   | { mode: "detail"; runId: string }
-  | { mode: "analysis"; templateId: string };
+  | { mode: "analysis"; templateId: string }
+  | { mode: "passport" };
 
 function defaultStage(stages: RouteStageInfo[]): string | undefined {
   return (
@@ -616,6 +616,16 @@ export function InspectionsPage() {
   const withAnalysis = new Set((templates ?? []).filter((t) => t.analysis).map((t) => t.id));
   const stage = route?.stages.find((s) => s.code === stageCode);
   const template = view.mode === "apply" || view.mode === "analysis" ? byId[view.templateId] : undefined;
+  const productTotals = route?.stages.reduce(
+    (acc, s) => ({
+      total: acc.total + s.products_summary.total,
+      complete: acc.complete + s.products_summary.complete,
+      to_validate: acc.to_validate + s.products_summary.to_validate,
+      pending: acc.pending + s.products_summary.pending,
+      to_improvement_plan: acc.to_improvement_plan + s.products_summary.to_improvement_plan,
+    }),
+    { total: 0, complete: 0, to_validate: 0, pending: 0, to_improvement_plan: 0 },
+  );
   const totals = route?.stages.reduce((acc, s) => ({ applied: acc.applied + s.summary.applied, total: acc.total + s.summary.total, overdue: acc.overdue + s.summary.overdue }), { applied: 0, total: 0, overdue: 0 });
 
   return (
@@ -637,11 +647,21 @@ export function InspectionsPage() {
             <p className="max-w-3xl text-sm text-slate-600">
               La ruta del programa en orden. Elija una etapa para ver sus revisiones y aplicar la que corresponda. Las etapas con revisiones vencidas se marcan en rojo.
             </p>
-            {totals && totals.total > 0 && (
-              <span className="text-xs text-slate-600 tabular-nums">
-                {totals.applied} de {totals.total} revisiones aplicadas{totals.overdue > 0 && <span className="font-semibold text-red-600"> · {totals.overdue} vencida{totals.overdue === 1 ? "" : "s"}</span>}
-              </span>
-            )}
+            <div className="flex flex-wrap items-center gap-3">
+              {totals && totals.total > 0 && (
+                <span className="text-xs text-slate-600 tabular-nums">
+                  {totals.applied} de {totals.total} revisiones aplicadas{totals.overdue > 0 && <span className="font-semibold text-red-600"> · {totals.overdue} vencida{totals.overdue === 1 ? "" : "s"}</span>}
+                </span>
+              )}
+              {productTotals && productTotals.total > 0 && (
+                <button
+                  onClick={() => setView({ mode: "passport" })}
+                  className="rounded-lg border border-indigo-300 px-3 py-1.5 text-sm font-medium text-indigo-700 hover:bg-indigo-50"
+                >
+                  Pasaporte de productos · {passportText(productTotals)}
+                </button>
+              )}
+            </div>
           </div>
           {stageCode && <RouteStepper stages={route.stages} selected={stageCode} onSelect={setStageCode} />}
           {stage && (
@@ -673,7 +693,8 @@ export function InspectionsPage() {
         </div>
       )}
 
-      {view.mode === "analysis" && template && <AnalysisView template={template} onClose={() => setView({ mode: "route" })} />}
+      {view.mode === "passport" && <PassportView onClose={() => setView({ mode: "route" })} />}
+      {view.mode === "analysis" && template &&<AnalysisView template={template} onClose={() => setView({ mode: "route" })} />}
       {view.mode === "apply" && template && (
         <RunForm
           key={template.id}

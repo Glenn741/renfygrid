@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ApiError,
@@ -8,8 +8,10 @@ import {
   getPacks,
   getParameterRules,
   getSessionSettings,
+  getTimezoneSettings,
   setInstrumentation,
   setSessionSettings,
+  setTimezoneSettings,
   bulkMarkMeterProtection,
   createApprovalLevel,
   createConsumptionAnomalyRule,
@@ -902,6 +904,80 @@ function InstrumentationSection() {
   );
 }
 
+function TimezoneSettingsSection() {
+  const queryClient = useQueryClient();
+  const { data } = useQuery({ queryKey: ["timezone-settings"], queryFn: getTimezoneSettings });
+  const [value, setValue] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  // Lista IANA del navegador: ninguna zona escrita a mano en el codigo.
+  const zones = useMemo(() => {
+    try {
+      return (Intl as unknown as { supportedValuesOf?: (k: string) => string[] }).supportedValuesOf?.("timeZone") ?? [];
+    } catch {
+      return [];
+    }
+  }, []);
+  const browserZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const configured = data?.timezone ?? null;
+
+  const mutation = useMutation({
+    mutationFn: () => setTimezoneSettings(value.trim()),
+    onSuccess: () => {
+      setError(null);
+      setSaved(true);
+      setValue("");
+      queryClient.invalidateQueries({ queryKey: ["timezone-settings"] });
+      queryClient.invalidateQueries({ queryKey: ["follow-up"] });
+    },
+    onError: (err) => {
+      setSaved(false);
+      setError(err instanceof ApiError ? err.message : "No se pudo guardar la zona horaria.");
+    },
+  });
+
+  return (
+    <SectionCard
+      title="Zona horaria"
+      description="Define qué es “hoy” para esta organización: las fechas del seguimiento a 7, 30 y 90 días y los vencimientos se cuentan en su zona, no en la del servidor."
+    >
+      <div className="flex flex-wrap items-end gap-3 mb-3">
+        <div>
+          <label htmlFor="tz-name" className="block text-xs font-medium text-slate-500 mb-1">Zona horaria (nombre IANA)</label>
+          <input
+            id="tz-name"
+            list="tz-options"
+            className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm w-72"
+            value={value}
+            placeholder={configured ?? browserZone}
+            onChange={(e) => { setValue(e.target.value); setSaved(false); }}
+          />
+          <datalist id="tz-options">{zones.map((z) => <option key={z} value={z} />)}</datalist>
+        </div>
+        <button
+          onClick={() => mutation.mutate()}
+          disabled={mutation.isPending || !value.trim()}
+          className="rounded-lg bg-indigo-600 text-white text-sm font-semibold px-4 py-1.5 hover:bg-indigo-700 disabled:opacity-50"
+        >
+          Guardar
+        </button>
+        {!configured && browserZone && (
+          <button onClick={() => setValue(browserZone)} className="text-sm font-medium text-indigo-700 hover:underline">
+            Usar la de este equipo ({browserZone})
+          </button>
+        )}
+      </div>
+      {error && <p className="text-sm text-red-600 mb-2">{error}</p>}
+      {saved && <p className="text-sm text-emerald-700 mb-2">Guardado.</p>}
+      <p className="text-xs text-slate-500">
+        Valor actual: {configured
+          ? <strong className="text-slate-700">{configured}</strong>
+          : <span className="text-amber-700 font-semibold">sin configurar: el seguimiento 7-30-90 no se puede calcular hasta definirla</span>}
+      </p>
+    </SectionCard>
+  );
+}
+
 function SessionSettingsSection() {
   const queryClient = useQueryClient();
   const { data } = useQuery({ queryKey: ["session-settings"], queryFn: getSessionSettings });
@@ -973,6 +1049,7 @@ export function ConfigurationPage() {
     <StagePage title="Configuración">
       <SectionNav items={SECTIONS} />
       <NavSection id="session"><SessionSettingsSection /></NavSection>
+      <NavSection id="timezone"><TimezoneSettingsSection /></NavSection>
       <NavSection id="packs"><PacksSection /></NavSection>
       <NavSection id="instrumentation"><InstrumentationSection /></NavSection>
       <NavSection id="hes-settings"><HesSettingsSection /></NavSection>

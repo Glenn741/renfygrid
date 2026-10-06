@@ -14,7 +14,7 @@ y llama aca, igual que `order_service.py` con `maintenance_engine.py`.
 from __future__ import annotations
 
 import math
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 
 INSTRUMENTATION_MODULES = ("metering", "water_balance", "quality", "maintenance", "network", "billing")
@@ -331,6 +331,78 @@ def stage_summary(lists: list[dict]) -> dict[str, int]:
         counts[item["status"]] += 1
     counts["applied"] = counts["done"] + counts["ok"] + counts["overdue"]
     return counts
+
+
+# ── Pasaporte de productos y seguimiento (0028) ────────────────────────
+
+PRODUCT_STATUSES = ("complete", "to_validate", "pending")
+FOLLOW_UP_ITEM_STATUSES = ("pending", "done", "not_done")
+
+
+class InvalidRecordError(ValueError):
+    """Estado de producto o de compromiso fuera de los definidos, o fecha
+    de cierre que no calza."""
+
+
+def validate_product_status(status: str) -> None:
+    if status not in PRODUCT_STATUSES:
+        raise InvalidRecordError(f"Estado de producto invalido: {status!r} (validos: {list(PRODUCT_STATUSES)})")
+
+
+def validate_follow_up_item_status(status: str) -> None:
+    if status not in FOLLOW_UP_ITEM_STATUSES:
+        raise InvalidRecordError(f"Estado de compromiso invalido: {status!r} (validos: {list(FOLLOW_UP_ITEM_STATUSES)})")
+
+
+def passport_rows(products: list[dict], records: dict[tuple[str, str], dict]) -> list[dict[str, Any]]:
+    """Una fila por producto del catalogo (T-07), en el orden de la ruta. Un
+    producto sin registro cuenta como pendiente: que falte es informacion.
+    `records`: {(pack_id, product_code): {status, evidence, to_improvement_plan, updated_at, updated_by}}."""
+    rows = []
+    for p in products:
+        rec = records.get((p["pack_id"], p["code"]))
+        rows.append({
+            "pack_id": p["pack_id"], "code": p["code"], "stage_code": p["stage_code"], "title": p["title"],
+            "registered": rec is not None,
+            "status": rec["status"] if rec else "pending",
+            "evidence": rec.get("evidence") if rec else None,
+            "to_improvement_plan": bool(rec and rec.get("to_improvement_plan")),
+            "updated_at": rec.get("updated_at") if rec else None,
+            "updated_by": rec.get("updated_by") if rec else None,
+        })
+    return rows
+
+
+def passport_summary(rows: list[dict]) -> dict[str, int]:
+    counts = {"total": len(rows), "to_improvement_plan": sum(1 for r in rows if r["to_improvement_plan"])}
+    for status in PRODUCT_STATUSES:
+        counts[status] = sum(1 for r in rows if r["status"] == status)
+    return counts
+
+
+def follow_up_schedule(
+    milestones: list[dict], anchor: date, reviews: dict[str, dict], items: list[dict], today: date,
+) -> list[dict[str, Any]]:
+    """Momentos del seguimiento de un ciclo con su fecha (cierre + dias del
+    catalogo) y su estado:
+      reviewed -- ya se registro la revision del momento
+      due      -- llego la fecha y falta revisarlo
+      upcoming -- todavia no llega la fecha
+    Cada momento trae sus compromisos y cuantos siguen pendientes."""
+    result = []
+    for m in sorted(milestones, key=lambda m: m["sort_order"]):
+        due = anchor + timedelta(days=m["offset_days"])
+        review = reviews.get(m["code"])
+        status = "reviewed" if review else ("due" if today >= due else "upcoming")
+        own = [i for i in items if i["milestone_code"] == m["code"]]
+        result.append({
+            "code": m["code"], "label": m["label"], "offset_days": m["offset_days"],
+            "review_guide": m["review"], "evidence_guide": m["evidence"],
+            "due_date": due.isoformat(), "days_to_due": (due - today).days, "status": status,
+            "review": review, "items": own,
+            "pending_items": sum(1 for i in own if i["status"] == "pending"),
+        })
+    return result
 
 
 # ── Nivel de instrumentacion ───────────────────────────────────────────

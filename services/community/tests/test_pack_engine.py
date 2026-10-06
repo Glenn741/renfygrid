@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import sys
 import unittest
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -14,10 +14,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from pack_engine import (  # noqa: E402
     InvalidAnswersError,
     InvalidInstrumentationError,
+    InvalidRecordError,
     InvalidRuleError,
     checklist_status,
     evaluate_bands,
     findings_from_answers,
+    follow_up_schedule,
+    passport_rows,
+    passport_summary,
     maturity_score,
     questionnaire_analysis,
     stage_summary,
@@ -25,6 +29,8 @@ from pack_engine import (  # noqa: E402
     treatment_train,
     validate_answers,
     validate_bands,
+    validate_follow_up_item_status,
+    validate_product_status,
     validate_instrumentation,
     validate_run_context,
 )
@@ -337,6 +343,54 @@ class InstrumentationTests(unittest.TestCase):
     def test_unknown_level_rejected(self):
         with self.assertRaises(InvalidInstrumentationError):
             validate_instrumentation({"metering": "expert"})
+
+
+PRODUCTS = [
+    {"pack_id": "P", "code": "G1-P01", "stage_code": "G1", "sort_order": 1, "title": "Ficha territorial"},
+    {"pack_id": "P", "code": "G1-P02", "stage_code": "G1", "sort_order": 2, "title": "Mapa del sistema"},
+    {"pack_id": "P", "code": "G2-P01", "stage_code": "G2", "sort_order": 1, "title": "Acta de asamblea"},
+]
+MILESTONES = [
+    {"code": "D30", "sort_order": 2, "offset_days": 30, "label": "30 días", "review": "r30", "evidence": "e30"},
+    {"code": "D7", "sort_order": 1, "offset_days": 7, "label": "7 días", "review": "r7", "evidence": "e7"},
+    {"code": "D90", "sort_order": 3, "offset_days": 90, "label": "90 días", "review": "r90", "evidence": "e90"},
+]
+
+
+class PassportTests(unittest.TestCase):
+    def test_unregistered_product_counts_as_pending(self):
+        rows = passport_rows(PRODUCTS, {("P", "G1-P01"): {"status": "complete", "evidence": "Carpeta", "to_improvement_plan": False},
+                                        ("P", "G2-P01"): {"status": "to_validate", "to_improvement_plan": True}})
+        self.assertEqual([r["status"] for r in rows], ["complete", "pending", "to_validate"])
+        self.assertEqual([r["registered"] for r in rows], [True, False, True])
+        self.assertEqual(passport_summary(rows),
+                         {"total": 3, "to_improvement_plan": 1, "complete": 1, "to_validate": 1, "pending": 1})
+
+    def test_statuses_validated(self):
+        validate_product_status("to_validate")
+        validate_follow_up_item_status("not_done")
+        with self.assertRaises(InvalidRecordError):
+            validate_product_status("listo")
+        with self.assertRaises(InvalidRecordError):
+            validate_follow_up_item_status("maybe")
+
+
+class FollowUpScheduleTests(unittest.TestCase):
+    def test_dates_from_anchor_and_status(self):
+        items = [{"milestone_code": "D7", "status": "done"}, {"milestone_code": "D7", "status": "pending"},
+                 {"milestone_code": "D30", "status": "pending"}]
+        reviews = {"D7": {"reviewed_on": "2026-09-08", "summary": "Carpeta ordenada"}}
+        sched = follow_up_schedule(MILESTONES, date(2026, 9, 1), reviews, items, today=date(2026, 10, 5))
+        self.assertEqual([m["code"] for m in sched], ["D7", "D30", "D90"], "orden del catalogo")
+        self.assertEqual([m["due_date"] for m in sched], ["2026-09-08", "2026-10-01", "2026-11-30"])
+        self.assertEqual([m["status"] for m in sched], ["reviewed", "due", "upcoming"])
+        self.assertEqual(sched[1]["days_to_due"], -4)
+        self.assertEqual([m["pending_items"] for m in sched], [1, 1, 0])
+
+    def test_due_on_the_day(self):
+        sched = follow_up_schedule(MILESTONES, date(2026, 9, 1), {}, [], today=date(2026, 9, 8))
+        self.assertEqual(sched[0]["status"], "due")
+        self.assertEqual(sched[0]["days_to_due"], 0)
 
 
 if __name__ == "__main__":

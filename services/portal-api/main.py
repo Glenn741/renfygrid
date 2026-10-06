@@ -82,8 +82,12 @@ from tenant_settings import (  # noqa: E402
     get_hes_settings,
     get_meter_stale_after_seconds,
     get_session_ttl_seconds,
+    get_timezone,
     set_meter_stale_after_seconds,
     set_session_ttl_seconds,
+    set_timezone,
+    tenant_today,
+    TimezoneNotConfiguredError,
 )
 from meter_geo import consumption_distribution, exception_rate_by_brand, meters_geojson, sector_summary  # noqa: E402
 from on_demand_reader import MeterNotReadableError, read_meter_now  # noqa: E402
@@ -168,13 +172,18 @@ from pack_engine import InvalidAnswersError, InvalidInstrumentationError  # noqa
 from pack_service import (  # noqa: E402
     AmbiguousRuleError,
     FindingNotFoundError,
+    FollowUpNotFoundError,
     InvalidFindingError,
+    ProductNotFoundError,
     PackNotFoundError,
     RuleNotFoundError,
     RunNotFoundError,
     TemplateNotAvailableError,
     active_pack_ids,
+    add_follow_up_item,
     adopt_pack,
+    create_follow_up_cycle,
+    follow_up,
     create_finding,
     evaluate_parameter,
     get_checklist_run,
@@ -186,15 +195,20 @@ from pack_service import (  # noqa: E402
     list_component_types,
     list_findings,
     list_packs,
+    passport,
     process_route,
     questionnaire_report,
+    review_follow_up_milestone,
+    set_product_record,
     set_instrumentation,
     submit_checklist_run,
     system_route_report,
     unadopt_pack,
     treatment_train_report,
     update_finding,
+    update_follow_up_item,
 )
+from pack_engine import InvalidRecordError  # noqa: E402
 from pack_service import AssetNotFoundError as PackAssetNotFoundError  # noqa: E402
 from renmeter_common.auth import create_token  # noqa: E402
 from renmeter_common.db import tenant_scope  # noqa: E402
@@ -694,6 +708,28 @@ def set_session_settings_endpoint(body: SessionSettingsRequest, tenant_id: str =
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         return {"session_ttl_seconds": get_session_ttl_seconds(conn, tenant_id)}
+
+
+@app.get("/settings/timezone")
+def get_timezone_settings_endpoint(tenant_id: str = Depends(get_tenant_id)) -> dict:
+    """Zona horaria de la organizacion (0029): define "hoy" para el
+    seguimiento y las fechas de vencimiento."""
+    with db_conn() as conn:
+        return {"timezone": get_timezone(conn, tenant_id)}
+
+
+class TimezoneSettingsRequest(BaseModel):
+    timezone: str
+
+
+@app.put("/settings/timezone")
+def set_timezone_settings_endpoint(body: TimezoneSettingsRequest, tenant_id: str = Depends(get_tenant_id)) -> dict:
+    with db_conn() as conn:
+        try:
+            set_timezone(conn, tenant_id, body.timezone.strip())
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return {"timezone": get_timezone(conn, tenant_id)}
 
 
 @app.get("/billing-export", response_class=PlainTextResponse)
@@ -1595,6 +1631,122 @@ def traffic_light_report_endpoint(tenant_id: str = Depends(get_tenant_id)) -> di
     """Semaforo vigente. `run: null` si nunca se aplico."""
     with db_conn() as conn:
         return {"run": latest_traffic_light(conn, tenant_id)}
+
+
+# ── Pasaporte de productos y seguimiento 7-30-90 (Track D, 0028) ───────
+
+@app.get("/passport")
+def passport_endpoint(tenant_id: str = Depends(get_tenant_id)) -> dict:
+    """Pasaporte de productos (T-07): productos de cada etapa con su estado."""
+    with db_conn() as conn:
+        return passport(conn, tenant_id)
+
+
+class ProductRecordRequest(BaseModel):
+    status: str
+    evidence: str | None = None
+    to_improvement_plan: bool = False
+
+
+@app.put("/passport/{pack_id}/{product_code}")
+def set_product_record_endpoint(pack_id: str, product_code: str, body: ProductRecordRequest,
+                                actor: dict = Depends(get_actor)) -> dict:
+    with db_conn() as conn:
+        try:
+            return set_product_record(conn, actor["tenant_id"], pack_id, product_code, body.status,
+                                      requested_by_label(actor), body.evidence, body.to_improvement_plan)
+        except ProductNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except InvalidRecordError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/follow-up")
+def follow_up_endpoint(tenant_id: str = Depends(get_tenant_id)) -> dict:
+    """Seguimiento a 7, 30 y 90 dias (T-09): ciclos, momentos, compromisos.
+    "Hoy" es la fecha en la zona horaria de la organizacion (0029)."""
+    with db_conn() as conn:
+        try:
+            today = tenant_today(conn, tenant_id)
+        except TimezoneNotConfiguredError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return follow_up(conn, tenant_id, today)
+
+
+class FollowUpCycleRequest(BaseModel):
+    pack_id: str
+    anchor_date: date
+    title: str
+
+
+@app.post("/follow-up/cycles", status_code=201)
+def create_follow_up_cycle_endpoint(body: FollowUpCycleRequest, actor: dict = Depends(get_actor)) -> dict:
+    with db_conn() as conn:
+        try:
+            return create_follow_up_cycle(conn, actor["tenant_id"], body.pack_id, body.anchor_date, body.title,
+                                          requested_by_label(actor))
+        except FollowUpNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except InvalidRecordError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+class FollowUpItemRequest(BaseModel):
+    milestone_code: str
+    commitment: str
+    responsible: str | None = None
+    due_date: date | None = None
+
+
+@app.post("/follow-up/cycles/{cycle_id}/items", status_code=201)
+def add_follow_up_item_endpoint(cycle_id: str, body: FollowUpItemRequest, actor: dict = Depends(get_actor)) -> dict:
+    with db_conn() as conn:
+        try:
+            return add_follow_up_item(conn, actor["tenant_id"], cycle_id, body.milestone_code, body.commitment,
+                                      requested_by_label(actor), body.responsible, body.due_date)
+        except FollowUpNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except InvalidRecordError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+class FollowUpItemUpdateRequest(BaseModel):
+    commitment: str | None = None
+    responsible: str | None = None
+    due_date: date | None = None
+    status: str | None = None
+    situation: str | None = None
+    evidence: str | None = None
+    adjustment_action: str | None = None
+
+
+@app.patch("/follow-up/items/{item_id}")
+def update_follow_up_item_endpoint(item_id: str, body: FollowUpItemUpdateRequest,
+                                   tenant_id: str = Depends(get_tenant_id)) -> dict:
+    """Solo cambia los campos enviados (un null explicito borra el valor)."""
+    with db_conn() as conn:
+        try:
+            return update_follow_up_item(conn, tenant_id, item_id, **body.model_dump(exclude_unset=True))
+        except FollowUpNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except InvalidRecordError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+class FollowUpReviewRequest(BaseModel):
+    reviewed_on: date
+    summary: str | None = None
+
+
+@app.put("/follow-up/cycles/{cycle_id}/milestones/{milestone_code}/review")
+def review_follow_up_milestone_endpoint(cycle_id: str, milestone_code: str, body: FollowUpReviewRequest,
+                                        actor: dict = Depends(get_actor)) -> dict:
+    with db_conn() as conn:
+        try:
+            return review_follow_up_milestone(conn, actor["tenant_id"], cycle_id, milestone_code, body.reviewed_on,
+                                              requested_by_label(actor), body.summary)
+        except FollowUpNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @app.get("/settings/instrumentation")

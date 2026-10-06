@@ -22,8 +22,10 @@ explicita de esta capa, igual que ya hace el resto del codigo que toca
 from __future__ import annotations
 
 import sys
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -87,6 +89,46 @@ def set_session_ttl_seconds(conn: psycopg.Connection, tenant_id: str, seconds: i
         )
         if cur.rowcount == 0:
             raise LookupError(f"No existe el tenant {tenant_id}")
+
+
+TIMEZONE_KEY = "timezone"
+
+
+class TimezoneNotConfiguredError(LookupError):
+    """La organizacion no tiene zona horaria: lo que depende de "hoy" (el
+    seguimiento 7-30-90) lo dice en vez de usar la fecha UTC (0029)."""
+
+
+def get_timezone(conn: psycopg.Connection, tenant_id: str) -> str | None:
+    """Zona horaria IANA de la organizacion. `None` si no esta configurada."""
+    with conn.cursor() as cur:
+        cur.execute("SELECT config ->> %s FROM tenant WHERE id = %s", (TIMEZONE_KEY, tenant_id))
+        row = cur.fetchone()
+    return row[0] if row else None
+
+
+def set_timezone(conn: psycopg.Connection, tenant_id: str, name: str) -> None:
+    try:
+        ZoneInfo(name)
+    except (ZoneInfoNotFoundError, ValueError):
+        raise ValueError(f"Zona horaria desconocida: {name!r} (use un nombre IANA, p. ej. America/Guayaquil)") from None
+    with conn.cursor() as cur:
+        cur.execute(
+            "UPDATE tenant SET config = config || jsonb_build_object(%s::text, %s::text) WHERE id = %s",
+            (TIMEZONE_KEY, name, tenant_id),
+        )
+        if cur.rowcount == 0:
+            raise LookupError(f"No existe el tenant {tenant_id}")
+
+
+def tenant_today(conn: psycopg.Connection, tenant_id: str) -> date:
+    """Fecha de hoy en la zona horaria de la organizacion."""
+    name = get_timezone(conn, tenant_id)
+    if not name:
+        raise TimezoneNotConfiguredError(
+            "La organización no tiene zona horaria. Defínala en Configuración → Zona horaria."
+        )
+    return datetime.now(ZoneInfo(name)).date()
 
 
 def get_hes_settings(conn: psycopg.Connection, tenant_id: str) -> dict[str, Any]:

@@ -154,6 +154,7 @@ export const NAV_GROUPS: { title: string | null; items: NavItemDef[] }[] = [
         to: "/configuration", label: "Configuración", icon: "⚙",
         sections: [
           { id: "session", label: "Sesión" },
+          { id: "timezone", label: "Zona horaria" },
           { id: "packs", label: "Paquetes" },
           { id: "instrumentation", label: "Instrumentación" },
           { id: "hes-settings", label: "HES" },

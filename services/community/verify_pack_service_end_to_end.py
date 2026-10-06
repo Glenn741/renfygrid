@@ -29,6 +29,7 @@ Uso:
 from __future__ import annotations
 
 import sys
+from datetime import date
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -38,7 +39,14 @@ import psycopg  # noqa: E402
 
 from pack_engine import InvalidAnswersError, InvalidInstrumentationError  # noqa: E402
 from pack_service import (  # noqa: E402
+    FollowUpNotFoundError,
+    add_follow_up_item,
+    create_follow_up_cycle,
+    follow_up,
+    passport,
+    set_product_record,
     unadopt_pack,
+    update_follow_up_item,
     AssetNotFoundError,
     InvalidFindingError,
     PackNotFoundError,
@@ -188,10 +196,27 @@ def main(dsn: str) -> None:
             expect(psycopg.errors.InsufficientPrivilege,
                    lambda: conn.execute("UPDATE checklist_template SET title = 'x' WHERE id = 'MA-7A'"),
                    "el rol de aplicacion no puede modificar listas del paquete")
+
+            print("12. Pasaporte y seguimiento aislados por junta (0028)")
+            set_product_record(conn, tenant_a, "EC-MUNICIPIOS-AZULES", "G1-P01", "complete", ACTOR, "Carpeta")
+            check(passport(conn, tenant_a)["summary"]["complete"] == 1, "la junta A registra un producto")
+            check(passport(conn, tenant_b)["summary"]["complete"] == 0, "la junta B no lo ve")
+            cycle = create_follow_up_cycle(conn, tenant_a, "EC-MUNICIPIOS-AZULES", date(2026, 9, 1), "Taller A", ACTOR)
+            check(follow_up(conn, tenant_b)["cycles"] == [], "la junta B no ve el ciclo de A")
+            expect(FollowUpNotFoundError, lambda: add_follow_up_item(conn, tenant_b, cycle["cycle_id"], "D7", "x", ACTOR),
+                   "la junta B no puede agregar compromisos al ciclo de A")
+            item = add_follow_up_item(conn, tenant_a, cycle["cycle_id"], "D7", "Ordenar carpeta", ACTOR)
+            expect(FollowUpNotFoundError, lambda: update_follow_up_item(conn, tenant_b, item["item_id"], status="done"),
+                   "la junta B no puede editar el compromiso de A")
+            expect(psycopg.errors.InsufficientPrivilege,
+                   lambda: conn.execute("UPDATE follow_up_milestone SET offset_days = 1"),
+                   "el rol de aplicacion no puede cambiar los momentos del programa")
         finally:
             for tenant_id in (tenant_a, tenant_b):
                 with conn.transaction():
                     with tenant_scope(conn, tenant_id):
+                        for table in ("product_record", "follow_up_review", "follow_up_item", "follow_up_cycle"):
+                            conn.execute(f"DELETE FROM {table} WHERE tenant_id = %s", (tenant_id,))
                         conn.execute("DELETE FROM finding WHERE tenant_id = %s", (tenant_id,))
                         conn.execute("DELETE FROM checklist_answer WHERE tenant_id = %s", (tenant_id,))
                         conn.execute("DELETE FROM checklist_run WHERE tenant_id = %s", (tenant_id,))

@@ -14,6 +14,7 @@ El paquete `core` aplica siempre, sin adoptarse.
 from __future__ import annotations
 
 import sys
+import uuid
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -25,11 +26,17 @@ import psycopg  # noqa: E402
 from psycopg.types.json import Json  # noqa: E402
 
 from pack_engine import (  # noqa: E402
+    InvalidRecordError,
     answer_label,
     checklist_status,
     questionnaire_analysis,
     validate_run_context,
     evaluate_bands,
+    follow_up_schedule,
+    passport_rows,
+    passport_summary,
+    validate_follow_up_item_status,
+    validate_product_status,
     stage_summary,
     findings_from_answers,
     maturity_score,
@@ -75,6 +82,14 @@ class InvalidFindingError(ValueError):
 
 class RunNotFoundError(LookupError):
     """No existe esa aplicacion de lista para esta junta."""
+
+
+class ProductNotFoundError(LookupError):
+    """El producto no existe en el catalogo o su paquete no esta activo."""
+
+
+class FollowUpNotFoundError(LookupError):
+    """Ciclo, compromiso o momento de seguimiento inexistente para esta junta."""
 
 
 class AssetNotFoundError(LookupError):
@@ -351,7 +366,7 @@ def process_route(conn: psycopg.Connection, tenant_id: str, now: datetime | None
     packs = active_pack_ids(conn, tenant_id)
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT pack_id, code, sort_order, title, source_ref, purpose, products FROM process_stage "
+            "SELECT pack_id, code, sort_order, title, source_ref, purpose FROM process_stage "
             "WHERE pack_id = ANY(%s) ORDER BY pack_id, sort_order",
             (packs,),
         )
@@ -380,12 +395,19 @@ def process_route(conn: psycopg.Connection, tenant_id: str, now: datetime | None
     templates = list_checklist_templates(conn, tenant_id)
     stages = []
     staged: set[str] = set()
-    for pack_id, code, order, title, source_ref, purpose, products in stage_rows:
+    products = passport_rows(_catalog_products(conn, packs), _product_records(conn, tenant_id))
+    with conn.cursor() as cur:
+        cur.execute("SELECT DISTINCT pack_id, stage_code FROM follow_up_milestone WHERE pack_id = ANY(%s)", (packs,))
+        follow_up_stages = {(r[0], r[1]) for r in cur.fetchall()}
+    for pack_id, code, order, title, source_ref, purpose in stage_rows:
+        stage_products = [p for p in products if p["pack_id"] == pack_id and p["stage_code"] == code]
         lists = [describe(t) for t in templates if t["pack_id"] == pack_id and t["stage_code"] == code]
         staged.update(item["template_id"] for item in lists)
         stages.append({
             "pack_id": pack_id, "code": code, "order": order, "title": title, "source_ref": source_ref,
-            "purpose": purpose, "products": products, "lists": lists, "summary": stage_summary(lists),
+            "purpose": purpose, "products": stage_products, "products_summary": passport_summary(stage_products),
+            "has_follow_up": (pack_id, code) in follow_up_stages,
+            "lists": lists, "summary": stage_summary(lists),
         })
     other = [describe(t) for t in templates if t["id"] not in staged]
     return {"stages": stages, "other_lists": other}
@@ -645,3 +667,280 @@ def set_instrumentation(conn: psycopg.Connection, tenant_id: str, levels: dict[s
                 (INSTRUMENTATION_KEY, Json(merged), tenant_id),
             )
     return merged
+
+
+# ── Pasaporte de productos (T-07, 0028) ────────────────────────────────
+
+def _catalog_products(conn: psycopg.Connection, packs: list[str]) -> list[dict]:
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT p.pack_id, p.code, p.stage_code, p.sort_order, p.title FROM process_product p "
+            "JOIN process_stage s ON s.pack_id = p.pack_id AND s.code = p.stage_code "
+            "WHERE p.pack_id = ANY(%s) ORDER BY p.pack_id, s.sort_order, p.sort_order",
+            (packs,),
+        )
+        return [{"pack_id": r[0], "code": r[1], "stage_code": r[2], "sort_order": r[3], "title": r[4]} for r in cur.fetchall()]
+
+
+def _product_records(conn: psycopg.Connection, tenant_id: str) -> dict[tuple[str, str], dict]:
+    with conn.transaction():
+        with tenant_scope(conn, tenant_id):
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT pack_id, product_code, status, evidence, to_improvement_plan, updated_at, updated_by "
+                    "FROM product_record WHERE tenant_id = %s",
+                    (tenant_id,),
+                )
+                rows = cur.fetchall()
+    return {
+        (r[0], r[1]): {"status": r[2], "evidence": r[3], "to_improvement_plan": r[4],
+                       "updated_at": r[5].isoformat(), "updated_by": r[6]}
+        for r in rows
+    }
+
+
+def passport(conn: psycopg.Connection, tenant_id: str) -> dict:
+    """Pasaporte completo (T-07): cada etapa de la ruta con sus productos,
+    su estado, evidencia y si pasa al Plan de Mejora."""
+    packs = active_pack_ids(conn, tenant_id)
+    rows = passport_rows(_catalog_products(conn, packs), _product_records(conn, tenant_id))
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT pack_id, code, sort_order, title, source_ref FROM process_stage "
+            "WHERE pack_id = ANY(%s) ORDER BY pack_id, sort_order",
+            (packs,),
+        )
+        stages = []
+        for pack_id, code, order, title, source_ref in cur.fetchall():
+            own = [r for r in rows if r["pack_id"] == pack_id and r["stage_code"] == code]
+            stages.append({"pack_id": pack_id, "code": code, "order": order, "title": title, "source_ref": source_ref,
+                           "products": own, "summary": passport_summary(own)})
+    return {"stages": stages, "summary": passport_summary(rows)}
+
+
+def set_product_record(
+    conn: psycopg.Connection,
+    tenant_id: str,
+    pack_id: str,
+    product_code: str,
+    status: str,
+    updated_by: str,
+    evidence: str | None = None,
+    to_improvement_plan: bool = False,
+) -> dict:
+    validate_product_status(status)
+    if pack_id not in active_pack_ids(conn, tenant_id):
+        raise ProductNotFoundError(f"El paquete {pack_id!r} no está activo para esta junta")
+    with conn.cursor() as cur:
+        cur.execute("SELECT 1 FROM process_product WHERE pack_id = %s AND code = %s", (pack_id, product_code))
+        if cur.fetchone() is None:
+            raise ProductNotFoundError(f"No existe el producto {product_code!r} en {pack_id}")
+    evidence = (evidence or "").strip() or None
+    with conn.transaction():
+        with tenant_scope(conn, tenant_id):
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO product_record (tenant_id, pack_id, product_code, status, evidence, to_improvement_plan, updated_by) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s) "
+                    "ON CONFLICT (tenant_id, pack_id, product_code) DO UPDATE SET status = EXCLUDED.status, "
+                    "evidence = EXCLUDED.evidence, to_improvement_plan = EXCLUDED.to_improvement_plan, "
+                    "updated_by = EXCLUDED.updated_by, updated_at = now() RETURNING updated_at",
+                    (tenant_id, pack_id, product_code, status, evidence, to_improvement_plan, updated_by),
+                )
+                updated_at = cur.fetchone()[0]
+    return {"pack_id": pack_id, "code": product_code, "status": status, "evidence": evidence,
+            "to_improvement_plan": to_improvement_plan, "updated_at": updated_at.isoformat(), "updated_by": updated_by}
+
+
+# ── Seguimiento 7-30-90 (T-09, 0028) ───────────────────────────────────
+
+_ITEM_COLUMNS = ("id, cycle_id, milestone_code, commitment, responsible, due_date, status, situation, evidence, "
+                 "adjustment_action, created_by, updated_at")
+
+
+def _item_row(r: tuple) -> dict:
+    return {
+        "item_id": str(r[0]), "cycle_id": str(r[1]), "milestone_code": r[2], "commitment": r[3], "responsible": r[4],
+        "due_date": r[5].isoformat() if r[5] else None, "status": r[6], "situation": r[7], "evidence": r[8],
+        "adjustment_action": r[9], "created_by": r[10], "updated_at": r[11].isoformat(),
+    }
+
+
+def _milestones(conn: psycopg.Connection, pack_id: str) -> list[dict]:
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT code, stage_code, sort_order, offset_days, label, review, evidence FROM follow_up_milestone "
+            "WHERE pack_id = %s ORDER BY sort_order",
+            (pack_id,),
+        )
+        return [{"code": r[0], "stage_code": r[1], "sort_order": r[2], "offset_days": r[3], "label": r[4],
+                 "review": r[5], "evidence": r[6]} for r in cur.fetchall()]
+
+
+def follow_up(conn: psycopg.Connection, tenant_id: str, today: date | None = None) -> dict:
+    """Ciclos de seguimiento de la junta (el mas reciente primero), cada uno
+    con sus momentos fechados, compromisos y revisiones. `programs`: los
+    paquetes activos que definen seguimiento (para abrir un ciclo)."""
+    today = today or datetime.now(timezone.utc).date()
+    packs = active_pack_ids(conn, tenant_id)
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT DISTINCT m.pack_id, p.name FROM follow_up_milestone m JOIN pack p ON p.id = m.pack_id "
+            "WHERE m.pack_id = ANY(%s) ORDER BY 1",
+            (packs,),
+        )
+        programs = [{"pack_id": r[0], "name": r[1]} for r in cur.fetchall()]
+    with conn.transaction():
+        with tenant_scope(conn, tenant_id):
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT id, pack_id, anchor_date, title, created_at, created_by FROM follow_up_cycle "
+                    "WHERE tenant_id = %s AND pack_id = ANY(%s) ORDER BY anchor_date DESC, created_at DESC",
+                    (tenant_id, packs),
+                )
+                cycles = cur.fetchall()
+                cur.execute(f"SELECT {_ITEM_COLUMNS} FROM follow_up_item WHERE tenant_id = %s ORDER BY created_at",
+                            (tenant_id,))
+                items = [_item_row(r) for r in cur.fetchall()]
+                cur.execute(
+                    "SELECT cycle_id, milestone_code, reviewed_on, reviewed_by, summary FROM follow_up_review "
+                    "WHERE tenant_id = %s",
+                    (tenant_id,),
+                )
+                reviews = cur.fetchall()
+    result = []
+    for cid, pack_id, anchor, title, created_at, created_by in cycles:
+        own_reviews = {r[1]: {"reviewed_on": r[2].isoformat(), "reviewed_by": r[3], "summary": r[4]}
+                       for r in reviews if r[0] == cid}
+        own_items = [i for i in items if i["cycle_id"] == str(cid)]
+        result.append({
+            "cycle_id": str(cid), "pack_id": pack_id, "anchor_date": anchor.isoformat(), "title": title,
+            "created_at": created_at.isoformat(), "created_by": created_by,
+            "milestones": follow_up_schedule(_milestones(conn, pack_id), anchor, own_reviews, own_items, today),
+        })
+    return {"programs": programs, "cycles": result}
+
+
+def create_follow_up_cycle(
+    conn: psycopg.Connection, tenant_id: str, pack_id: str, anchor_date: date, title: str, created_by: str,
+) -> dict:
+    if pack_id not in active_pack_ids(conn, tenant_id) or not _milestones(conn, pack_id):
+        raise FollowUpNotFoundError(f"El paquete {pack_id!r} no está activo o no define seguimiento")
+    title = title.strip()
+    if not title:
+        raise InvalidRecordError("El ciclo necesita un nombre (p. ej. la cohorte o el taller)")
+    with conn.transaction():
+        with tenant_scope(conn, tenant_id):
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO follow_up_cycle (tenant_id, pack_id, anchor_date, title, created_by) "
+                    "VALUES (%s, %s, %s, %s, %s) RETURNING id",
+                    (tenant_id, pack_id, anchor_date, title, created_by),
+                )
+                return {"cycle_id": str(cur.fetchone()[0]), "pack_id": pack_id, "anchor_date": anchor_date.isoformat(),
+                        "title": title}
+
+
+def _uuid_or_not_found(value: str, what: str) -> None:
+    try:
+        uuid.UUID(value)
+    except ValueError:
+        raise FollowUpNotFoundError(f"No existe {what} {value!r}") from None
+
+
+def _cycle_pack(conn: psycopg.Connection, tenant_id: str, cycle_id: str) -> str:
+    _uuid_or_not_found(cycle_id, "el ciclo de seguimiento")
+    with conn.transaction():
+        with tenant_scope(conn, tenant_id):
+            with conn.cursor() as cur:
+                cur.execute("SELECT pack_id FROM follow_up_cycle WHERE id = %s AND tenant_id = %s", (cycle_id, tenant_id))
+                row = cur.fetchone()
+    if row is None:
+        raise FollowUpNotFoundError(f"No existe el ciclo de seguimiento {cycle_id} para esta junta")
+    return row[0]
+
+
+def _assert_milestone(conn: psycopg.Connection, pack_id: str, milestone_code: str) -> None:
+    if milestone_code not in {m["code"] for m in _milestones(conn, pack_id)}:
+        raise FollowUpNotFoundError(f"El momento {milestone_code!r} no existe en el seguimiento de {pack_id}")
+
+
+def add_follow_up_item(
+    conn: psycopg.Connection,
+    tenant_id: str,
+    cycle_id: str,
+    milestone_code: str,
+    commitment: str,
+    created_by: str,
+    responsible: str | None = None,
+    due_date: date | None = None,
+) -> dict:
+    """Compromiso acordado para un momento (A-06 del dia 8)."""
+    pack_id = _cycle_pack(conn, tenant_id, cycle_id)
+    _assert_milestone(conn, pack_id, milestone_code)
+    commitment = commitment.strip()
+    if not commitment:
+        raise InvalidRecordError("El compromiso no puede ir vacío")
+    with conn.transaction():
+        with tenant_scope(conn, tenant_id):
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO follow_up_item (tenant_id, cycle_id, pack_id, milestone_code, commitment, responsible, "
+                    f"due_date, created_by) VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING {_ITEM_COLUMNS}",
+                    (tenant_id, cycle_id, pack_id, milestone_code, commitment, responsible or None, due_date, created_by),
+                )
+                return _item_row(cur.fetchone())
+
+
+_ITEM_FIELDS = ("commitment", "responsible", "due_date", "status", "situation", "evidence", "adjustment_action")
+
+
+def update_follow_up_item(conn: psycopg.Connection, tenant_id: str, item_id: str, **fields: Any) -> dict:
+    """Lo encontrado al revisar el compromiso: situacion, evidencia, accion
+    de ajuste y estado (cumplido / no cumplido / pendiente)."""
+    unknown = set(fields) - set(_ITEM_FIELDS)
+    if unknown:
+        raise InvalidRecordError(f"Campos no editables: {sorted(unknown)}")
+    _uuid_or_not_found(item_id, "el compromiso")
+    if "status" in fields:
+        validate_follow_up_item_status(fields["status"])
+    if "commitment" in fields and not (fields["commitment"] or "").strip():
+        raise InvalidRecordError("El compromiso no puede ir vacío")
+    sets = ", ".join(f"{k} = %s" for k in fields)
+    with conn.transaction():
+        with tenant_scope(conn, tenant_id):
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"UPDATE follow_up_item SET {sets}{', ' if sets else ''}updated_at = now() "
+                    f"WHERE id = %s AND tenant_id = %s RETURNING {_ITEM_COLUMNS}",
+                    (*fields.values(), item_id, tenant_id),
+                )
+                row = cur.fetchone()
+    if row is None:
+        raise FollowUpNotFoundError(f"No existe el compromiso {item_id} para esta junta")
+    return _item_row(row)
+
+
+def review_follow_up_milestone(
+    conn: psycopg.Connection,
+    tenant_id: str,
+    cycle_id: str,
+    milestone_code: str,
+    reviewed_on: date,
+    reviewed_by: str,
+    summary: str | None = None,
+) -> dict:
+    """Registra (o corrige) la revision de un momento del seguimiento."""
+    pack_id = _cycle_pack(conn, tenant_id, cycle_id)
+    _assert_milestone(conn, pack_id, milestone_code)
+    with conn.transaction():
+        with tenant_scope(conn, tenant_id):
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO follow_up_review (tenant_id, cycle_id, pack_id, milestone_code, reviewed_on, reviewed_by, summary) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s) ON CONFLICT (cycle_id, milestone_code) DO UPDATE SET "
+                    "reviewed_on = EXCLUDED.reviewed_on, reviewed_by = EXCLUDED.reviewed_by, summary = EXCLUDED.summary",
+                    (tenant_id, cycle_id, pack_id, milestone_code, reviewed_on, reviewed_by, (summary or "").strip() or None),
+                )
+    return {"cycle_id": cycle_id, "milestone_code": milestone_code, "reviewed_on": reviewed_on.isoformat(),
+            "reviewed_by": reviewed_by, "summary": (summary or "").strip() or None}

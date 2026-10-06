@@ -29,6 +29,8 @@ from __future__ import annotations
 import os
 import sys
 import uuid
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "common"))
@@ -203,6 +205,88 @@ def run(dsn: str) -> None:
             check(client.get("/checklist-templates/MA-7A/analysis", headers=h).status_code == 404,
                   "una lista sin análisis -> 404")
 
+            print("6e. Pasaporte de productos (T-07, 0028)")
+            pp = client.get("/passport", headers=h).json()
+            check([s["code"] for s in pp["stages"]] == ["G1", "G2", "G3", "G4", "G5", "G6", "INT"], "pasaporte por etapa")
+            check(pp["summary"]["total"] == 42 and pp["summary"]["pending"] == 42,
+                  "42 productos del catálogo, todos pendientes al empezar")
+            first = pp["stages"][0]["products"][0]
+            check(first["code"] == "G1-P01" and first["title"] == "Ficha territorial" and not first["registered"],
+                  "producto sin registro = pendiente")
+            r = client.put("/passport/EC-MUNICIPIOS-AZULES/G1-P01", headers=h,
+                           json={"status": "complete", "evidence": "  Carpeta de la junta, folio 3 "})
+            check(r.status_code == 200 and r.json()["evidence"] == "Carpeta de la junta, folio 3", "producto completo con evidencia")
+            r = client.put("/passport/EC-MUNICIPIOS-AZULES/G2-P02", headers=h,
+                           json={"status": "to_validate", "to_improvement_plan": True})
+            check(r.status_code == 200, "acta por validar, pasa a G6")
+            check(client.put("/passport/EC-MUNICIPIOS-AZULES/G1-P01", headers=h, json={"status": "listo"}).status_code == 422,
+                  "estado inventado -> 422")
+            check(client.put("/passport/EC-MUNICIPIOS-AZULES/G9-P99", headers=h, json={"status": "complete"}).status_code == 404,
+                  "producto inexistente -> 404")
+            check(client.put("/passport/NO-EXISTE/G1-P01", headers=h, json={"status": "complete"}).status_code == 404,
+                  "paquete no activo -> 404")
+            route = client.get("/process-route", headers=h).json()
+            stages = {s["code"]: s for s in route["stages"]}
+            check(stages["G1"]["products"][0]["status"] == "complete" and stages["G1"]["products_summary"]["complete"] == 1,
+                  "la ruta muestra el estado del producto")
+            check(stages["G2"]["products_summary"]["to_improvement_plan"] == 1, "la ruta cuenta lo que pasa a G6")
+            check(stages["INT"]["has_follow_up"] and not stages["G1"]["has_follow_up"], "el seguimiento vive en la etapa INT")
+
+            print("6f. Seguimiento 7-30-90 (T-09, 0028)")
+            check(client.get("/follow-up", headers=h).status_code == 409, "sin zona horaria -> 409 (no se usa la fecha UTC)")
+            check(client.put("/settings/timezone", headers=h, json={"timezone": "America/Atlantida"}).status_code == 422,
+                  "zona inventada -> 422")
+            r = client.put("/settings/timezone", headers=h, json={"timezone": "America/Guayaquil"})
+            check(r.status_code == 200 and client.get("/settings/timezone", headers=h).json()["timezone"] == "America/Guayaquil",
+                  "zona horaria de la junta guardada")
+            local_today = datetime.now(ZoneInfo("America/Guayaquil")).date()
+            fu = client.get("/follow-up", headers=h).json()
+            check(fu["cycles"] == [] and [p["pack_id"] for p in fu["programs"]] == ["EC-MUNICIPIOS-AZULES"],
+                  "sin ciclos; el programa define seguimiento")
+            anchor = (local_today - timedelta(days=35)).isoformat()
+            r = client.post("/follow-up/cycles", headers=h,
+                            json={"pack_id": "EC-MUNICIPIOS-AZULES", "anchor_date": anchor, "title": "Taller E2E"})
+            check(r.status_code == 201, "ciclo creado con fecha de cierre hace 35 días")
+            cycle_id = r.json()["cycle_id"]
+            check(client.post("/follow-up/cycles", headers=h, json={"pack_id": "EC-ARCA", "anchor_date": anchor,
+                                                                    "title": "x"}).status_code == 404,
+                  "paquete sin seguimiento -> 404")
+            check(client.post("/follow-up/cycles", headers=h, json={"pack_id": "EC-MUNICIPIOS-AZULES", "anchor_date": anchor,
+                                                                    "title": "  "}).status_code == 422, "ciclo sin nombre -> 422")
+            r = client.post(f"/follow-up/cycles/{cycle_id}/items", headers=h, json={
+                "milestone_code": "D7", "commitment": "Completar el padrón con cédulas faltantes", "responsible": "Secretaría"})
+            check(r.status_code == 201 and r.json()["status"] == "pending", "compromiso a 7 días")
+            item_id = r.json()["item_id"]
+            r = client.post(f"/follow-up/cycles/{cycle_id}/items", headers=h, json={
+                "milestone_code": "D30", "commitment": "Usar la bitácora de cloro todos los días"})
+            check(r.status_code == 201, "compromiso a 30 días")
+            check(client.post(f"/follow-up/cycles/{cycle_id}/items", headers=h,
+                              json={"milestone_code": "D45", "commitment": "x"}).status_code == 404, "momento inexistente -> 404")
+            check(client.post(f"/follow-up/cycles/{cycle_id}/items", headers=h,
+                              json={"milestone_code": "D7", "commitment": " "}).status_code == 422, "compromiso vacío -> 422")
+            check(client.post("/follow-up/cycles/no-es-uuid/items", headers=h,
+                              json={"milestone_code": "D7", "commitment": "x"}).status_code == 404, "ciclo mal formado -> 404")
+            r = client.patch(f"/follow-up/items/{item_id}", headers=h, json={
+                "status": "done", "situation": "Padrón completo", "evidence": "Padrón firmado"})
+            check(r.status_code == 200 and r.json()["status"] == "done" and r.json()["responsible"] == "Secretaría",
+                  "compromiso cumplido; lo no enviado no cambia")
+            check(client.patch(f"/follow-up/items/{item_id}", headers=h, json={"status": "quizas"}).status_code == 422,
+                  "estado inventado -> 422")
+            check(client.patch(f"/follow-up/items/{uuid.uuid4()}", headers=h, json={"status": "done"}).status_code == 404,
+                  "compromiso inexistente -> 404")
+            r = client.put(f"/follow-up/cycles/{cycle_id}/milestones/D7/review", headers=h,
+                           json={"reviewed_on": local_today.isoformat(), "summary": "Carpeta ordenada"})
+            check(r.status_code == 200, "revisión a 7 días registrada")
+            cycle = client.get("/follow-up", headers=h).json()["cycles"][0]
+            ms = {m["code"]: m for m in cycle["milestones"]}
+            check([m["code"] for m in cycle["milestones"]] == ["D7", "D30", "D90"], "momentos en orden")
+            check(ms["D7"]["status"] == "reviewed" and ms["D7"]["pending_items"] == 0, "7 días: revisado, sin pendientes")
+            check(ms["D30"]["status"] == "due" and ms["D30"]["days_to_due"] == -5 and ms["D30"]["pending_items"] == 1,
+                  "30 días: venció hace 5 días con 1 compromiso pendiente")
+            check(ms["D90"]["status"] == "upcoming" and ms["D90"]["due_date"] == (local_today + timedelta(days=55)).isoformat(),
+                  "90 días: faltan 55")
+            check("bitácoras" in ms["D30"]["review_guide"], "qué revisar sale del catálogo de la guía")
+
             print("7. Reportes")
             light = client.get("/reports/traffic-light", headers=h).json()["run"]
             check(light["run_id"] == run_id, "semaforo vigente = la aplicacion")
@@ -237,7 +321,8 @@ def run(dsn: str) -> None:
         finally:
             with conn.transaction():
                 with tenant_scope(conn, tenant_id):
-                    for table in ("finding", "checklist_answer", "checklist_run", "tenant_pack", "network_asset", "app_user"):
+                    for table in ("product_record", "follow_up_review", "follow_up_item", "follow_up_cycle",
+                                  "finding", "checklist_answer", "checklist_run", "tenant_pack", "network_asset", "app_user"):
                         conn.execute(f"DELETE FROM {table} WHERE tenant_id = %s", (tenant_id,))
             conn.execute("DELETE FROM tenant WHERE id = %s", (tenant_id,))
             print("Limpieza: junta de prueba y sus datos borrados")

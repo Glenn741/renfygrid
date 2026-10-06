@@ -1028,6 +1028,14 @@ export function setSessionSettings(sessionTtlSeconds: number): Promise<{ session
   return request("/settings/session", { method: "PUT", body: JSON.stringify({ session_ttl_seconds: sessionTtlSeconds }) });
 }
 
+export function getTimezoneSettings(): Promise<{ timezone: string | null }> {
+  return request("/settings/timezone");
+}
+
+export function setTimezoneSettings(timezone: string): Promise<{ timezone: string | null }> {
+  return request("/settings/timezone", { method: "PUT", body: JSON.stringify({ timezone }) });
+}
+
 // ── Track D, Sprint D0 -- motor de paquetes (docs/04-plan-sprints.md SS11.4) ──
 
 export interface Pack {
@@ -1165,7 +1173,10 @@ export interface RouteStageInfo {
   title: string;
   source_ref: string;
   purpose: string;
-  products: string[];
+  products: PassportProduct[];
+  products_summary: PassportSummary;
+  /** La etapa gestiona el seguimiento 7-30-90 del programa (0028). */
+  has_follow_up: boolean;
   lists: RouteList[];
   summary: { total: number; never: number; done: number; ok: number; overdue: number; applied: number };
 }
@@ -1176,6 +1187,115 @@ export function getProcessRoute(): Promise<{ stages: RouteStageInfo[]; other_lis
 
 export function getChecklistTemplates(): Promise<ChecklistTemplate[]> {
   return request("/checklist-templates");
+}
+
+// ── Pasaporte de productos (T-07) y seguimiento 7-30-90 (T-09), 0028 ──
+
+export type ProductStatus = "complete" | "to_validate" | "pending";
+
+export interface PassportProduct {
+  pack_id: string;
+  code: string;
+  stage_code: string;
+  title: string;
+  registered: boolean;
+  status: ProductStatus;
+  evidence: string | null;
+  to_improvement_plan: boolean;
+  updated_at: string | null;
+  updated_by: string | null;
+}
+
+export interface PassportSummary {
+  total: number;
+  complete: number;
+  to_validate: number;
+  pending: number;
+  to_improvement_plan: number;
+}
+
+export interface Passport {
+  stages: { pack_id: string; code: string; order: number; title: string; source_ref: string; products: PassportProduct[]; summary: PassportSummary }[];
+  summary: PassportSummary;
+}
+
+export function getPassport(): Promise<Passport> {
+  return request("/passport");
+}
+
+export function setProductRecord(
+  packId: string,
+  productCode: string,
+  body: { status: ProductStatus; evidence?: string | null; to_improvement_plan?: boolean },
+): Promise<PassportProduct> {
+  return request(`/passport/${encodeURIComponent(packId)}/${encodeURIComponent(productCode)}`, { method: "PUT", body: JSON.stringify(body) });
+}
+
+export type FollowUpItemStatus = "pending" | "done" | "not_done";
+
+export interface FollowUpItem {
+  item_id: string;
+  cycle_id: string;
+  milestone_code: string;
+  commitment: string;
+  responsible: string | null;
+  due_date: string | null;
+  status: FollowUpItemStatus;
+  situation: string | null;
+  evidence: string | null;
+  adjustment_action: string | null;
+  created_by: string;
+  updated_at: string;
+}
+
+export interface FollowUpMilestone {
+  code: string;
+  label: string;
+  offset_days: number;
+  review_guide: string;
+  evidence_guide: string;
+  due_date: string;
+  days_to_due: number;
+  status: "reviewed" | "due" | "upcoming";
+  review: { reviewed_on: string; reviewed_by: string; summary: string | null } | null;
+  items: FollowUpItem[];
+  pending_items: number;
+}
+
+export interface FollowUpCycle {
+  cycle_id: string;
+  pack_id: string;
+  anchor_date: string;
+  title: string;
+  created_at: string;
+  created_by: string;
+  milestones: FollowUpMilestone[];
+}
+
+export function getFollowUp(): Promise<{ programs: { pack_id: string; name: string }[]; cycles: FollowUpCycle[] }> {
+  return request("/follow-up");
+}
+
+export function createFollowUpCycle(body: { pack_id: string; anchor_date: string; title: string }): Promise<{ cycle_id: string }> {
+  return request("/follow-up/cycles", { method: "POST", body: JSON.stringify(body) });
+}
+
+export function addFollowUpItem(
+  cycleId: string,
+  body: { milestone_code: string; commitment: string; responsible?: string | null; due_date?: string | null },
+): Promise<FollowUpItem> {
+  return request(`/follow-up/cycles/${cycleId}/items`, { method: "POST", body: JSON.stringify(body) });
+}
+
+export function updateFollowUpItem(
+  itemId: string,
+  body: Partial<Pick<FollowUpItem, "commitment" | "responsible" | "due_date" | "status" | "situation" | "evidence" | "adjustment_action">>,
+): Promise<FollowUpItem> {
+  return request(`/follow-up/items/${itemId}`, { method: "PATCH", body: JSON.stringify(body) });
+}
+
+export function reviewFollowUpMilestone(cycleId: string, milestoneCode: string, body: { reviewed_on: string; summary?: string | null }) {
+  return request(`/follow-up/cycles/${cycleId}/milestones/${milestoneCode}/review`, { method: "PUT", body: JSON.stringify(body) });
 }
 
 export interface ChecklistAnswerInput {

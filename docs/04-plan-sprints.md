@@ -643,8 +643,16 @@ Tampoco las "verificaciones rápidas de aprendizajes" del cierre de cada guía.
    por ítem (`options`, la clave T-05 como `score`), datos de cada aplicación (`run_fields`:
    momento y código de participante), análisis por guía y por dimensión con los rangos del
    paquete (`analysis`), etapa INT "Integración, evaluación y seguimiento".
-3. El pasaporte T-07 como vista de productos por etapa.
-4. El seguimiento 7-30-90.
+3. ~~El pasaporte T-07 como vista de productos por etapa.~~ Hecho (0028): catálogo
+   `process_product`; por junta, estado (completo, por validar, pendiente), evidencia y "pasa a G6".
+   Se edita en cada etapa de la ruta y hay vista completa.
+4. ~~El seguimiento 7-30-90.~~ Hecho (0028/0029): momentos como catálogo del paquete; por junta,
+   ciclos con fecha de cierre, compromisos y revisión de cada momento. "Hoy" en la zona horaria
+   de la organización (parámetro nuevo en Configuración).
+
+Queda de D0.6 lo que no es lista ni registro: T-06 evaluación diaria, T-08 rúbrica de
+microfacilitación y T-10 consolidado de observaciones. Son instrumentos del facilitador del
+programa, no de la operación de la junta, así que van con D12 (tablero del programa), no con D1.
 
 Las matrices de G1 y G6 (priorización, Plan de Mejora, presupuesto) son D7, no listas.
 
