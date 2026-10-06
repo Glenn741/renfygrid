@@ -1638,3 +1638,34 @@ parseo de bash por comillas anidadas (no ejecutó nada): la verificación se pas
 subido con `pscp`.
 
 **Pendiente:** revisión visual de las pantallas en el navegador (hecha por el usuario).
+
+### Datos demo de las Guías 3 y 4 en el tenant "RenfyGrid Demo" (2026-10-05)
+
+A pedido del usuario se cargó en el tenant demo existente (`6e89ad29-…`, el de la red urbana
+Bogotá/Cali) todo lo de las Guías 3 y 4 que la plataforma ya modela, como un sistema
+comunitario **ilustrativo** ("Sistema comunitario San José (ilustrativo)" en `attributes.system`).
+Script: `services/community/seed_demo_guias_tenant.py`, corrido en producción como módulo
+compilado. Es idempotente: si el tenant ya tiene revisiones, no hace nada.
+
+| Guía | Cargado |
+|---|---|
+| G3 actividad 1 | 19 componentes de agua, saneamiento y bodega, encadenados + 3 puntos críticos |
+| G3 actividad 2 | Semáforo inicial (hace 90 días, sus 8 hallazgos cerrados después) y actual (hace 2 días) |
+| G3 actividad 3 | Tren de tratamiento con los problemas del ejemplo, incluidas las etapas que no existen |
+| G3 actividad 5 | Fosa séptica, caja de la escuela, descarga de la quesera |
+| G3 7A, 7E, 7G.1 | Inspecciones con observación, acción, responsable y fecha, tomadas de los ejemplos |
+| G3 §3.6 y 7G | 14 planes preventivos/de inspección con las frecuencias de la guía (2 vencidos) |
+| G3 7D y 7F | 7 órdenes: lavado de reservorio y limpieza de desarenador con minga (completadas), revisión del hipoclorador (completada), fuga en curso, rebose de emergencia vencido de SLA, extracción de lodos programada, retrolavado generado |
+| G3 7G.2 | 6 hallazgos marcados para el plan de mejora (incluye cloro bajo 0,15/0,18/0,17 mg/L) |
+| G3 y G4, verificación inicial | Hace 90 días (G3: 5/16) |
+| G4 4A y 4B | Con acciones (tarifa de USD 3 que no cubre costos, fondo de reserva inexistente) |
+
+Verificado en vivo con login real: 3 paquetes activos, 9 revisiones, 45/1/9 hallazgos
+(abiertos/en curso/cerrados), KPIs de mantenimiento con MTTR 7,9 h y 4 órdenes vencidas.
+
+**No cargado, a propósito:** padrón, libro de caja, costos, tarifa, morosidad, POA, presupuesto,
+rendición de cuentas y registro diario de cloro. La plataforma todavía no tiene dónde guardarlos
+(D1, D8–D11); no se inventaron tablas.
+
+**Efecto conocido de mezclar en un solo tenant:** el recorrido cuenta 3 tanques (2 urbanos de
+la demo existente + el reservorio comunitario).
