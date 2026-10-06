@@ -504,6 +504,8 @@ def operation_day(
                     (tenant_id,),
                 )
                 open_reading_findings, critical_quality_open = cur.fetchone()
+                cur.execute("SELECT count(*) FROM emergency_activation WHERE tenant_id = %s AND status = 'active'", (tenant_id,))
+                active_emergencies = cur.fetchone()[0]
     return {
         "date": today.isoformat(), "moments": moments,
         "unassigned_entries": [e for e in entries if e["moment_code"] is None],
@@ -516,6 +518,7 @@ def operation_day(
             "alerts_today": sum(1 for e in entries if e["status"] == "alert"),
             "open_reading_findings": open_reading_findings,
             "critical_quality_open": critical_quality_open,
+            "active_emergencies": active_emergencies,
         },
     }
 

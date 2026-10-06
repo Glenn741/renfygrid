@@ -233,6 +233,17 @@ from permissions import (  # noqa: E402
     update_user,
 )
 from calendar_service import annual_calendar  # noqa: E402
+from emergency_service import (  # noqa: E402
+    EmergencyNotFoundError,
+    activate_emergency,
+    add_contact,
+    close_activation,
+    delete_contact,
+    emergency_plan,
+    list_activations,
+    review_emergency_plan,
+    save_plan_entry,
+)
 from quality_service import (  # noqa: E402
     QualityConflictError,
     QualityNotFoundError,
@@ -2384,6 +2395,120 @@ def get_lab_sample_endpoint(sample_id: str, tenant_id: str = Depends(get_tenant_
             return get_lab_sample(conn, tenant_id, sample_id)
         except QualityNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+# ── Emergencias (Track D, D5, 0037) ───────────────────────────────────
+
+def _emergency_now(conn, tenant_id: str) -> datetime:
+    today, tz_name, _, _ = _tenant_day(conn, tenant_id)
+    return datetime.now(ZoneInfo(tz_name))
+
+
+@app.get("/emergencies")
+def emergencies_endpoint(tenant_id: str = Depends(get_tenant_id)) -> dict:
+    """Plan de emergencia (catalogo + ajustes de la junta), contactos,
+    emergencias activas y revision del plan."""
+    with db_conn() as conn:
+        return emergency_plan(conn, tenant_id, _emergency_now(conn, tenant_id))
+
+
+class EmergencyPlanEntryRequest(BaseModel):
+    type_code: str | None = None
+    custom_label: str | None = None
+    responsible: str | None = None
+    first_action: str | None = None
+    community_message: str | None = None
+    external_support: str | None = None
+    resources: str | None = None
+    active: bool | None = None
+
+
+@app.put("/emergencies/plan")
+def save_emergency_plan_entry_endpoint(body: EmergencyPlanEntryRequest, actor: dict = Depends(get_actor)) -> dict:
+    fields = body.model_dump(exclude_unset=True)
+    type_code, custom_label = fields.pop("type_code", None), fields.pop("custom_label", None)
+    with db_conn() as conn:
+        try:
+            save_plan_entry(conn, actor["tenant_id"], requested_by_label(actor), type_code, custom_label, **fields)
+            return emergency_plan(conn, actor["tenant_id"], _emergency_now(conn, actor["tenant_id"]))
+        except EmergencyNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except InvalidRecordError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+class EmergencyContactRequest(BaseModel):
+    institution: str
+    phone: str
+    person: str | None = None
+    notes: str | None = None
+
+
+@app.post("/emergencies/contacts", status_code=201)
+def add_emergency_contact_endpoint(body: EmergencyContactRequest, tenant_id: str = Depends(get_tenant_id)) -> dict:
+    with db_conn() as conn:
+        try:
+            return add_contact(conn, tenant_id, body.institution, body.phone, body.person, body.notes)
+        except InvalidRecordError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.delete("/emergencies/contacts/{contact_id}", status_code=204)
+def delete_emergency_contact_endpoint(contact_id: str, tenant_id: str = Depends(get_tenant_id)) -> None:
+    with db_conn() as conn:
+        try:
+            delete_contact(conn, tenant_id, contact_id)
+        except EmergencyNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+class EmergencyActivationRequest(BaseModel):
+    type_code: str | None = None
+    plan_entry_id: str | None = None
+    notes: str | None = None
+
+
+@app.post("/emergencies/activations", status_code=201)
+def activate_emergency_endpoint(body: EmergencyActivationRequest, actor: dict = Depends(get_actor)) -> dict:
+    with db_conn() as conn:
+        try:
+            return activate_emergency(conn, actor["tenant_id"], requested_by_label(actor), body.type_code, body.plan_entry_id,
+                                      "manual", None, body.notes)
+        except EmergencyNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except InvalidRecordError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+class EmergencyCloseRequest(BaseModel):
+    notes: str | None = None
+
+
+@app.post("/emergencies/activations/{activation_id}/close")
+def close_emergency_endpoint(activation_id: str, body: EmergencyCloseRequest, actor: dict = Depends(get_actor)) -> dict:
+    with db_conn() as conn:
+        try:
+            return close_activation(conn, actor["tenant_id"], activation_id, requested_by_label(actor), body.notes)
+        except EmergencyNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get("/emergencies/activations")
+def list_emergency_activations_endpoint(tenant_id: str = Depends(get_tenant_id), limit: int = 50) -> list[dict]:
+    with db_conn() as conn:
+        return list_activations(conn, tenant_id, False, max(1, min(limit, 500)))
+
+
+class EmergencyReviewRequest(BaseModel):
+    reviewed_on: date
+    notes: str | None = None
+
+
+@app.post("/emergencies/reviews", status_code=201)
+def review_emergency_plan_endpoint(body: EmergencyReviewRequest, actor: dict = Depends(get_actor)) -> dict:
+    with db_conn() as conn:
+        review_emergency_plan(conn, actor["tenant_id"], body.reviewed_on, requested_by_label(actor), body.notes)
+        return emergency_plan(conn, actor["tenant_id"], _emergency_now(conn, actor["tenant_id"]))["review"]
 
 
 @app.get("/calendar")

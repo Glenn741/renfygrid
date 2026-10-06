@@ -28,6 +28,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "common"))
 import psycopg  # noqa: E402
 
 from pack_engine import InvalidRecordError, checklist_status, interpret_lab_result  # noqa: E402
+from emergency_service import auto_activate_from_results  # noqa: E402
 from pack_service import RuleNotFoundError, active_pack_ids, active_rule  # noqa: E402
 from renmeter_common.db import tenant_scope  # noqa: E402
 
@@ -320,8 +321,12 @@ def record_lab_sample(
                          interp["severity"] if interp else None, finding_id),
                     )
     sample = get_lab_sample(conn, tenant_id, sample_id)
+    # D5: un resultado que cumple una regla del paquete (E. coli presente)
+    # activa la emergencia correspondiente (sin duplicar una ya activa).
+    emergencies = auto_activate_from_results(conn, tenant_id, sample["results"], f"lab:{sample_id}", recorded_by)
     return {**sample, "findings_created": findings_created,
-            "critical": any(r["severity"] == "critical" for r in sample["results"])}
+            "critical": any(r["severity"] == "critical" for r in sample["results"]),
+            "emergencies": emergencies}
 
 
 _SAMPLE_COLUMNS = ("s.id, s.sampling_point_id, sp.name, s.plan_item_id, pl.name, s.sampled_at, s.laboratory, s.report_ref, "
