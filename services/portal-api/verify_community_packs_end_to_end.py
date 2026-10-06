@@ -91,7 +91,7 @@ def run(dsn: str) -> None:
             check(r.status_code == 404, "sin paquete normativo no hay regla de cloro -> 404")
             r = client.post("/packs/EC-ARCA/adopt", headers=h)
             check(r.status_code == 200 and len(r.json()["active_packs"]) == 3, "3 paquetes activos de nuevo")
-            check(len(client.get("/checklist-templates", headers=h).json()) == 26, "26 listas disponibles (G2-G6, CAP, Evaluar antes de comprar y 7H de la Guía 3)")
+            check(len(client.get("/checklist-templates", headers=h).json()) == 28, "28 listas disponibles (G2-G6, CAP, T-06, T-08, Evaluar antes de comprar y 7H de la Guía 3)")
             g6_req = next(t for t in client.get("/checklist-templates", headers=h).json() if t["id"] == "MA-G6-7F")
             check(len(g6_req["items"]) == 25 and g6_req["stage_code"] == "G6", "7F de la Guía 6: 25 requisitos en la etapa G6")
             check(len(client.get("/parameter-rules", headers=h).json()) == 4, "4 reglas vigentes")
@@ -145,7 +145,7 @@ def run(dsn: str) -> None:
             check(route["stages"][2]["summary"]["applied"] == 1, "resumen de la etapa: 1 aplicada")
             check(route["stages"][0]["lists"] == [] and route["stages"][0]["products"], "etapa sin listas muestra sus productos")
             counts = {s["code"]: s["summary"]["total"] for s in route["stages"]}
-            check(counts == {"G1": 0, "G2": 4, "G3": 7, "G4": 3, "G5": 7, "G6": 4, "INT": 1}, f"listas por etapa {counts}")
+            check(counts == {"G1": 0, "G2": 4, "G3": 7, "G4": 3, "G5": 7, "G6": 4, "INT": 3}, f"listas por etapa {counts}")
 
             print("6c. Lista de productos (0024): 'Falta' no genera hallazgo")
             products = [{"item_key": k, "answer_code": "pending" if i % 2 else "ready"} for i, k in enumerate(

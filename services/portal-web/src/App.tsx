@@ -23,6 +23,7 @@ import { WarehousePage } from "./pages/Warehouse";
 import { SanitationPage } from "./pages/Sanitation";
 import { ImprovementPage } from "./pages/Improvement";
 import { GroupPage } from "./pages/Group";
+import { ProgramObservationsPage } from "./pages/ProgramObservations";
 import { InspectionsPage } from "./pages/Inspections";
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -45,6 +46,7 @@ function AppRoutes() {
       <Route path="/sanitation" element={<RequireAuth><SanitationPage /></RequireAuth>} />
       <Route path="/improvement" element={<RequireAuth><ImprovementPage /></RequireAuth>} />
       <Route path="/group" element={<RequireAuth><GroupPage /></RequireAuth>} />
+      <Route path="/program-observations" element={<RequireAuth><ProgramObservationsPage /></RequireAuth>} />
       <Route path="/inspections" element={<RequireAuth><InspectionsPage /></RequireAuth>} />
       <Route path="/inspections/:stageCode" element={<RequireAuth><InspectionsPage /></RequireAuth>} />
       <Route path="/meters" element={<RequireAuth><MetersPage /></RequireAuth>} />

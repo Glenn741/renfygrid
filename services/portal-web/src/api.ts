@@ -1723,6 +1723,30 @@ export interface GroupMemberIndicators {
   maturity?: { template_id: string; title: string; runs: number; initial_pct: number | null; current_pct: number | null; change: number | null }[];
 }
 
+// ── T-10 Consolidado de observaciones (0043) ──────────────────────────
+
+export interface ProgramObservation {
+  observation_id: string; pack_id: string; stage_code: string; source_code: string; finding: string; proposed_change: string | null;
+  priority: "high" | "medium" | "low"; reviewer: string | null; status: "open" | "in_review" | "incorporated" | "discarded";
+  community: string | null; created_by: string; created_at: string; updated_at: string;
+}
+
+export function getProgramObservations(): Promise<{
+  stages: { pack_id: string; code: string; title: string }[]; sources: { pack_id: string; code: string; label: string }[];
+  observations: ProgramObservation[]; suggestions: { stage_code: string; source_code: string; finding: string; hint: string | null }[];
+  summary: { total: number; open: number; in_review: number; incorporated: number; discarded: number };
+}> {
+  return request("/program/observations");
+}
+
+export function createProgramObservation(body: Record<string, unknown>): Promise<ProgramObservation> {
+  return request("/program/observations", { method: "POST", body: JSON.stringify(body) });
+}
+
+export function updateProgramObservation(id: string, body: Record<string, unknown>): Promise<ProgramObservation> {
+  return request(`/program/observations/${id}`, { method: "PATCH", body: JSON.stringify(body) });
+}
+
 export function getGroupDashboard(): Promise<{
   organization: { tenant_id: string; name: string };
   members: { member_tenant_id: string; name: string; shared: string[]; since: string | null; indicators: GroupMemberIndicators }[];

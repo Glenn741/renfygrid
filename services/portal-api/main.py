@@ -233,6 +233,12 @@ from permissions import (  # noqa: E402
     update_user,
 )
 from calendar_service import annual_calendar  # noqa: E402
+from observation_service import (  # noqa: E402
+    ObservationNotFoundError,
+    create_observation,
+    list_observations,
+    update_observation,
+)
 from group_service import (  # noqa: E402
     GroupConflictError,
     GroupNotFoundError,
@@ -2893,6 +2899,48 @@ def group_dashboard_endpoint(tenant_id: str = Depends(get_tenant_id)) -> dict:
             return group_dashboard(conn, tenant_id)
         except GroupConflictError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+# ── T-10 Consolidado de observaciones (Track D, D12.2, 0043) ──────────
+
+@app.get("/program/observations")
+def program_observations_endpoint(tenant_id: str = Depends(get_tenant_id)) -> dict:
+    """Observaciones para mejorar las guias, con las que propone la CAP."""
+    with db_conn() as conn:
+        return list_observations(conn, tenant_id)
+
+
+class ObservationRequest(BaseModel):
+    stage_code: str | None = None
+    source_code: str | None = None
+    finding: str | None = None
+    proposed_change: str | None = None
+    priority: str | None = None
+    reviewer: str | None = None
+    status: str | None = None
+    community: str | None = None
+
+
+@app.post("/program/observations", status_code=201)
+def create_observation_endpoint(body: ObservationRequest, actor: dict = Depends(get_actor)) -> dict:
+    with db_conn() as conn:
+        try:
+            return create_observation(conn, actor["tenant_id"], requested_by_label(actor), **body.model_dump())
+        except ObservationNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except InvalidRecordError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.patch("/program/observations/{observation_id}")
+def update_observation_endpoint(observation_id: str, body: ObservationRequest, actor: dict = Depends(get_actor)) -> dict:
+    with db_conn() as conn:
+        try:
+            return update_observation(conn, actor["tenant_id"], observation_id, **body.model_dump(exclude_unset=True))
+        except ObservationNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except InvalidRecordError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.get("/calendar")

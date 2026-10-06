@@ -728,8 +728,12 @@ Las matrices de G1 y G6 (priorización, Plan de Mejora, presupuesto) son D7, no 
 - Tablero con solo lo compartido, leído con el alcance de cada junta.
 - Tarifa y morosidad declaradas como no disponibles hasta D9/D10 en `renfy_pool`.
 
-**Siguiente en RenfyGrid:** D12.2 (reporte de cumplimiento al ente rector; T-06, T-08 y T-10 del
-programa de facilitación).
+**D12.2, herramientas de facilitación:** ✅ En producción 2026-10-06 (migración 0043).
+- T-06 (evaluación diaria) y T-08 (rúbrica de microfacilitación) como listas del paquete.
+- T-10 (consolidado de observaciones), con sugerencias tomadas de la CAP.
+
+**Siguiente en RenfyGrid:** informe de cumplimiento al ente rector. La junta lo genera y decide
+enviarlo; el formato oficial de ARCA queda pendiente del documento.
 
 **D8–D11 (padrón, caja, costos y tarifa, recaudación, POA) van en `renfy_pool`.** Según este mismo
 plan, antes hay que cruzarlos con lo que ya existe allá; queda pendiente de esa revisión con el

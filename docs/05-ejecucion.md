@@ -2604,3 +2604,56 @@ cumplimiento del calendario, tarifa frente a costos, morosidad agregada."
 **Pendiente, D12.2:** reporte de cumplimiento para el ente rector, que la junta genera y decide
 enviar, y las herramientas del programa de facilitación T-06 (evaluación diaria), T-08 (rúbrica
 de microfacilitación) y T-10 (consolidado de observaciones).
+
+
+### D12.2 Herramientas del programa de facilitación: T-06, T-08 y T-10 (2026-10-06)
+
+Fuente: Guía 7 de Municipios Azules (fichas T-06, T-08 y T-10). Con esto quedan las diez
+herramientas T-01 a T-10 de la Guía 7 cubiertas o representadas.
+
+**Migración 0043:**
+- **`MA-T06` Evaluación diaria:** tipo `questionnaire`.
+  - Cinco enunciados con Sí, Más o menos y No (2/1/0), agrupados por tipo: aprendizaje,
+    facilitación y aplicación.
+  - `run_fields`: la jornada (Día 1 a 8, obligatoria), la persona facilitadora y las dos
+    preguntas abiertas.
+  - `analysis`: compara por jornada y agrupa por tipo. Reutiliza el motor de la CAP sin cambios.
+- **`MA-T08` Rúbrica de microfacilitación:** tipo `self_assessment`.
+  - Nueve criterios con Logrado, En proceso y Por reforzar; "Por reforzar" pide observación y no
+    genera hallazgos, porque es retroalimentación y no inspección.
+  - `run_fields`: la persona observada (obligatoria), una fortaleza, un ajuste prioritario y el
+    próximo paso.
+- **Catálogo `observation_source`:** aplicación, CAP y seguimiento.
+- **Tabla `program_observation` (T-10) con RLS:** guía (etapa de la ruta), fuente, hallazgo,
+  cambio propuesto, prioridad, responsable de revisión, estado (abierta, en revisión, incorporada
+  o descartada) y comunidad.
+- **Permiso `program.observe`:** administración y directiva.
+
+**Servicio `observation_service.py`:** además de lo que anota quien facilita, propone como
+observación cada guía que quedó en el rango más bajo del último momento con respuestas de un
+cuestionario con rangos (la CAP). Sigue el criterio de la T-05: "si una guía muestra bajo avance…
+revise claridad del lenguaje, pertinencia del ejemplo…". El rango, los grupos y los momentos salen
+del paquete.
+
+**API:**
+- `GET /program/observations`, con catálogo, observaciones, sugerencias y resumen;
+- `POST /program/observations` y `PATCH /program/observations/{id}`.
+
+**Portal:**
+- T-06 y T-08 aparecen solas en Ruta y revisiones › Integración, porque el portal ya pinta
+  cuestionarios y autoevaluaciones.
+- Página nueva "Mejora de las guías (T-10)": tabla con cambio de estado, sugerencias de la CAP y
+  alta.
+
+**Verificación:**
+- E2E nuevo `verify_facilitation_end_to_end.py`. Comprueba, por ejemplo: facilitación 16,7 % el
+  día 1 frente a 87,5 % el día 2; rúbrica 16 de 18; la CAP con G3 en 0 % propone la Guía 3 y,
+  una vez registrada, deja de proponerla.
+- Se ajustaron los conteos de listas en los E2E de paquetes: 28 listas, INT con 3.
+- **Regresión completa:** 32 E2E en verde.
+
+**En producción:**
+- T-06 y T-08 están disponibles en todas las organizaciones.
+- `jaas001` no recibe sugerencias, y es correcto: en su CAP final ninguna guía quedó en "Bajo"
+  (G6 quedó en 53,3 %, "Medio").
+- El operador no puede registrar observaciones T-10 (403).

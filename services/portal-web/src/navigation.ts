@@ -207,6 +207,7 @@ export const NAV_GROUPS: { title: string | null; items: NavItemDef[] }[] = [
     title: "Plataforma",
     items: [
       { to: "/group", label: "Agrupación", icon: "\u{1F91D}" },
+      { to: "/program-observations", label: "Mejora de las guías (T-10)", icon: "\u{1F4DD}" },
       { to: "/integrations", label: "Integraciones (CIS)", icon: "\u{1F517}" },
       { to: "/observability", label: "Observabilidad", icon: "\u{1FA7A}" },
       {
