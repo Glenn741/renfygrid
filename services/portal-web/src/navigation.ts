@@ -32,6 +32,8 @@ export interface NavItemDef {
   sections?: NavSectionDef[];
   /** Submenu que sale del paquete de la organizacion (la ruta del programa). */
   dynamic?: "route";
+  /** Que hace el modulo (tarjeta de la Vista general). */
+  description?: string;
 }
 
 const OPEN_FINDINGS: NavBadge = {
@@ -59,9 +61,10 @@ export const NAV_GROUPS: { title: string | null; items: NavItemDef[] }[] = [
   {
     title: null,
     items: [{
-      to: "/", label: "Vista general", icon: "overview",
+      to: "/", label: "Vista general", icon: "overview", description: "Estado de la operación, la medición y la red, y acceso a todos los módulos",
       sections: [
-        { id: "kpis", label: "Estado general" },
+        { id: "operation", label: "Estado de la operación" },
+        { id: "kpis", label: "Medición y red" },
         { id: "map", label: "Mapa de la red" },
         { id: "trends", label: "Tendencias" },
         { id: "modules", label: "Todos los módulos" },
@@ -72,7 +75,7 @@ export const NAV_GROUPS: { title: string | null; items: NavItemDef[] }[] = [
     title: "Operación del sistema",
     items: [
       {
-        to: "/operations", label: "Operación diaria", icon: "operations",
+        to: "/operations", label: "Operación diaria", icon: "operations", description: "Rutina del operador: mediciones de campo, bitácora, dosificación y lectura de medidores",
         sections: [
           { id: "today", label: "Hoy" },
           { id: "measure", label: "Medir" },
@@ -84,7 +87,7 @@ export const NAV_GROUPS: { title: string | null; items: NavItemDef[] }[] = [
         ],
       },
       {
-        to: "/system", label: "Mi sistema", icon: "system",
+        to: "/system", label: "Mi sistema", icon: "system", description: "Componentes por etapa, semáforo técnico, tren de tratamiento y hallazgos",
         sections: [
           { id: "route", label: "Recorrido" },
           { id: "traffic-light", label: "Semáforo" },
@@ -93,7 +96,7 @@ export const NAV_GROUPS: { title: string | null; items: NavItemDef[] }[] = [
         ],
       },
       {
-        to: "/quality", label: "Calidad del agua", icon: "quality",
+        to: "/quality", label: "Calidad del agua", icon: "quality", description: "Alertas de calidad, análisis de laboratorio y plan de muestreo",
         sections: [
           { id: "alerts", label: "Alertas" },
           { id: "lab", label: "Registrar análisis" },
@@ -102,7 +105,7 @@ export const NAV_GROUPS: { title: string | null; items: NavItemDef[] }[] = [
         ],
       },
       {
-        to: "/emergencies", label: "Emergencias", icon: "emergencies",
+        to: "/emergencies", label: "Emergencias", icon: "emergencies", description: "Plan por tipo de emergencia, contactos y activaciones",
         sections: [
           { id: "active", label: "Activas" },
           { id: "plan", label: "Plan de emergencia" },
@@ -111,7 +114,7 @@ export const NAV_GROUPS: { title: string | null; items: NavItemDef[] }[] = [
         ],
       },
       {
-        to: "/warehouse", label: "Bodega y EPP", icon: "warehouse",
+        to: "/warehouse", label: "Bodega y EPP", icon: "warehouse", description: "Insumos y EPP: existencias, vencimientos y cruce del cloro aplicado",
         sections: [
           { id: "status", label: "Estado" },
           { id: "move", label: "Registrar movimiento" },
@@ -121,7 +124,7 @@ export const NAV_GROUPS: { title: string | null; items: NavItemDef[] }[] = [
         ],
       },
       {
-        to: "/sanitation", label: "Saneamiento", icon: "sanitation",
+        to: "/sanitation", label: "Saneamiento", icon: "sanitation", description: "Componentes y lodos, registro de intervenciones y descargas productivas",
         sections: [
           { id: "components", label: "Componentes y lodos" },
           { id: "register", label: "Registro de saneamiento" },
@@ -129,17 +132,17 @@ export const NAV_GROUPS: { title: string | null; items: NavItemDef[] }[] = [
         ],
       },
       {
-        to: "/improvement", label: "Plan mínimo y mejora", icon: "improvement",
+        to: "/improvement", label: "Plan mínimo y mejora", icon: "improvement", description: "Plan mínimo de operación y mantenimiento, insumos para el Plan de Mejora y productos",
         sections: [
           { id: "minimum-plan", label: "Plan mínimo de O&M" },
           { id: "inputs", label: "Insumos para el Plan de Mejora" },
           { id: "products", label: "Productos finales" },
         ],
       },
-      { to: "/compliance-reports", label: "Informe de cumplimiento", icon: "report" },
-      { to: "/inspections", label: "Ruta y revisiones", icon: "inspections", dynamic: "route" },
+      { to: "/compliance-reports", label: "Informe de cumplimiento", icon: "report", description: "Informe del período para la autoridad, que la organización decide enviar" },
+      { to: "/inspections", label: "Ruta y revisiones", icon: "inspections", description: "Ruta del programa: revisiones, listas y productos por etapa", dynamic: "route" },
       {
-        to: "/maintenance", label: "Mantenimiento", icon: "maintenance",
+        to: "/maintenance", label: "Mantenimiento", icon: "maintenance", description: "Órdenes, preventivo programado, eventos y calendario anual",
         sections: [
           { id: "kpis", label: "Estado general" },
           { id: "orders", label: "Órdenes", badge: OVERDUE_ORDERS },
@@ -154,7 +157,7 @@ export const NAV_GROUPS: { title: string | null; items: NavItemDef[] }[] = [
     title: "Medición (MDM)",
     items: [
       {
-        to: "/meters", label: "HES / Ingesta", icon: "metering",
+        to: "/meters", label: "HES / Ingesta", icon: "metering", description: "Medidores, concentradores, flota y eventos/alarmas",
         sections: [
           { id: "map", label: "Mapa de medidores" },
           { id: "distribution", label: "Distribución estadística" },
@@ -166,7 +169,7 @@ export const NAV_GROUPS: { title: string | null; items: NavItemDef[] }[] = [
         ],
       },
       {
-        to: "/vee", label: "VEE", icon: "validation",
+        to: "/vee", label: "VEE", icon: "validation", description: "Validación, estimación y edición manual de lecturas",
         sections: [
           { id: "validation", label: "V · Validación", badge: VEE_PENDING },
           { id: "estimation", label: "E · Estimación" },
@@ -174,20 +177,20 @@ export const NAV_GROUPS: { title: string | null; items: NavItemDef[] }[] = [
         ],
       },
       {
-        to: "/consumption", label: "Consumo", icon: "consumption",
+        to: "/consumption", label: "Consumo", icon: "consumption", description: "Consumo facturable y anomalías bajo revisión",
         sections: [
           { id: "under-review", label: "En revisión" },
           { id: "orders", label: "Órdenes de relectura / inspección" },
         ],
       },
-      { to: "/control", label: "Control (SCR)", icon: "control" },
+      { to: "/control", label: "Control (SCR)", icon: "control", description: "Suspensión, corte y reconexión remota" },
     ],
   },
   {
     title: "Red y pérdidas",
     items: [
       {
-        to: "/network-balance", label: "Balance de Red", icon: "balance",
+        to: "/network-balance", label: "Balance de Red", icon: "balance", description: "Agua no contabilizada, ILI y balance hídrico IWA por zona",
         sections: [
           { id: "map", label: "Mapa de zonas" },
           { id: "zones", label: "Zonas de red" },
@@ -195,24 +198,24 @@ export const NAV_GROUPS: { title: string | null; items: NavItemDef[] }[] = [
         ],
       },
       {
-        to: "/digital-twin", label: "Gemelo Digital", icon: "twin",
+        to: "/digital-twin", label: "Gemelo Digital", icon: "twin", description: "Inventario georreferenciado de activos de red",
         sections: [
           { id: "map", label: "Mapa de activos" },
           { id: "assets", label: "Activos" },
         ],
       },
-      { to: "/network-model", label: "Modelado Hidráulico", icon: "model" },
+      { to: "/network-model", label: "Modelado Hidráulico", icon: "model", description: "Simulación hidráulica (EPANET/WNTR) de presión y caudal" },
     ],
   },
   {
     title: "Plataforma",
     items: [
-      { to: "/group", label: "Agrupación", icon: "group" },
-      { to: "/program-observations", label: "Observaciones del programa", icon: "observations" },
-      { to: "/integrations", label: "Integraciones (CIS)", icon: "integrations" },
-      { to: "/observability", label: "Observabilidad", icon: "observability" },
+      { to: "/group", label: "Agrupación", icon: "group", description: "Indicadores que cada organización miembro decide compartir" },
+      { to: "/program-observations", label: "Observaciones del programa", icon: "observations", description: "Observaciones para mejorar los materiales del programa" },
+      { to: "/integrations", label: "Integraciones (CIS)", icon: "integrations", description: "Feed unificado de órdenes y lecturas bajo demanda" },
+      { to: "/observability", label: "Observabilidad", icon: "observability", description: "Alertas activas de ingesta en tiempo real" },
       {
-        to: "/configuration", label: "Configuración", icon: "settings",
+        to: "/configuration", label: "Configuración", icon: "settings", description: "Usuarios, región, terminología, paquetes, reglas y parámetros",
         sections: [
           { id: "users", label: "Usuarios y roles" },
           { id: "session", label: "Sesión" },

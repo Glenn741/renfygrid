@@ -32,6 +32,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import psycopg  # noqa: E402
 
 from renmeter_common.db import tenant_scope  # noqa: E402
+from e2e_packs import adopt_program_packs  # noqa: E402
 from renmeter_common.user_service import create_app_user  # noqa: E402
 
 JWT_SECRET = "e2e-cat-secret"
@@ -62,6 +63,7 @@ def run(dsn: str) -> None:
             cur.execute("INSERT INTO tenant (name) VALUES ('E2E catalogo otra') RETURNING id")
             other_id = str(cur.fetchone()[0])
         try:
+            adopt_program_packs(conn, tenant_id, other_id)
             create_app_user(conn, tenant_id, "admin@cat.test", "clave-admin-1", "supervisor")
             create_app_user(conn, tenant_id, "operador@cat.test", "clave-oper-1", "operator")
             create_app_user(conn, other_id, "admin@otra-cat.test", "clave-admin-2", "supervisor")

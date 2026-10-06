@@ -19,10 +19,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "common"))
 
 import psycopg  # noqa: E402
 
-from pack_service import set_instrumentation  # noqa: E402
+from pack_service import adopt_pack, set_instrumentation  # noqa: E402
 from renmeter_common.user_service import create_app_user  # noqa: E402
 from seed_demo_guias_tenant import PROFILES  # noqa: E402
 from seed_demo_guias_tenant import main as seed_guias  # noqa: E402
+
+
+DEMO_PACKS = ("EC-ARCA", "EC-MUNICIPIOS-AZULES")
 
 
 def main(dsn: str, tenant_name: str, username: str, password: str, profile: str = "gualaceo") -> None:
@@ -38,6 +41,10 @@ def main(dsn: str, tenant_name: str, username: str, password: str, profile: str 
                 return
             cur.execute("INSERT INTO tenant (name) VALUES (%s) RETURNING id", (tenant_name,))
             tenant_id = str(cur.fetchone()[0])
+        # Pais y programa se eligen al crear la organizacion (0046): la junta
+        # demo es de Ecuador y del programa Municipios Azules.
+        for pack_id in DEMO_PACKS:
+            adopt_pack(conn, tenant_id, pack_id)
         create_app_user(conn, tenant_id, username, password, "supervisor")
         set_instrumentation(conn, tenant_id, {
             "metering": "basic", "water_balance": "basic", "quality": "basic",

@@ -8,6 +8,11 @@ import {
   getNetworkBalanceSummary,
   getNetworkZonesGeojson,
   getVeeSummary,
+  getMaintenanceKpis,
+  getOperationsToday,
+  getQualityOverview,
+  getSanitation,
+  getWarehouse,
 } from "../api";
 import { KpiTile } from "../components/KpiTile";
 import { AppShell } from "../components/AppShell";
@@ -15,7 +20,7 @@ import { NetworkMap, nrwColorForMap } from "../components/NetworkMap";
 import { TrendBars } from "../components/TrendBars";
 import { SectionNav } from "../components/SectionNav";
 
-import { sectionsFor } from "../navigation";
+import { NAV_GROUPS, sectionsFor } from "../navigation";
 import { Icon } from "../components/Icon";
 // Nivel 1 (F48, Sprint C1) -- rediseñada 2026-09-14 a pedido directo del
 // usuario: la version anterior solo tenia 4 tiles de Track A y se veia
@@ -24,32 +29,15 @@ import { Icon } from "../components/Icon";
 // (patron exception-first, docs/02-arquitectura-general.md SS9), un mapa
 // real de la red (zonas por NRW, mismo componente que Balance de Red), 2
 // graficos reales (tendencia VEE 7 dias, flota HES por marca) y un
-// lanzador con los 11 modulos del portal -- todo con datos reales ya
+// lanzador con TODOS los modulos, generado desde el menu (navigation.ts;
+// 2026-10-06: antes era una lista aparte que se quedo con 11 de 23) -- todo
+// con datos reales ya
 // expuestos por los endpoints existentes, nada inventado para "verse
 // lleno".
 
 const SECTIONS = sectionsFor("/");
 
-interface ModuleCard {
-  to: string;
-  icon: string;
-  label: string;
-  description: string;
-}
 
-const MODULES: ModuleCard[] = [
-  { to: "/meters", icon: "metering", label: "HES / Ingesta", description: "Medidores, concentradores, flota y eventos/alarmas" },
-  { to: "/vee", icon: "validation", label: "VEE", description: "Validación, estimación y edición manual de lecturas" },
-  { to: "/consumption", icon: "consumption", label: "Consumo", description: "Consumo facturable y anomalías bajo revisión" },
-  { to: "/control", icon: "control", label: "Control (SCR)", description: "Suspensión, corte y reconexión remota" },
-  { to: "/network-balance", icon: "balance", label: "Balance de Red", description: "NRW, ILI y balance hídrico IWA por zona" },
-  { to: "/network-model", icon: "model", label: "Modelado Hidráulico", description: "Simulación EPANET (WNTR) de presión y caudal" },
-  { to: "/digital-twin", icon: "twin", label: "Gemelo Digital", description: "Inventario georreferenciado de activos de red" },
-  { to: "/maintenance", icon: "maintenance", label: "Mantenimiento", description: "Órdenes de mantenimiento e integración BayForce" },
-  { to: "/integrations", icon: "integrations", label: "Integraciones (CIS)", description: "Feed unificado de órdenes y lecturas bajo demanda" },
-  { to: "/observability", icon: "observability", label: "Observabilidad", description: "Alertas activas de ingesta en tiempo real" },
-  { to: "/configuration", icon: "settings", label: "Configuración", description: "Reglas VEE/consumo, aprobación SCR, OBIS, cuentas protegidas" },
-];
 
 function StatCard({ label, value, colorClass, hint }: { label: string; value: string; colorClass?: string; hint?: string }) {
   return (
@@ -73,6 +61,13 @@ export function OverviewPage() {
     refetchInterval: 30_000,
   });
 
+  // Estado de la operacion: cada modulo con su propio resumen; si uno no
+  // responde (p. ej. sin zona horaria), su tarjeta muestra "—".
+  const { data: today } = useQuery({ queryKey: ["operations-today"], queryFn: getOperationsToday, retry: false, refetchInterval: 60_000 });
+  const { data: quality } = useQuery({ queryKey: ["quality-overview"], queryFn: getQualityOverview, retry: false, refetchInterval: 60_000 });
+  const { data: maintenance } = useQuery({ queryKey: ["maintenance-kpis"], queryFn: getMaintenanceKpis, retry: false, refetchInterval: 60_000 });
+  const { data: warehouse } = useQuery({ queryKey: ["warehouse"], queryFn: getWarehouse, retry: false, refetchInterval: 60_000 });
+  const { data: sanitation } = useQuery({ queryKey: ["sanitation"], queryFn: getSanitation, retry: false, refetchInterval: 60_000 });
   const { data: veeSummary } = useQuery({ queryKey: ["vee-summary"], queryFn: getVeeSummary, refetchInterval: 30_000 });
   const { data: fleet } = useQuery({ queryKey: ["fleet-summary"], queryFn: getFleetSummary, refetchInterval: 30_000 });
   const { data: balanceSummary } = useQuery({
@@ -95,12 +90,35 @@ export function OverviewPage() {
   return (
     <AppShell title="Vista general">
       <SectionNav items={SECTIONS} />
+      <div id="operation" className="scroll-mt-24 mb-8">
+        <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-2">Estado de la operación</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <KpiTile to="/quality" label="Alertas críticas de calidad" value={quality?.critical_open ?? null}
+            alert={!!quality && quality.critical_open > 0} hint="análisis de laboratorio" />
+          <KpiTile to="/operations" label="Mediciones fuera de rango hoy" value={today?.summary.out_of_range_today ?? null}
+            alert={!!today && today.summary.out_of_range_today > 0} hint={today ? `${today.summary.readings_today} mediciones hoy` : "defina la zona horaria"} />
+          <KpiTile to="/operations" label="Puntos por medir hoy" value={today?.summary.points_due ?? null}
+            alert={!!today && today.summary.points_due > 0} hint="según la frecuencia de cada punto" />
+          <KpiTile to="/emergencies" label="Emergencias activas" value={today?.summary.active_emergencies ?? null}
+            alert={!!today && today.summary.active_emergencies > 0} hint="plan de emergencia" />
+          <KpiTile to="/maintenance" label="Mantenimiento vencido" value={maintenance?.overdue_count ?? null}
+            alert={!!maintenance && maintenance.overdue_count > 0} hint="órdenes fuera de plazo" />
+          <KpiTile to="/quality" label="Muestras de laboratorio vencidas" value={quality?.plan_overdue ?? null}
+            alert={!!quality && quality.plan_overdue > 0} hint="plan de muestreo" />
+          <KpiTile to="/warehouse" label="Bodega: reponer o por vencer" value={warehouse ? warehouse.alerts.below_min + warehouse.alerts.expiring : null}
+            alert={!!warehouse && warehouse.alerts.below_min + warehouse.alerts.expiring > 0} hint="insumos y EPP" />
+          <KpiTile to="/sanitation" label="Saneamiento pendiente" value={sanitation ? sanitation.summary.sludge_overdue + sanitation.summary.pending_verification : null}
+            alert={!!sanitation && sanitation.summary.sludge_overdue + sanitation.summary.pending_verification > 0}
+            hint="lodos vencidos y destinos por verificar" />
+        </div>
+      </div>
+
       {isLoading && <p className="text-sm text-slate-500">Cargando...</p>}
       {error && <p className="text-sm text-red-600">No se pudo cargar el tablero.</p>}
 
       {data && (
         <div id="kpis" className="scroll-mt-24 mb-8">
-          <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-2">Estado general — toda la plataforma</h2>
+          <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-2">Medición y red</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <KpiTile
               to="/meters"
@@ -245,21 +263,26 @@ export function OverviewPage() {
 
       <div id="modules" className="scroll-mt-24">
         <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-2">Todos los módulos</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {MODULES.map((m) => (
-            <Link
-              key={m.to}
-              to={m.to}
-              className="rounded-xl border border-slate-200 bg-white p-4 flex items-start gap-3 hover:border-indigo-300 hover:shadow-sm transition-shadow"
-            >
-              <span className="shrink-0 mt-0.5 text-indigo-600"><Icon name={m.icon} className="h-5 w-5" /></span>
-              <div>
-                <div className="text-sm font-semibold text-slate-900">{m.label}</div>
-                <div className="text-xs text-slate-500 mt-0.5">{m.description}</div>
-              </div>
-            </Link>
-          ))}
-        </div>
+        {NAV_GROUPS.filter((g) => g.title).map((g) => (
+          <div key={g.title} className="mb-5">
+            <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">{g.title}</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {g.items.map((m) => (
+                <Link
+                  key={m.to}
+                  to={m.to}
+                  className="rounded-xl border border-slate-200 bg-white p-4 flex items-start gap-3 hover:border-indigo-300 hover:shadow-sm transition-shadow"
+                >
+                  <span className="shrink-0 mt-0.5 text-indigo-600"><Icon name={m.icon} className="h-5 w-5" /></span>
+                  <div>
+                    <div className="text-sm font-semibold text-slate-900">{m.label}</div>
+                    {m.description && <div className="text-xs text-slate-500 mt-0.5">{m.description}</div>}
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
+        ))}
       </div>
     </AppShell>
   );

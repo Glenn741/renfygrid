@@ -39,6 +39,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import psycopg  # noqa: E402
 
 from renmeter_common.db import tenant_scope  # noqa: E402
+from e2e_packs import adopt_program_packs  # noqa: E402
 from renmeter_common.user_service import create_app_user  # noqa: E402
 
 JWT_SECRET = "e2e-d0-secret"
@@ -67,6 +68,7 @@ def run(dsn: str) -> None:
             cur.execute("INSERT INTO tenant (name) VALUES ('E2E Track D0.2 junta') RETURNING id")
             tenant_id = str(cur.fetchone()[0])
         try:
+            adopt_program_packs(conn, tenant_id)
             create_app_user(conn, tenant_id, EMAIL, "clave-junta-1", "supervisor")
             token = client.post(
                 "/auth/login", json={"tenant_id": tenant_id, "email": EMAIL, "password": "clave-junta-1"}
@@ -76,11 +78,11 @@ def run(dsn: str) -> None:
             print("1. Autenticacion")
             check(client.get("/packs").status_code == 401, "sin token -> 401")
 
-            print("2. Junta nueva: paquetes base desde el alta (0025)")
+            print("2. Junta nueva: país y programa elegidos al darse de alta (0046)")
             packs = client.get("/packs", headers=h).json()
-            check(sorted(packs["active"]) == ["EC-ARCA", "EC-MUNICIPIOS-AZULES", "core"], "nace con los paquetes base")
-            check({p["pack_id"] for p in packs["packs"] if p["is_default"]} == {"EC-ARCA", "EC-MUNICIPIOS-AZULES"},
-                  "el catálogo marca los paquetes base")
+            check(sorted(packs["active"]) == ["EC-ARCA", "EC-MUNICIPIOS-AZULES", "core"], "adoptó el país y el programa al darse de alta")
+            check({p["pack_id"] for p in packs["packs"] if p["is_default"]} == set(),
+                  "ningún paquete de país o programa se adopta por defecto")
 
             print("3. Desactivar y activar")
             check(client.post("/packs/NO-EXISTE/adopt", headers=h).status_code == 404, "paquete inexistente -> 404")

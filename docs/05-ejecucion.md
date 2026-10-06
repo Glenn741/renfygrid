@@ -2797,3 +2797,47 @@ no el código.
 paquetes de Ecuador, por eso `col001` (Colombia) se presenta con "junta", "ARCA" y "minga". Con el
 sistema multi-país, lo correcto sería que por defecto solo se adopte el núcleo y que el país y el
 programa se elijan al crear la organización.
+
+### Paquetes por organización, Vista general completa y duplicado de organizaciones (2026-10-06)
+
+**Migración 0046 (decisión del usuario):** ningún paquete de país o programa se adopta por
+defecto. Una organización nueva nace solo con el núcleo y elige su país y su programa al crearse
+(o después, en Configuración → Paquetes). La paridad funcional se mantiene: núcleo y motores son
+iguales para todas; lo que cambia es el contenido de cada país o programa, que es dato.
+- Las adopciones existentes no se tocaron.
+- A `col001` (demo de Colombia) se le quitaron los paquetes de Ecuador desde la API. Ahora se
+  presenta con "organización", "ente rector" y "jornada comunitaria", sin formatos de programa y
+  en COP.
+- `create_demo_junta_tenant.py` adopta Ecuador y Municipios Azules de forma explícita.
+- Las pruebas E2E del Track D también los adoptan explícitamente, con `portal-api/e2e_packs.py`.
+- `verify_community_packs` y `verify_pack_service` ahora comprueban que una organización nace
+  solo con el núcleo.
+
+**Vista general:**
+- "Todos los módulos" ya no es una lista aparte. Antes eran 11 módulos, solo los de medición;
+  ahora se genera desde el menú (`navigation.ts`, con `description` por módulo), agrupado como el
+  menú: los 23 módulos.
+- Bloque nuevo "Estado de la operación" con 8 indicadores, cada uno enlazado a su módulo:
+  - alertas críticas de calidad;
+  - mediciones fuera de rango hoy;
+  - puntos por medir hoy;
+  - emergencias activas;
+  - mantenimiento vencido;
+  - muestras de laboratorio vencidas;
+  - bodega por reponer o por vencer;
+  - saneamiento pendiente.
+- El bloque anterior pasa a llamarse "Medición y red".
+
+**Duplicado de organizaciones (`infra/db/ops/duplicate_tenant.sql`):**
+- Es genérico: recorre toda tabla con `tenant_id`, da un UUID nuevo a cada fila y reasigna las
+  referencias, tanto en columnas uuid como dentro de textos, jsonb y arreglos de texto. También
+  copia las tablas hijas sin `tenant_id` (`asset_connectivity`, `meter_gateway`).
+- No copia los usuarios, las membresías en agrupaciones ni el respaldo histórico de lecturas.
+- Corre en una sola transacción y verifica que cada tabla tenga las mismas filas en la original
+  y en la copia.
+- **Uso:** pedido por el usuario, `jaas001` se duplicó como `asada001`, con usuario
+  `asd001@renfygrid.com` (correo, según la regla de usuarios). Se copiaron 45 tablas, sin ningún
+  activo en común con `jaas001`, y un hallazgo creado en `asada001` no aparece en `jaas001`. El
+  hallazgo de prueba se borró por su ID.
+
+**Verificación:** regresión completa de 34 E2E en verde.

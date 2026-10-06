@@ -106,9 +106,13 @@ def main(dsn: str) -> None:
             cur.execute("INSERT INTO tenant (name) VALUES ('E2E Track D0 junta B') RETURNING id")
             tenant_b = str(cur.fetchone()[0])
         try:
-            print("1. Junta nueva: nace con los paquetes base (0025)")
+            print("1. Junta nueva: nace con el núcleo y elige país y programa (0046)")
+            check(sorted(active_pack_ids(conn, tenant_a)) == ["core"], "nace solo con el núcleo")
+            for t in (tenant_a, tenant_b):
+                for pack in ("EC-ARCA", "EC-MUNICIPIOS-AZULES"):
+                    adopt_pack(conn, t, pack)
             check(sorted(active_pack_ids(conn, tenant_a)) == ["EC-ARCA", "EC-MUNICIPIOS-AZULES", "core"],
-                  "paquetes base activos desde el alta (trigger en tenant)")
+                  "adopta el país y el programa al darse de alta")
             check(sorted(active_pack_ids(conn, tenant_b)) == sorted(active_pack_ids(conn, tenant_a)),
                   "las dos juntas tienen el mismo modelo funcional")
 

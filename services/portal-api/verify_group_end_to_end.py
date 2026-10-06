@@ -33,6 +33,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import psycopg  # noqa: E402
 
 from renmeter_common.db import tenant_scope  # noqa: E402
+from e2e_packs import adopt_program_packs  # noqa: E402
 from renmeter_common.user_service import create_app_user  # noqa: E402
 
 JWT_SECRET = "e2e-d12-secret"
@@ -65,6 +66,7 @@ def run(dsn: str) -> None:
                 cur.execute("INSERT INTO tenant (name) VALUES (%s) RETURNING id", (name,))
                 ids[k] = str(cur.fetchone()[0])
         try:
+            adopt_program_packs(conn, *ids.values())
             users = {
                 "g_admin": ("agrupacion", "admin@g.test", "supervisor"), "g_op": ("agrupacion", "tecnico@g.test", "operator"),
                 "a_board": ("junta A", "directiva@a.test", "board"), "a_op": ("junta A", "operador@a.test", "operator"),
