@@ -2273,3 +2273,62 @@ El % es lo hecho, sin pasar de lo esperado, sobre lo esperado; con 0 esperado no
   - `col001`: muestra solo lo que le toca desde su adopción.
 - Demo: `jaas001` aplicó "Evaluar antes de comprar" antes de cotizar una planta compacta. Hay un
   filtro lento abandonado y recuperable, y el problema es de operación.
+
+### D5 Plan de emergencia (2026-10-06)
+
+Fuente: Guía 3 §3.11 y Actividad participativa 6.
+
+**Migración 0037:**
+- **`emergency_type`:** las 6 emergencias de la tabla de la guía (lluvias fuertes, sequía,
+  rotura principal, contaminación de agua, rebose de aguas residuales, colapso de fosa o
+  planta), con señales, qué hacer primero y a quién avisar. Donde la Actividad 6 trae ejemplo,
+  también responsable, mensaje y apoyo. El mensaje de la rotura principal se adaptó a "sectores
+  afectados", porque el ejemplo nombra los de un caso ficticio.
+- **`emergency_auto_trigger`:** E. coli crítico → contaminación. La "turbiedad extrema" no tiene
+  umbral en la guía y queda manual.
+- **`program_rule`:** revisión del plan cada 365 días.
+- **Tablas por junta con RLS:** `emergency_plan_entry` (ajustes y emergencias propias),
+  `emergency_contact`, `emergency_activation` y `emergency_plan_review`.
+- **Permisos:**
+  - `emergency.activate`: operador, directiva y administración;
+  - `emergency.plan`: directiva y administración.
+
+**Servicio `emergency_service.py`:**
+- Lo no ajustado se muestra con el texto del catálogo.
+- Una emergencia del mismo tipo ya activa no se duplica: el nuevo aviso se anota en ella.
+- `quality_service.record_lab_sample` llama a la activación automática.
+- La vista "Hoy" cuenta `active_emergencies`.
+- **Error encontrado en el E2E:** `concat_ws` con un parámetro sin tipo daba
+  `IndeterminateDatatype`; se resolvió con `%s::text`.
+
+**API:**
+- `GET /emergencies`;
+- `PUT /emergencies/plan`;
+- `POST /emergencies/contacts` y `DELETE /emergencies/contacts/{id}`;
+- `POST/GET /emergencies/activations` y `POST /emergencies/activations/{id}/close`;
+- `POST /emergencies/reviews`.
+
+**Portal:** página "Emergencias".
+- **Activas:** primera acción, responsable, mensaje con "Copiar" y a quién avisar; "Dar por
+  resuelta".
+- **Plan:** ajuste por emergencia, emergencias propias y revisión.
+- **Contactos:** con enlace `tel:`.
+- **Historial.**
+
+Aviso rojo en Operación diaria → Hoy.
+
+**Verificación:**
+- E2E nuevo `verify_emergencies_end_to_end.py`: catálogo, ajustes, permisos, contactos,
+  activación manual sin duplicar, activación automática por E. coli, cierre, revisión y
+  aislamiento.
+- **Regresión completa:** los 27 E2E del Portal/API, D0.1 y el motor en verde.
+- En vivo, `col001` y `jaas001` ven las 6 emergencias.
+
+**Demo en `jaas001`:**
+- la directiva ajustó las emergencias de lluvias y contaminación;
+- contacto ECU 911, que es un número público. Los teléfonos del GAD y del MSP quedan por cargar
+  por la junta: no se inventan;
+- revisión del 6 de octubre;
+- el operador recibe 403 al editar el plan.
+
+**Pendiente:** envío del mensaje por WhatsApp con Renfy Vox.

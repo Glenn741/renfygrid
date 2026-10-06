@@ -697,8 +697,15 @@ Las matrices de G1 y G6 (priorización, Plan de Mejora, presupuesto) son D7, no 
 
 **D3 completo.**
 
-**Siguiente en RenfyGrid:** D5 (emergencias), D4 (bodega y EPP), D6 (saneamiento), D7 (plan mínimo
-y Plan de Mejora) y D12 (agrupación).
+**D5, emergencias:** ✅ En producción 2026-10-06 (migración 0037).
+- Plan editable a partir de las 6 emergencias de la Guía 3, contactos institucionales y revisión
+  anual.
+- Activación manual o automática (E. coli presente → contaminación), sin duplicar.
+- **Pendiente:** envío del mensaje a la comunidad por WhatsApp con Renfy Vox; hoy el mensaje se
+  copia.
+
+**Siguiente en RenfyGrid:** D4 (bodega y EPP), D6 (saneamiento), D7 (plan mínimo y Plan de Mejora)
+y D12 (agrupación).
 
 **D8–D11 (padrón, caja, costos y tarifa, recaudación, POA) van en `renfy_pool`.** Según este mismo
 plan, antes hay que cruzarlos con lo que ya existe allá; queda pendiente de esa revisión con el

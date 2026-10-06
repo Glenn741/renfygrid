@@ -1477,7 +1477,7 @@ export interface OperationDay {
   unassigned_entries: OperationLogEntry[];
   points: SamplingPoint[];
   readings: FieldReading[];
-  summary: { points_due: number; readings_today: number; out_of_range_today: number; entries_today: number; alerts_today: number; open_reading_findings: number; critical_quality_open: number };
+  summary: { points_due: number; readings_today: number; out_of_range_today: number; entries_today: number; alerts_today: number; open_reading_findings: number; critical_quality_open: number; active_emergencies: number };
 }
 
 export function getOperationsToday(): Promise<OperationDay> {
@@ -1581,6 +1581,78 @@ export interface QualityOverview {
 
 export function getQualityOverview(): Promise<QualityOverview> {
   return request("/quality/overview");
+}
+
+// ── Emergencias (0037) ────────────────────────────────────────────────
+
+export interface EmergencyEntry {
+  entry_id: string | null;
+  pack_id: string | null;
+  type_code: string | null;
+  label: string;
+  signals: string | null;
+  notify: string | null;
+  customized: boolean;
+  responsible: string | null;
+  first_action: string | null;
+  community_message: string | null;
+  external_support: string | null;
+  resources: string | null;
+  active: boolean;
+}
+
+export interface EmergencyActivation {
+  activation_id: string;
+  type_code: string | null;
+  plan_entry_id: string | null;
+  label: string;
+  trigger: "manual" | "auto";
+  trigger_ref: string | null;
+  activated_at: string;
+  activated_by: string;
+  notes: string | null;
+  status: "active" | "closed";
+  closed_at: string | null;
+  closing_notes: string | null;
+}
+
+export interface EmergencyPlan {
+  entries: EmergencyEntry[];
+  contacts: { contact_id: string; institution: string; person: string | null; phone: string; notes: string | null }[];
+  active: EmergencyActivation[];
+  review: { last_reviewed_on: string | null; period_days: number | null; source: string | null; status: string | null; next_due_at: string | null };
+}
+
+export function getEmergencyPlan(): Promise<EmergencyPlan> {
+  return request("/emergencies");
+}
+
+export function saveEmergencyPlanEntry(body: Partial<Omit<EmergencyEntry, "entry_id" | "customized" | "signals" | "notify" | "label">> & { custom_label?: string }): Promise<EmergencyPlan> {
+  return request("/emergencies/plan", { method: "PUT", body: JSON.stringify(body) });
+}
+
+export function addEmergencyContact(body: { institution: string; phone: string; person?: string | null; notes?: string | null }) {
+  return request("/emergencies/contacts", { method: "POST", body: JSON.stringify(body) });
+}
+
+export function deleteEmergencyContact(id: string): Promise<void> {
+  return request(`/emergencies/contacts/${id}`, { method: "DELETE" });
+}
+
+export function activateEmergency(body: { type_code?: string | null; plan_entry_id?: string | null; notes?: string | null }): Promise<EmergencyActivation & { duplicate: boolean }> {
+  return request("/emergencies/activations", { method: "POST", body: JSON.stringify(body) });
+}
+
+export function closeEmergency(id: string, notes: string | null): Promise<EmergencyActivation> {
+  return request(`/emergencies/activations/${id}/close`, { method: "POST", body: JSON.stringify({ notes }) });
+}
+
+export function getEmergencyActivations(): Promise<EmergencyActivation[]> {
+  return request("/emergencies/activations");
+}
+
+export function reviewEmergencyPlan(body: { reviewed_on: string; notes?: string | null }) {
+  return request("/emergencies/reviews", { method: "POST", body: JSON.stringify(body) });
 }
 
 // ── Productos quimicos y dosificacion (0031) ──────────────────────────

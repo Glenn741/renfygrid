@@ -214,6 +214,12 @@ function TodaySection() {
       title={`Hoy · ${new Date(`${data.date}T12:00:00`).toLocaleDateString("es", { weekday: "long", day: "numeric", month: "long" })}`}
       description="La rutina diaria en el orden de la guía. Registre cada toma en su momento; si el cloro sale fuera de rango, la toma queda en alerta y se abre un hallazgo para la directiva."
     >
+      {s.active_emergencies > 0 && (
+        <Link to="/emergencies#active" className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-red-400 bg-red-100 p-3 text-sm text-red-900 hover:bg-red-200">
+          <span><strong>Emergencia activa:</strong> {s.active_emergencies} emergencia{s.active_emergencies === 1 ? "" : "s"} en curso. Siga el plan: primera acción, mensaje a la comunidad y a quién avisar.</span>
+          <span className="font-semibold">Ver ›</span>
+        </Link>
+      )}
       {s.critical_quality_open > 0 && (
         <Link to="/quality#alerts" className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-900 hover:bg-red-100">
           <span><strong>Alerta crítica de calidad:</strong> {s.critical_quality_open} resultado{s.critical_quality_open === 1 ? "" : "s"} de laboratorio con contaminación (E. coli). Informe a la directiva y coordine con el GAD, MSP o ARCA.</span>

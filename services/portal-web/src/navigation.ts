@@ -101,6 +101,15 @@ export const NAV_GROUPS: { title: string | null; items: NavItemDef[] }[] = [
           { id: "results", label: "Resultados" },
         ],
       },
+      {
+        to: "/emergencies", label: "Emergencias", icon: "\u{1F6A8}",
+        sections: [
+          { id: "active", label: "Activas" },
+          { id: "plan", label: "Plan de emergencia" },
+          { id: "contacts", label: "Contactos" },
+          { id: "history", label: "Historial" },
+        ],
+      },
       { to: "/inspections", label: "Ruta y revisiones", icon: "\u{1F4CB}", dynamic: "route" },
       {
         to: "/maintenance", label: "Mantenimiento", icon: "\u{1F527}",
