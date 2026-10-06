@@ -1012,12 +1012,66 @@ export interface SessionInfo {
   tenant_name: string | null;
   email: string;
   role: string | null;
+  /** Etiqueta del rol desde el catalogo (0033). */
+  role_label: string | null;
+  /** Permisos efectivos del usuario en su organizacion (0033). */
+  permissions: string[];
   issued_at: string | null;
   expires_at: string;
 }
 
 export function getSession(): Promise<SessionInfo> {
   return request("/auth/me");
+}
+
+// ── Usuarios y roles (0033) ───────────────────────────────────────────
+
+export interface AppRole {
+  code: string;
+  label: string;
+  description: string;
+  assignable: boolean;
+  default_permissions: string[];
+  permissions: string[];
+  overridden: boolean;
+}
+
+export interface AppPermission {
+  code: string;
+  area: string;
+  label: string;
+}
+
+export function getRoles(): Promise<{ roles: AppRole[]; permissions: AppPermission[] }> {
+  return request("/roles");
+}
+
+export function setRolePermissions(role: string, permissions: string[]): Promise<AppRole> {
+  return request(`/roles/${encodeURIComponent(role)}/permissions`, { method: "PUT", body: JSON.stringify({ permissions }) });
+}
+
+export function resetRolePermissions(role: string): Promise<AppRole> {
+  return request(`/roles/${encodeURIComponent(role)}/permissions`, { method: "DELETE" });
+}
+
+export interface AppUser {
+  user_id: string;
+  email: string;
+  role: string;
+  is_active: boolean;
+  created_at: string;
+}
+
+export function getUsers(): Promise<AppUser[]> {
+  return request("/users");
+}
+
+export function createUser(body: { email: string; password: string; role: string }): Promise<AppUser> {
+  return request("/users", { method: "POST", body: JSON.stringify(body) });
+}
+
+export function updateUser(userId: string, body: { role?: string; is_active?: boolean; password?: string }): Promise<AppUser> {
+  return request(`/users/${userId}`, { method: "PATCH", body: JSON.stringify(body) });
 }
 
 export function getSessionSettings(): Promise<{ session_ttl_seconds: number | null }> {

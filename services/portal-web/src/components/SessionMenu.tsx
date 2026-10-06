@@ -9,11 +9,6 @@ import { useAuth } from "../auth";
 // usuario y acciones de cuenta arriba a la derecha; el menu lateral queda
 // solo para navegar. Vale para cualquier tenant: todo sale de /auth/me.
 
-const ROLE_LABEL: Record<string, string> = {
-  supervisor: "Supervisor",
-  integration: "Integración",
-};
-
 function formatDuration(ms: number): string {
   const totalMinutes = Math.max(0, Math.floor(ms / 60000));
   const hours = Math.floor(totalMinutes / 60);
@@ -73,7 +68,7 @@ export function SessionMenu() {
 
   if (!data) return null;
   const nearExpiry = remaining !== null && remaining < 15 * 60000;
-  const role = data.role ? ROLE_LABEL[data.role] ?? data.role : null;
+  const role = data.role_label ?? data.role;
 
   return (
     <div ref={ref} className="relative ml-auto flex items-center gap-3">

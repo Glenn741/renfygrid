@@ -2059,3 +2059,54 @@ para una actualización aparte.
   con su canal y su última lectura.
 - No se cargaron lecturas manuales de demo: los medidores de las dos demos tienen telemetría y
   una lectura manual alteraría su balance.
+
+### D1.4b Roles y permisos reales (2026-10-06)
+
+**Antes:** todo usuario era `supervisor`, `role_permission` (0001) estaba vacía y ninguna
+escritura revisaba permisos. Una junta necesita que el operador registre, la directiva revise y
+nadie más cambie la configuración.
+
+**Migración 0033:**
+- **Catálogo** (`app_permission`, `app_role`, `role_default_permission`):
+  - 16 permisos por área;
+  - roles Administración (`supervisor`, todos los permisos), Directiva (`board`), Operador
+    (`operator`) e Integración (`integration`, cuenta de servicio que no se asigna desde el
+    Portal).
+- **El operador conserva `control.request` y `control.approve`:** en el módulo MDM el aprobador
+  por defecto de las órdenes de control es `operator`. Lo encontró la regresión del Sprint 8.
+- **`tenant_role_override`:** una organización reemplaza los permisos de un rol; puede dejarlo
+  vacío.
+- **`app_user.role`:** clave foránea al catálogo (NOT VALID, no revalida filas viejas).
+
+**`portal-api/permissions.py` y middleware `permission_guard`:**
+- Toda escritura (POST, PUT, PATCH, DELETE) pide su permiso según `ROUTE_RULES`. **Una
+  escritura que no está en la tabla exige `settings.manage`**, así que un endpoint nuevo nunca
+  queda abierto por olvido; al agregar uno, hay que mapearlo.
+- El rol se lee de la BD en cada petición, no del token. Un cambio de rol o de permisos rige de
+  inmediato, y un usuario desactivado recibe 403 también en las lecturas.
+- Nunca queda la organización sin administrador: no se puede desactivar a uno mismo, ni quitar
+  el último administrador, ni quitarle `users.manage` al único rol que lo tiene.
+- Usuarios: correo obligatorio (con @) guardado en minúsculas y clave mínima de 8 caracteres.
+
+**API:**
+- `GET /roles` y `PUT/DELETE /roles/{rol}/permissions`;
+- `GET/POST /users` y `PATCH /users/{id}` (rol, activo, clave);
+- `/auth/me` devuelve `role_label` y `permissions`.
+
+**Portal:**
+- Configuración → **Usuarios y roles**: alta, cambio de rol, activar o desactivar, cambio de
+  clave y ajuste de permisos por rol con "volver a los de defecto".
+- El encabezado muestra la etiqueta del rol desde el catálogo; antes había un mapa fijo en el
+  código.
+
+**Verificación:**
+- E2E nuevo `verify_roles_permissions_end_to_end.py` con 45 verificaciones.
+- **Regresión completa:** los 24 E2E del Portal/API en verde.
+- En vivo: los administradores de `col001` y `jaas001` conservan sus 16 permisos y sus
+  escrituras.
+- Cuentas demo en `jaas001`: `operador001@renfygrid.com` (Operador) y
+  `directiva001@renfygrid.com` (Directiva). El operador recibe 403 al tocar la configuración o
+  crear puntos; la directiva recibe 403 al medir o crear usuarios.
+
+**Pendiente menor:** en desarrollo local, con origen cruzado, la respuesta 403 del middleware
+no lleva cabeceras CORS. En producción el Portal y la API comparten origen (`/api`) y no afecta.

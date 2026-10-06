@@ -7,7 +7,13 @@ import {
   getInstrumentation,
   getPacks,
   getParameterRules,
+  createUser,
+  getRoles,
   getSessionSettings,
+  getUsers,
+  resetRolePermissions,
+  setRolePermissions,
+  updateUser,
   getTimezoneSettings,
   setInstrumentation,
   setSessionSettings,
@@ -40,6 +46,7 @@ import { StagePage, EmptyState } from "../components/StagePage";
 import { NavSection, SectionNav } from "../components/SectionNav";
 
 import { sectionsFor } from "../navigation";
+import { useSessionInfo } from "../components/SessionMenu";
 // Pulido de usabilidad (2026-09-14): esta era la pagina mas larga del
 // portal -- 5 secciones de administracion sin ninguna relacion visual
 // entre si, apiladas en un solo scroll ciego. Convertida al patron real
@@ -978,6 +985,174 @@ function TimezoneSettingsSection() {
   );
 }
 
+function UsersRolesSection() {
+  const queryClient = useQueryClient();
+  const { data: session } = useSessionInfo();
+  const canManage = session?.permissions.includes("users.manage") ?? false;
+  const { data: users } = useQuery({ queryKey: ["users"], queryFn: getUsers, enabled: canManage });
+  const { data: roleData } = useQuery({ queryKey: ["roles"], queryFn: getRoles, enabled: canManage });
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [role, setRole] = useState("operator");
+  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const [editingRole, setEditingRole] = useState<string | null>(null);
+  const [draft, setDraft] = useState<Set<string>>(new Set());
+  const refresh = () => {
+    for (const key of ["users", "roles", "session"]) queryClient.invalidateQueries({ queryKey: [key] });
+  };
+  const fail = (err: unknown) => setMessage({ ok: false, text: err instanceof ApiError ? err.message : "No se pudo guardar." });
+
+  const create = useMutation({
+    mutationFn: () => createUser({ email, password, role }),
+    onSuccess: (u) => { setEmail(""); setPassword(""); setMessage({ ok: true, text: `Usuario ${u.email} creado. Entréguele su clave para el primer ingreso.` }); refresh(); },
+    onError: fail,
+  });
+  const update = useMutation({
+    mutationFn: ({ id, body }: { id: string; body: { role?: string; is_active?: boolean; password?: string } }) => updateUser(id, body),
+    onSuccess: () => { setMessage({ ok: true, text: "Cambio guardado. Rige de inmediato, sin que el usuario vuelva a ingresar." }); refresh(); },
+    onError: fail,
+  });
+  const saveRole = useMutation({
+    mutationFn: (code: string) => setRolePermissions(code, [...draft]),
+    onSuccess: () => { setEditingRole(null); setMessage({ ok: true, text: "Permisos del rol guardados para esta organización." }); refresh(); },
+    onError: fail,
+  });
+  const resetRole = useMutation({
+    mutationFn: (code: string) => resetRolePermissions(code),
+    onSuccess: () => { setEditingRole(null); setMessage({ ok: true, text: "El rol volvió a sus permisos por defecto." }); refresh(); },
+    onError: fail,
+  });
+
+  if (session && !canManage) {
+    return (
+      <SectionCard title="Usuarios y roles" description="Quién entra a la plataforma y qué puede hacer cada rol.">
+        <p className="text-sm text-slate-600">Su rol ({session.role_label ?? session.role}) no administra usuarios. Consulte a la administración de la organización.</p>
+      </SectionCard>
+    );
+  }
+  const roles = roleData?.roles ?? [];
+  const assignable = roles.filter((r) => r.assignable);
+  const roleLabel = (code: string) => roles.find((r) => r.code === code)?.label ?? code;
+  const areas = [...new Set((roleData?.permissions ?? []).map((p) => p.area))];
+
+  return (
+    <SectionCard
+      title="Usuarios y roles"
+      description="Quién entra a la plataforma y qué puede hacer. El operador registra la operación diaria; la directiva revisa y decide; la administración configura. Los cambios rigen de inmediato."
+    >
+      {message && <p className={`mb-3 text-sm ${message.ok ? "text-emerald-700" : "text-red-600"}`}>{message.text}</p>}
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
+              <th className="py-2 pr-3 font-semibold">Usuario</th>
+              <th className="py-2 pr-3 font-semibold">Rol</th>
+              <th className="py-2 pr-3 font-semibold">Estado</th>
+              <th className="py-2 font-semibold">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(users ?? []).map((u) => {
+              const isSelf = u.email === session?.email;
+              const serviceAccount = !roles.find((r) => r.code === u.role)?.assignable;
+              return (
+                <tr key={u.user_id} className={`border-b border-slate-100 last:border-0 ${u.is_active ? "" : "opacity-50"}`}>
+                  <td className="py-2 pr-3 text-slate-800">{u.email}{isSelf && <span className="ml-1 text-xs text-slate-500">(usted)</span>}</td>
+                  <td className="py-2 pr-3">
+                    {serviceAccount ? <span className="text-slate-600">{roleLabel(u.role)}</span> : (
+                      <select aria-label={`Rol de ${u.email}`} className="rounded-lg border border-slate-300 px-2 py-1 text-sm" value={u.role}
+                        onChange={(e) => update.mutate({ id: u.user_id, body: { role: e.target.value } })}>
+                        {assignable.map((r) => <option key={r.code} value={r.code}>{r.label}</option>)}
+                      </select>
+                    )}
+                  </td>
+                  <td className="py-2 pr-3">{u.is_active ? "Activo" : "Desactivado"}</td>
+                  <td className="py-2">
+                    <div className="flex flex-wrap gap-3 text-xs font-medium">
+                      {!isSelf && (
+                        <button onClick={() => update.mutate({ id: u.user_id, body: { is_active: !u.is_active } })} className="text-slate-700 hover:underline">
+                          {u.is_active ? "Desactivar" : "Activar"}
+                        </button>
+                      )}
+                      <button
+                        onClick={() => {
+                          const pwd = prompt(`Nueva clave para ${u.email} (mínimo 8 caracteres):`);
+                          if (pwd) update.mutate({ id: u.user_id, body: { password: pwd } });
+                        }}
+                        className="text-indigo-700 hover:underline"
+                      >
+                        Cambiar clave
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="mt-3 grid gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 p-3 sm:grid-cols-[1fr_12rem_10rem_auto]">
+        <input aria-label="Correo del usuario" type="email" className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm" placeholder="correo@organizacion.com" value={email} onChange={(e) => setEmail(e.target.value)} />
+        <input aria-label="Clave inicial" type="text" className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm" placeholder="Clave inicial (8+)" value={password} onChange={(e) => setPassword(e.target.value)} />
+        <select aria-label="Rol" className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm" value={role} onChange={(e) => setRole(e.target.value)}>
+          {assignable.map((r) => <option key={r.code} value={r.code}>{r.label}</option>)}
+        </select>
+        <button onClick={() => create.mutate()} disabled={!email.includes("@") || password.length < 8 || create.isPending}
+          className="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50">
+          Crear usuario
+        </button>
+      </div>
+
+      <h3 className="mt-6 text-sm font-semibold text-slate-900">Qué puede hacer cada rol</h3>
+      <div className="mt-2 space-y-3">
+        {roles.map((r) => (
+          <div key={r.code} className="rounded-lg border border-slate-200 p-3">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <p className="text-sm font-semibold text-slate-900">{r.label}{r.overridden && <span className="ml-2 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800">ajustado en esta organización</span>}</p>
+                <p className="text-xs text-slate-500">{r.description}</p>
+              </div>
+              {editingRole !== r.code ? (
+                <div className="flex gap-3 text-xs font-medium">
+                  <button onClick={() => { setEditingRole(r.code); setDraft(new Set(r.permissions)); }} className="text-indigo-700 hover:underline">Ajustar permisos</button>
+                  {r.overridden && <button onClick={() => resetRole.mutate(r.code)} className="text-slate-600 hover:underline">Volver a los de defecto</button>}
+                </div>
+              ) : (
+                <div className="flex gap-3 text-xs font-medium">
+                  <button onClick={() => saveRole.mutate(r.code)} className="font-semibold text-indigo-700 hover:underline">Guardar</button>
+                  <button onClick={() => setEditingRole(null)} className="text-slate-500 hover:underline">Cancelar</button>
+                </div>
+              )}
+            </div>
+            {editingRole === r.code ? (
+              <div className="mt-2 grid gap-x-6 gap-y-1 sm:grid-cols-2">
+                {areas.map((area) => (
+                  <div key={area}>
+                    <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">{area}</p>
+                    {(roleData?.permissions ?? []).filter((p) => p.area === area).map((p) => (
+                      <label key={p.code} className="flex items-start gap-2 text-xs text-slate-700">
+                        <input type="checkbox" className="mt-0.5" checked={draft.has(p.code)}
+                          onChange={(e) => setDraft((d) => { const n = new Set(d); if (e.target.checked) n.add(p.code); else n.delete(p.code); return n; })} />
+                        {p.label}
+                      </label>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-2 text-xs text-slate-600">
+                {r.permissions.length === 0 ? "Sin permisos de escritura (solo consulta)." :
+                  (roleData?.permissions ?? []).filter((p) => r.permissions.includes(p.code)).map((p) => p.label).join(" · ")}
+              </p>
+            )}
+          </div>
+        ))}
+      </div>
+    </SectionCard>
+  );
+}
+
 function SessionSettingsSection() {
   const queryClient = useQueryClient();
   const { data } = useQuery({ queryKey: ["session-settings"], queryFn: getSessionSettings });
@@ -1048,6 +1223,7 @@ export function ConfigurationPage() {
   return (
     <StagePage title="Configuración">
       <SectionNav items={SECTIONS} />
+      <NavSection id="users"><UsersRolesSection /></NavSection>
       <NavSection id="session"><SessionSettingsSection /></NavSection>
       <NavSection id="timezone"><TimezoneSettingsSection /></NavSection>
       <NavSection id="packs"><PacksSection /></NavSection>

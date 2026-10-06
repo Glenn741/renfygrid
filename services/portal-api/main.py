@@ -38,9 +38,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "maintenance"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "community"))
 
 import psycopg  # noqa: E402
-from fastapi import Depends, FastAPI, HTTPException  # noqa: E402
+from fastapi import Depends, FastAPI, HTTPException, Request  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
-from fastapi.responses import PlainTextResponse  # noqa: E402
+from fastapi.responses import JSONResponse, PlainTextResponse  # noqa: E402
+from starlette.concurrency import run_in_threadpool  # noqa: E402
 from pydantic import BaseModel  # noqa: E402
 
 from approval_levels_admin import create_approval_level, list_approval_levels  # noqa: E402
@@ -210,6 +211,20 @@ from pack_service import (  # noqa: E402
     update_follow_up_item,
 )
 from pack_engine import InvalidRecordError  # noqa: E402
+from permissions import (  # noqa: E402
+    PermissionAdminError,
+    UserNotFoundError,
+    create_user,
+    current_role,
+    effective_permissions,
+    list_permissions,
+    list_roles,
+    list_users,
+    required_permission,
+    reset_role_permissions,
+    set_role_permissions,
+    update_user,
+)
 from meter_manual_service import (  # noqa: E402
     MeterNotFoundError,
     MeterReadingConflictError,
@@ -237,7 +252,7 @@ from operation_service import (  # noqa: E402
     update_sampling_point,
 )
 from pack_service import AssetNotFoundError as PackAssetNotFoundError  # noqa: E402
-from renmeter_common.auth import create_token  # noqa: E402
+from renmeter_common.auth import TokenError, create_token, decode_token  # noqa: E402
 from renmeter_common.db import tenant_scope  # noqa: E402
 from renmeter_common.user_service import InvalidCredentialsError, authenticate, resolve_tenant_ref  # noqa: E402
 from service_orders import list_service_orders  # noqa: E402
@@ -260,6 +275,37 @@ app.add_middleware(
 def db_conn() -> Iterator[psycopg.Connection]:
     with psycopg.connect(app.state.settings.dsn, autocommit=True) as conn:
         yield conn
+
+
+@app.middleware("http")
+async def permission_guard(request: Request, call_next):
+    """D1.4b: con token, el usuario debe seguir activo (lecturas y
+    escrituras); cada escritura ademas pide su permiso (permissions.py). Sin
+    token o con token invalido se deja pasar: el endpoint responde 401 como
+    siempre. El rol se lee de la BD (no del token), asi desactivar a alguien
+    o cambiarle el rol rige de inmediato, sin esperar a que venza su sesion."""
+    needed = required_permission(request.method, request.url.path)
+    auth = request.headers.get("authorization") or ""
+    if not auth.startswith("Bearer ") or request.url.path == "/auth/login":
+        return await call_next(request)
+    try:
+        claims = decode_token(auth.removeprefix("Bearer ").strip(), app.state.settings.jwt_secret)
+    except TokenError:
+        return await call_next(request)
+
+    def check() -> tuple[str | None, set[str]]:
+        with db_conn() as conn:
+            role = current_role(conn, claims["tenant_id"], claims.get("user_id"), claims.get("role"))
+            if role is None or needed is None:
+                return role, set()
+            return role, effective_permissions(conn, claims["tenant_id"], role)
+
+    role, granted = await run_in_threadpool(check)
+    if role is None:
+        return JSONResponse(status_code=403, content={"detail": "Su usuario está desactivado. Consulte a la administración de la organización."})
+    if needed is not None and needed not in granted:
+        return JSONResponse(status_code=403, content={"detail": f"Su rol no tiene permiso para esta acción ({needed})."})
+    return await call_next(request)
 
 
 @app.get("/health")
@@ -318,11 +364,19 @@ def session_me(claims: dict = Depends(get_session_claims)) -> dict:
         with conn.cursor() as cur:
             cur.execute("SELECT name FROM tenant WHERE id = %s", (claims["tenant_id"],))
             row = cur.fetchone()
+        role = current_role(conn, claims["tenant_id"], claims.get("user_id"), claims.get("role"))
+        permissions = effective_permissions(conn, claims["tenant_id"], role)
+        with conn.cursor() as cur:
+            cur.execute("SELECT label FROM app_role WHERE code = %s", (role,))
+            label_row = cur.fetchone()
+        role_label = label_row[0] if label_row else role
     return {
         "tenant_id": claims["tenant_id"],
         "tenant_name": row[0] if row else None,
         "email": claims.get("email") or claims.get("user_id"),
-        "role": claims.get("role"),
+        "role": role,
+        "role_label": role_label,
+        "permissions": sorted(permissions),
         "issued_at": datetime.fromtimestamp(claims["iat"], tz=timezone.utc).isoformat() if "iat" in claims else None,
         "expires_at": datetime.fromtimestamp(claims["exp"], tz=timezone.utc).isoformat(),
     }
@@ -2055,6 +2109,81 @@ def list_manual_meter_readings_endpoint(
             return list_manual_meter_readings(conn, tenant_id, meter_id, since, limit)
         except MeterNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+# ── Usuarios y roles de la organizacion (Track D, 0033) ────────────────
+
+@app.get("/roles")
+def list_roles_endpoint(tenant_id: str = Depends(get_tenant_id)) -> dict:
+    with db_conn() as conn:
+        return {"roles": list_roles(conn, tenant_id), "permissions": list_permissions(conn)}
+
+
+class RolePermissionsRequest(BaseModel):
+    permissions: list[str]
+
+
+def _admin_errors(exc: Exception) -> HTTPException:
+    if isinstance(exc, UserNotFoundError):
+        return HTTPException(status_code=404, detail=str(exc))
+    return HTTPException(status_code=422, detail=str(exc))
+
+
+@app.put("/roles/{role}/permissions")
+def set_role_permissions_endpoint(role: str, body: RolePermissionsRequest, actor: dict = Depends(get_actor)) -> dict:
+    """Reemplaza los permisos de un rol en esta organizacion."""
+    with db_conn() as conn:
+        try:
+            return set_role_permissions(conn, actor["tenant_id"], role, body.permissions, requested_by_label(actor))
+        except (UserNotFoundError, PermissionAdminError) as exc:
+            raise _admin_errors(exc) from exc
+
+
+@app.delete("/roles/{role}/permissions")
+def reset_role_permissions_endpoint(role: str, tenant_id: str = Depends(get_tenant_id)) -> dict:
+    """Vuelve a los permisos por defecto del rol."""
+    with db_conn() as conn:
+        try:
+            return reset_role_permissions(conn, tenant_id, role)
+        except (UserNotFoundError, PermissionAdminError) as exc:
+            raise _admin_errors(exc) from exc
+
+
+@app.get("/users")
+def list_users_endpoint(tenant_id: str = Depends(get_tenant_id)) -> list[dict]:
+    with db_conn() as conn:
+        return list_users(conn, tenant_id)
+
+
+class CreateUserRequest(BaseModel):
+    email: str
+    password: str
+    role: str
+
+
+@app.post("/users", status_code=201)
+def create_user_endpoint(body: CreateUserRequest, tenant_id: str = Depends(get_tenant_id)) -> dict:
+    with db_conn() as conn:
+        try:
+            return create_user(conn, tenant_id, body.email, body.password, body.role)
+        except (UserNotFoundError, PermissionAdminError) as exc:
+            raise _admin_errors(exc) from exc
+
+
+class UpdateUserRequest(BaseModel):
+    role: str | None = None
+    is_active: bool | None = None
+    password: str | None = None
+
+
+@app.patch("/users/{user_id}")
+def update_user_endpoint(user_id: str, body: UpdateUserRequest, actor: dict = Depends(get_actor)) -> dict:
+    with db_conn() as conn:
+        try:
+            return update_user(conn, actor["tenant_id"], user_id, actor.get("user_id"),
+                               body.role, body.is_active, body.password)
+        except (UserNotFoundError, PermissionAdminError) as exc:
+            raise _admin_errors(exc) from exc
 
 
 @app.get("/settings/instrumentation")
