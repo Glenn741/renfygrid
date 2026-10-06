@@ -613,8 +613,32 @@ logra percibir que debe hacer click", "la visión de proceso no es claramente vi
 - **Menú lateral agrupado por proceso:** Operación del sistema, Medición (MDM), Red y
   pérdidas, Plataforma.
 
+**Construido y desplegado — formatos de G2, G5 y G6 (migración 0024, 2026-10-05):**
+
+| Guía | Listas cargadas | Ítems |
+|---|---|---|
+| G2 | Verificación inicial, 7B asamblea, 7C verificación legal e institucional, 7H productos finales | 33 |
+| G5 | Verificación inicial, 5A protección de fuente, 5B agua segura y saneamiento, 5C higiene y salud, ficha de diagnóstico ambiental y WASH (calificación 1-5), práctica de agua segura en el hogar, productos finales | 39 |
+| G6 | Verificación inicial, 7F lista de 25 requisitos del proyecto, 7H productos finales, lista mínima para la presentación formal (Anexo A) | 51 |
+
+Textos literales de las guías. Cambios al modelo:
+- **Tipo nuevo `products`** (pasaporte por guía).
+- **`ask_note` en la escala:** pide observación sin generar hallazgo (los "No" y "N/A" de los 25
+  requisitos, lo "Pendiente" de los productos, la calificación 3 de la ficha WASH).
+- **Ficha WASH:** una calificación de 1 o 2 genera hallazgo. Es interpretación propia; la guía no
+  lo fija.
+- **Prioridades de los hallazgos:** mismo criterio que los formatos de G3/G4 ("Falta" o "No" =
+  alta; "No sabemos" o "En proceso" = media). Es dato del paquete, ajustable.
+
+No se cargan, porque no son listas sino tablas o matrices a llenar:
+- **G2:** 7A, 7D, 7E, 7F, 7G y 7I (el padrón va con D8).
+- **G5:** mapa de microcuenca y plan de campaña.
+- **G6:** 7A-7E y 7G (Plan de Mejora, D7).
+
+Tampoco las "verificaciones rápidas de aprendizajes" del cierre de cada guía.
+
 **Siguiente (D0.6, propuesto):**
-1. Cargar como listas del paquete los formatos de G2, G5 y G6 que son listas de verificación.
+1. ~~Cargar los formatos de G2, G5 y G6 que son listas de verificación.~~ Hecho (0024).
 2. La CAP como tipo "cuestionario". Requiere opciones por ítem, porque hoy la escala es una
    sola por lista.
 3. El pasaporte T-07 como vista de productos por etapa.

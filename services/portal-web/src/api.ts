@@ -1086,13 +1086,15 @@ export interface ScaleEntry {
   label: string;
   finding: boolean;
   finding_priority?: string;
+  /** Pedir observación aunque la respuesta no genere hallazgo (0024). */
+  ask_note?: boolean;
   score: number;
 }
 
 export interface ChecklistTemplate {
   id: string;
   pack_id: string;
-  kind: "inspection" | "traffic_light" | "self_assessment";
+  kind: "inspection" | "traffic_light" | "self_assessment" | "products";
   title: string;
   purpose: string;
   scale: ScaleEntry[];

@@ -38,6 +38,7 @@ const KIND_LABEL: Record<ChecklistTemplate["kind"], string> = {
   traffic_light: "Semáforo",
   inspection: "Inspección",
   self_assessment: "Autoevaluación",
+  products: "Productos",
 };
 
 const STATUS_STYLE: Record<RouteList["status"], { label: string; pill: string; dot: string }> = {
@@ -264,10 +265,12 @@ function RunForm({ template, onCancel, onDone }: { template: ChecklistTemplate; 
                   })}
                 </div>
                 {isMissing && <p className="mt-2 pl-9 text-xs font-semibold text-amber-800">Falta responder este ítem.</p>}
-                {entry?.finding && (
-                  <div className="mt-3 ml-9 rounded-lg border border-amber-200 bg-amber-50 p-3">
-                    <p className="mb-2 text-xs font-semibold text-amber-900">
-                      Esta respuesta genera un hallazgo{entry.finding_priority ? ` de prioridad ${entry.finding_priority === "high" ? "alta" : entry.finding_priority === "medium" ? "media" : "baja"}` : ""}. Anote qué se acordó (opcional, pero ayuda al seguimiento):
+                {(entry?.finding || entry?.ask_note) && (
+                  <div className={`mt-3 ml-9 rounded-lg border p-3 ${entry.finding ? "border-amber-200 bg-amber-50" : "border-slate-200 bg-slate-50"}`}>
+                    <p className={`mb-2 text-xs font-semibold ${entry.finding ? "text-amber-900" : "text-slate-700"}`}>
+                      {entry.finding
+                        ? `Esta respuesta genera un hallazgo${entry.finding_priority ? ` de prioridad ${entry.finding_priority === "high" ? "alta" : entry.finding_priority === "medium" ? "media" : "baja"}` : ""}. Anote qué se acordó (opcional, pero ayuda al seguimiento):`
+                        : "Anote qué falta, quién lo tiene o por qué no aplica (opcional, pero ayuda al seguimiento):"}
                     </p>
                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
                       <input aria-label="Qué se observó" className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm" placeholder="Qué se observó" value={current?.observation ?? ""} onChange={(e) => update(item.key, { observation: e.target.value })} />

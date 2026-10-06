@@ -108,7 +108,7 @@ def main(dsn: str) -> None:
             adopt_pack(conn, tenant_a, "EC-ARCA")
             result = adopt_pack(conn, tenant_a, "EC-MUNICIPIOS-AZULES")
             check(result["active_packs"] == ["core", "EC-ARCA", "EC-MUNICIPIOS-AZULES"], "3 paquetes activos")
-            check(len(list_checklist_templates(conn, tenant_a)) == 8, "8 listas del programa visibles")
+            check(len(list_checklist_templates(conn, tenant_a)) == 23, "23 listas del programa visibles (G2-G6, 0021+0024)")
 
             print("3. Evaluacion con la regla del paquete")
             check(evaluate_parameter(conn, tenant_a, "free_chlorine", 0.8)["result"]["code"] == "adequate", "cloro 0,8 adecuado")

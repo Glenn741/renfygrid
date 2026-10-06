@@ -86,7 +86,9 @@ def run(dsn: str) -> None:
             client.post("/packs/EC-ARCA/adopt", headers=h)
             r = client.post("/packs/EC-MUNICIPIOS-AZULES/adopt", headers=h)
             check(r.status_code == 200 and len(r.json()["active_packs"]) == 3, "3 paquetes activos")
-            check(len(client.get("/checklist-templates", headers=h).json()) == 8, "8 listas disponibles")
+            check(len(client.get("/checklist-templates", headers=h).json()) == 23, "23 listas disponibles (G2-G6)")
+            g6_req = next(t for t in client.get("/checklist-templates", headers=h).json() if t["id"] == "MA-G6-7F")
+            check(len(g6_req["items"]) == 25 and g6_req["stage_code"] == "G6", "7F de la Guía 6: 25 requisitos en la etapa G6")
             check(len(client.get("/parameter-rules", headers=h).json()) == 4, "4 reglas vigentes")
 
             print("4. Evaluacion")
@@ -137,6 +139,22 @@ def run(dsn: str) -> None:
             check(g3["MA-7A"]["frequency_days"] == 90 and g3["MA-7E"]["frequency_days"] == 30, "frecuencias del catálogo")
             check(route["stages"][2]["summary"]["applied"] == 1, "resumen de la etapa: 1 aplicada")
             check(route["stages"][0]["lists"] == [] and route["stages"][0]["products"], "etapa sin listas muestra sus productos")
+            counts = {s["code"]: s["summary"]["total"] for s in route["stages"]}
+            check(counts == {"G1": 0, "G2": 4, "G3": 5, "G4": 3, "G5": 7, "G6": 4}, f"listas por etapa {counts}")
+
+            print("6c. Lista de productos (0024): 'Falta' no genera hallazgo")
+            products = [{"item_key": k, "answer_code": "pending" if i % 2 else "ready"} for i, k in enumerate(
+                ["org_chart", "assembly_minutes", "legal_diagnosis", "user_roll", "update_route", "alliance_proposal",
+                 "transparency_plan", "governance_plan", "adapted_models"])]
+            products[1]["observation"] = "Falta firmar el acta"
+            r = client.post("/checklist-runs", headers=h, json={"template_id": "MA-G2-7H", "answers": products})
+            check(r.status_code == 201 and r.json()["findings_created"] == [], "productos: 201 y sin hallazgos")
+            r = client.post("/checklist-runs", headers=h, json={"template_id": "MA-G2-7C", "answers": [
+                {"item_key": k, "answer_code": "missing" if k == "aua_current" else "yes"} for k in
+                ["legal_personality", "bylaws_current", "internal_rules", "board_registered", "aua_current", "user_roll_updated",
+                 "minutes_book", "technical_archive", "budget_poa_approved", "tariff_reviewed", "accountability_presented",
+                 "claims_register"]]})
+            check(r.status_code == 201 and len(r.json()["findings_created"]) == 1, "7C: AUA 'Falta' genera 1 hallazgo")
 
             print("7. Reportes")
             light = client.get("/reports/traffic-light", headers=h).json()["run"]
@@ -156,7 +174,8 @@ def run(dsn: str) -> None:
             })
             check(r.status_code == 201, "punto critico -> 201")
             finding_id = r.json()["finding_id"]
-            check(len(client.get("/findings?status=open", headers=h).json()) == 6, "6 hallazgos abiertos")
+            check(len(client.get("/findings?status=open", headers=h).json()) == 7,
+                  "7 hallazgos abiertos (5 del semáforo + 1 de 7C + el punto crítico)")
             r = client.patch(f"/findings/{finding_id}", headers=h, json={"status": "closed"})
             check(r.status_code == 200 and r.json()["closed_at"], "cerrado con fecha")
             check(client.patch(f"/findings/{finding_id}", headers=h, json={"priority": "x"}).status_code == 422, "prioridad invalida -> 422")
