@@ -1979,3 +1979,46 @@ como 26,5). Para un líquido con % peso/volumen, el resultado sale en ml/día.
   10 %; coagulante sin cálculo; 409, 422 y 404; aislamiento.
 - En vivo, `jaas001` con hipoclorito de calcio al 65 %: 0,5 L/s a 1,5 mg/L = 99,7 g/día, con
   el aviso de que todavía no se midió hoy.
+
+### D1.3 App del operador sin conexión (2026-10-06)
+
+Sin dependencias nuevas en producción: service worker propio y cola en IndexedDB.
+
+- **`/operator`** (`src/pages/Operator.tsx`): pantalla para el teléfono, fuera del panel
+  lateral.
+  - Pestañas Medir, Bitácora y Pendientes; botones grandes.
+  - Vista previa de la interpretación con los tramos del paquete y Alerta forzada, igual que el
+    servidor.
+  - Indicador de conexión, cuántos quedan por enviar y "Enviar ahora".
+  - Acceso desde Operación diaria → Hoy.
+- **Datos para trabajar sin red:** cada vez que hay conexión se guarda una foto del catálogo
+  (tipos de punto, rutina, parámetros con sus tramos) y de los puntos de la junta, por tenant.
+- **Cola (`src/offline/outbox.ts`):**
+  - Cada registro lleva un `client_id` (UUID) y el `tenant_id` del token, para que en un equipo
+    compartido nunca se envíe a otra organización.
+  - Al sincronizar van primero las mediciones y después las tomas. Una toma puede apuntar a una
+    medición hecha sin red: se resuelve con el `reading_id` del servidor.
+  - Sin red o con 5xx se detiene y reintenta después. Con 401 pide ingresar de nuevo, sin perder
+    nada. Con 4xx el registro queda "Rechazado" con el motivo, para reintentar o descartar.
+  - Lo ya enviado de días anteriores se limpia solo.
+  - La API ya era idempotente por `client_id` (0030), así que un corte a mitad de la
+    sincronización no duplica.
+- **Service worker (`public/sw.js`):** solo el armazón. La navegación va primero a la red y, sin
+  red, al `index` guardado; `/assets/` va primero a la caché y se borran los de versiones
+  anteriores. Nunca toca `/api/`. Se registra solo en producción.
+- **`manifest.json`:** el inicio es `/operator` y se puede instalar en el teléfono. Se nombró
+  `.json` porque nginx sirve `.webmanifest` como `octet-stream`.
+
+**Verificación:**
+- `npm run test:offline` (`tests/outbox.test.mjs`, con `fake-indexeddb` y `tsx` como
+  dependencias de desarrollo): 20 verificaciones con una API simulada que reproduce el contrato
+  real. Cubre sin red, orden y enlace medición → toma, otra junta intacta, reenvío sin
+  duplicar, 4xx con dependencia, 401, 5xx y limpieza.
+- En producción, `sw.js`, `manifest.json` (`application/json`) y `/operator` responden 200.
+
+**Falta:** la prueba en un teléfono real (instalar, modo avión, registrar, volver a la red).
+Queda pendiente con el usuario.
+
+`npm audit` marca `source-map-js` (alta), que ya estaba en el lock antes de este cambio. Es una
+dependencia transitiva de las herramientas de build y no se envía al navegador. Queda anotada
+para una actualización aparte.

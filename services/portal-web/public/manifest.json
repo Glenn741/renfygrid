@@ -1,0 +1,14 @@
+{
+  "name": "RenfyGrid · Operador",
+  "short_name": "RenfyGrid",
+  "description": "Operación diaria del sistema de agua: cloro residual y bitácora, también sin conexión.",
+  "lang": "es",
+  "start_url": "/operator",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#4f46e5",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

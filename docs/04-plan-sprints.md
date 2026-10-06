@@ -662,8 +662,8 @@ Las matrices de G1 y G6 (priorización, Plan de Mejora, presupuesto) son D7, no 
 |---|---|---|
 | **D1.1** | Puntos de medición (tipos en `core`), mediciones 7B interpretadas con la regla vigente y hallazgo sin duplicados, bitácora 7C, rutina de 5 momentos (§3.3), pantalla "Operación diaria" (migración 0030) | ✅ En producción 2026-10-06 |
 | **D1.2** | Calculadora de dosificación (§3.5) con guardas: productos químicos de la junta, textos de la guía como catálogo, nunca aplicar con cloro alto o agua turbia (migración 0031) | ✅ En producción 2026-10-06 |
-| **D1.3** | App del operador sin conexión (PWA): cola local con `client_id`, ya idempotente en la API | Siguiente |
-| **D1.4** | Lectura manual de micro y macromedidor; roles operador y directiva | Pendiente |
+| **D1.3** | App del operador sin conexión (PWA): `/operator`, service worker del armazón, foto del catálogo y cola en IndexedDB con `client_id` | ✅ En producción 2026-10-06 (falta la prueba en un teléfono real) |
+| **D1.4** | Lectura manual de micro y macromedidor; roles operador y directiva | Siguiente |
 
 ### 11.5 Modelo comercial, criterio de éxito y pendientes
 

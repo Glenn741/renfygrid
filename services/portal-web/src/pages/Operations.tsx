@@ -213,6 +213,10 @@ function TodaySection() {
       title={`Hoy · ${new Date(`${data.date}T12:00:00`).toLocaleDateString("es", { weekday: "long", day: "numeric", month: "long" })}`}
       description="La rutina diaria en el orden de la guía. Registre cada toma en su momento; si el cloro sale fuera de rango, la toma queda en alerta y se abre un hallazgo para la directiva."
     >
+      <Link to="/operator" className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-900 hover:bg-indigo-100">
+        <span><strong>App del operador:</strong> para el teléfono, funciona sin conexión y envía al volver la señal.</span>
+        <span className="font-semibold">Abrir ›</span>
+      </Link>
       <div className="mb-4 flex flex-wrap gap-2 text-xs">
         <span className={`rounded-full px-2.5 py-1 font-semibold ${s.points_due ? "bg-amber-50 text-amber-800" : "bg-emerald-50 text-emerald-700"}`}>{s.points_due} punto{s.points_due === 1 ? "" : "s"} por medir</span>
         <span className="rounded-full bg-slate-100 px-2.5 py-1 font-semibold text-slate-700">{s.readings_today} mediciones hoy</span>
