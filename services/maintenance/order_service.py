@@ -284,7 +284,8 @@ def generate_order(
 _ORDER_COLUMNS = (
     "id, asset_id, type, source, priority, status, bayforce_order_ref, reason, created_at, sla_due_at, "
     "failure_code_id, scheduled_at, assigned_crew_id, labor_hours, materials_used, root_cause, closed_at, "
-    "pm_plan_id, event_id, steps_done, responsible, pending_notes, community_participants, volunteer_hours"
+    "pm_plan_id, event_id, steps_done, responsible, pending_notes, community_participants, volunteer_hours, "
+    "waste_handler, waste_destination, sludge_volume_m3, destination_verified_by, destination_verified_at"
 )
 
 
@@ -309,6 +310,12 @@ def _row_dict(**kw: Any) -> dict[str, Any]:
         "pending_notes": kw.get("pending_notes"),
         "community_participants": kw.get("community_participants"),
         "volunteer_hours": float(kw["volunteer_hours"]) if kw.get("volunteer_hours") is not None else None,
+        # Guia 3, ficha 7F (D6): residuos y lodos de saneamiento
+        "waste_handler": kw.get("waste_handler"),
+        "waste_destination": kw.get("waste_destination"),
+        "sludge_volume_m3": float(kw["sludge_volume_m3"]) if kw.get("sludge_volume_m3") is not None else None,
+        "destination_verified_by": kw.get("destination_verified_by"),
+        "destination_verified_at": _iso(kw.get("destination_verified_at")),
     }
 
 
@@ -319,6 +326,8 @@ def _order_row_to_dict(row: tuple) -> dict[str, Any]:
         scheduled_at=row[11], assigned_crew_id=row[12], labor_hours=row[13], materials_used=row[14],
         root_cause=row[15], closed_at=row[16], pm_plan_id=row[17], event_id=row[18], steps_done=row[19],
         responsible=row[20], pending_notes=row[21], community_participants=row[22], volunteer_hours=row[23],
+        waste_handler=row[24], waste_destination=row[25], sludge_volume_m3=row[26], destination_verified_by=row[27],
+        destination_verified_at=row[28],
     )
 
 
@@ -434,6 +443,9 @@ def close_order(
     pending_notes: str | None = None,
     community_participants: int | None = None,
     volunteer_hours: float | None = None,
+    waste_handler: str | None = None,
+    waste_destination: str | None = None,
+    sludge_volume_m3: float | None = None,
 ) -> dict[str, Any]:
     """Cierra la orden real -- `completed` (con lo que de verdad se hizo:
     horas, materiales, causa raiz, codigo de falla) o `cancelled`. Solo
@@ -459,6 +471,14 @@ def close_order(
         "pending_notes": (pending_notes or "").strip() or None,
         "community_participants": community_participants, "volunteer_hours": volunteer_hours,
     }
+    # Ficha 7F (D6): quien retiro los residuos, a que destino seguro y cuantos lodos.
+    if sludge_volume_m3 is not None and sludge_volume_m3 < 0:
+        raise InvalidCommunityWorkError("El volumen de lodos no puede ser negativo")
+    if sludge_volume_m3 and not (waste_destination or "").strip():
+        raise InvalidCommunityWorkError("Una extracción de lodos necesita el destino seguro (ficha 7F)")
+    extra.update({"waste_handler": (waste_handler or "").strip() or None,
+                  "waste_destination": (waste_destination or "").strip() or None,
+                  "sludge_volume_m3": sludge_volume_m3})
     return _transition(conn, tenant_id, order_id, new_status, extra)
 
 

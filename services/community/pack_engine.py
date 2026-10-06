@@ -467,6 +467,27 @@ def sampling_points_status(points: list[dict], last_reading_on: dict[str, date],
     return rows
 
 
+# ── Saneamiento (D6, 0039) ─────────────────────────────────────────────
+
+def bod_cod_ratio(bod: float | None, cod: float | None) -> float | None:
+    """Relacion DBO/DQO de una muestra. Solo el dato: la guia pide que la
+    interprete personal tecnico; aqui no se clasifica."""
+    if bod is None or cod is None or cod <= 0:
+        return None
+    return round(bod / cod, 2)
+
+
+def sludge_status(last_extraction: date | None, max_days: int | None, today: date) -> dict[str, Any]:
+    """Estado del retiro de lodos de una fosa o planta frente al plazo del
+    paquete (al menos una vez al ano)."""
+    if max_days is None:
+        return {"status": None, "days_since": None, "due_on": None}
+    if last_extraction is None:
+        return {"status": "never", "days_since": None, "due_on": None}
+    due = last_extraction + timedelta(days=max_days)
+    return {"status": "overdue" if today > due else "ok", "days_since": (today - last_extraction).days, "due_on": due.isoformat()}
+
+
 # ── Bodega (D4, 0038) ──────────────────────────────────────────────────
 
 # Unidades de bodega y su equivalencia en la unidad base de masa (g) o

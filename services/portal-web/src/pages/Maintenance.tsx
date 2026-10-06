@@ -153,6 +153,9 @@ function CloseOrderForm({ order, onDone }: { order: MaintenanceOrder; onDone: ()
   const [pending, setPending] = useState("");
   const [participants, setParticipants] = useState("");
   const [volunteerHours, setVolunteerHours] = useState("");
+  const [wasteHandler, setWasteHandler] = useState("");
+  const [wasteDestination, setWasteDestination] = useState("");
+  const [sludge, setSludge] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const { data: failureCodes } = useQuery({ queryKey: ["failure-codes"], queryFn: () => getFailureCodes() });
@@ -171,6 +174,9 @@ function CloseOrderForm({ order, onDone }: { order: MaintenanceOrder; onDone: ()
         pending_notes: pending || null,
         community_participants: participants ? Number(participants) : null,
         volunteer_hours: volunteerHours ? Number(volunteerHours) : null,
+        waste_handler: wasteHandler || null,
+        waste_destination: wasteDestination || null,
+        sludge_volume_m3: sludge ? Number(sludge) : null,
       }),
     onSuccess: () => {
       setError(null);
@@ -245,6 +251,16 @@ function CloseOrderForm({ order, onDone }: { order: MaintenanceOrder; onDone: ()
               <input type="number" min={0} step="any" className="rounded-lg border border-slate-300 px-2 py-1 text-xs w-full" value={volunteerHours} onChange={(e) => setVolunteerHours(e.target.value)} />
             </div>
           </div>
+        )}
+        {status === "completed" && (
+          <details className="mt-2">
+            <summary className="cursor-pointer text-[11px] font-medium text-slate-600">Saneamiento: residuos y lodos (ficha 7F)</summary>
+            <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <input aria-label="Quién retiró los residuos" className="rounded-lg border border-slate-300 px-2 py-1 text-xs" placeholder="Quién retiró los residuos" value={wasteHandler} onChange={(e) => setWasteHandler(e.target.value)} />
+              <input aria-label="Destino seguro" className="rounded-lg border border-slate-300 px-2 py-1 text-xs" placeholder="Destino seguro" value={wasteDestination} onChange={(e) => setWasteDestination(e.target.value)} />
+              <input aria-label="Lodos (m³)" type="number" min={0} step="any" className="rounded-lg border border-slate-300 px-2 py-1 text-xs" placeholder="Lodos retirados (m³)" value={sludge} onChange={(e) => setSludge(e.target.value)} />
+            </div>
+          </details>
         )}
         {error && <p className="text-xs text-red-600 mt-2">{error}</p>}
         <div className="mt-2 flex gap-2">

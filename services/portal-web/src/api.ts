@@ -923,6 +923,9 @@ export function closeMaintenanceOrder(orderId: string, body: {
   pending_notes?: string | null;
   community_participants?: number | null;
   volunteer_hours?: number | null;
+  waste_handler?: string | null;
+  waste_destination?: string | null;
+  sludge_volume_m3?: number | null;
 }): Promise<MaintenanceOrder> {
   return request(`/maintenance-orders/${orderId}/close`, { method: "POST", body: JSON.stringify(body) });
 }
@@ -1581,6 +1584,40 @@ export interface QualityOverview {
 
 export function getQualityOverview(): Promise<QualityOverview> {
   return request("/quality/overview");
+}
+
+// ── Saneamiento (0039) ────────────────────────────────────────────────
+
+export interface SanitationOverview {
+  components: { asset_id: string; type: string; type_label: string; name: string | null; status: string; accumulates_sludge: boolean;
+    last_intervention_at: string | null; last_sludge_extraction_at: string | null;
+    sludge: { status: "never" | "ok" | "overdue" | null; days_since: number | null; due_on: string | null } | null }[];
+  register_7f: { order_id: string; component: string; type: string; closed_at: string | null; activity: string | null; responsible: string | null;
+    waste_handler: string | null; waste_destination: string | null; sludge_volume_m3: number | null; verified_by: string | null;
+    verified_at: string | null; pending_notes: string | null; needs_verification: boolean }[];
+  sludge_rule: { max_days: number; source: string } | null;
+  summary: { sludge_overdue: number; pending_verification: number };
+  discharges: { discharge_id: string; activity_code: string; activity_label: string; name: string; owner: string | null; location_text: string | null;
+    problem: string | null; status: "identified" | "agreement" | "controlled" | "closed"; agreement: string | null; created_at: string;
+    followups: { noted_at: string; note: string; new_status: string | null; noted_by: string }[];
+    samples: { sample_id: string; sampled_at: string; laboratory: string; bod5: number | null; cod: number | null; bod_cod_ratio: number | null }[] }[];
+  activities: { pack_id: string; code: string; label: string }[];
+}
+
+export function getSanitation(): Promise<SanitationOverview> {
+  return request("/sanitation");
+}
+
+export function verifySanitationDestination(orderId: string) {
+  return request(`/sanitation/register/${orderId}/verify`, { method: "POST", body: "{}" });
+}
+
+export function createDischarge(body: { activity_code: string; name: string; owner?: string; location_text?: string; problem?: string }) {
+  return request("/sanitation/discharges", { method: "POST", body: JSON.stringify(body) });
+}
+
+export function addDischargeFollowup(id: string, body: { note: string; new_status?: string | null; agreement?: string | null }) {
+  return request(`/sanitation/discharges/${id}/followups`, { method: "POST", body: JSON.stringify(body) });
 }
 
 // ── Bodega y EPP (0038) ───────────────────────────────────────────────

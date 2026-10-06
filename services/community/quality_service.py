@@ -232,6 +232,7 @@ def record_lab_sample(
     report_ref: str | None = None,
     reason: str = "plan",
     notes: str | None = None,
+    discharge_id: str | None = None,
 ) -> dict:
     """Guarda una muestra con sus resultados. `results`: [{parameter_code,
     value, qualifier?}]. Devuelve la muestra con cada resultado
@@ -253,6 +254,7 @@ def record_lab_sample(
     if unknown:
         raise QualityNotFoundError(f"Parámetros desconocidos: {unknown}")
     _check_uuid(plan_item_id, "el plan")
+    _check_uuid(discharge_id, "la descarga")
 
     interpreted = []
     for r in results:
@@ -279,11 +281,15 @@ def record_lab_sample(
                     cur.execute("SELECT 1 FROM lab_plan_item WHERE id = %s AND tenant_id = %s", (plan_item_id, tenant_id))
                     if cur.fetchone() is None:
                         raise QualityNotFoundError(f"No existe el plan {plan_item_id} para esta junta")
+                if discharge_id:
+                    cur.execute("SELECT 1 FROM productive_discharge WHERE id = %s AND tenant_id = %s", (discharge_id, tenant_id))
+                    if cur.fetchone() is None:
+                        raise QualityNotFoundError(f"No existe la descarga {discharge_id} para esta junta")
                 cur.execute(
                     "INSERT INTO lab_sample (tenant_id, sampling_point_id, plan_item_id, sampled_at, laboratory, report_ref, reason, "
-                    "notes, recorded_by) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
+                    "notes, recorded_by, discharge_id) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
                     (tenant_id, sampling_point_id, plan_item_id, sampled_at, laboratory, (report_ref or "").strip() or None,
-                     reason, (notes or "").strip() or None, recorded_by),
+                     reason, (notes or "").strip() or None, recorded_by, discharge_id),
                 )
                 sample_id = str(cur.fetchone()[0])
                 for item in interpreted:

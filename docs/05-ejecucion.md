@@ -2385,3 +2385,58 @@ Fuente: Guía 3 §3.9 (bodega básica y EPP mínimo por tarea), §3.10 (registro
 - cruce del cloro de octubre: 100 g en la bitácora contra 120 g salidos, 20 g sin registrar
   (16,7 %);
 - el operador no crea artículos (403).
+
+
+### D6 Saneamiento (2026-10-06)
+
+Fuente: Guía 3 §3.7-3.8, AP5 y fichas 7E/7F. "El agua potable entra segura a la casa. El
+saneamiento evita que el agua usada salga contaminando a la comunidad."
+
+**Migración 0039:**
+- **`maintenance_order`:** `waste_handler`, `waste_destination`, `sludge_volume_m3`,
+  `destination_verified_by` y `destination_verified_at` (ficha 7F).
+- **`component_type.accumulates_sludge`:** en true para fosa séptica y planta de tratamiento.
+- **`program_rule` `sludge_extraction_max_days` = 365:** retiro de lodos al menos anual (§3.8).
+- **Parámetros `bod5` y `cod`:** resultados de laboratorio, sin interpretación automática.
+- **Catálogo `discharge_activity`:** quesera, chanchera, camal, lavandería, textilera u otra.
+- **Tablas por junta con RLS:** `productive_discharge` y `productive_discharge_followup`.
+- **`lab_sample.discharge_id`:** el análisis se liga a una descarga.
+- **Permisos:**
+  - `sanitation.record`: operador, directiva y supervisor;
+  - `sanitation.verify`: directiva y supervisor.
+
+**Motor:** `bod_cod_ratio` y `sludge_status` (sin retiro, vencido o al día).
+
+**Servicios:**
+- **`order_service.close_order`:** rechaza una extracción de lodos sin destino seguro.
+- **`sanitation_service.py`:** componentes con estado de lodos, registro 7F, verificación del
+  destino por la directiva y descargas con seguimiento y análisis.
+- **`quality_service.record_lab_sample`:** valida que la descarga sea de la misma junta.
+
+**API:**
+- `GET /sanitation`;
+- `POST /sanitation/register/{order_id}/verify`;
+- `POST /sanitation/discharges` y `POST /sanitation/discharges/{id}/followups`;
+- campos 7F en el cierre de órdenes;
+- `discharge_id` en `POST /quality/samples`.
+
+**Portal:**
+- **Página "Saneamiento":**
+  - componentes y lodos;
+  - registro 7F con "Verificar destino";
+  - descargas productivas con alta, seguimiento, acuerdo y DBO/DQO.
+- **Cierre de órdenes de Mantenimiento:** campos de residuos y lodos de la ficha 7F.
+
+**Verificación:**
+- Pruebas del motor.
+- E2E nuevo `verify_sanitation_end_to_end.py`.
+- **Regresión completa:** 29 E2E en verde.
+
+**Producción y demo en `jaas001`:**
+- **Retiro de lodos de la fosa:** 4 m³.
+  - Cerrarlo sin destino seguro → 422.
+  - El operador no puede verificar → 403.
+  - La directiva verifica el destino: planta de lodos del GAD.
+- **Fosa:** queda al día; la PTAR sigue sin retiro registrado.
+- **Quesera San Pedro:** con acuerdo; DBO 1800 y DQO 3600 mg/L (relación 0,5).
+- **Chanchera El Carmen:** identificada.

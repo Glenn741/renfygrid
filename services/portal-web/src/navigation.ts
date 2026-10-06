@@ -120,6 +120,14 @@ export const NAV_GROUPS: { title: string | null; items: NavItemDef[] }[] = [
           { id: "history", label: "Registro de bodega" },
         ],
       },
+      {
+        to: "/sanitation", label: "Saneamiento", icon: "\u{1F6BD}",
+        sections: [
+          { id: "components", label: "Componentes y lodos" },
+          { id: "register", label: "Registro 7F" },
+          { id: "discharges", label: "Descargas productivas" },
+        ],
+      },
       { to: "/inspections", label: "Ruta y revisiones", icon: "\u{1F4CB}", dynamic: "route" },
       {
         to: "/maintenance", label: "Mantenimiento", icon: "\u{1F527}",

@@ -233,6 +233,13 @@ from permissions import (  # noqa: E402
     update_user,
 )
 from calendar_service import annual_calendar  # noqa: E402
+from sanitation_service import (  # noqa: E402
+    SanitationNotFoundError,
+    add_discharge_followup,
+    create_discharge,
+    sanitation_overview,
+    verify_destination,
+)
 from warehouse_service import (  # noqa: E402
     WarehouseConflictError,
     WarehouseNotFoundError,
@@ -1416,6 +1423,10 @@ class CloseOrderRequest(BaseModel):
     pending_notes: str | None = None
     community_participants: int | None = None
     volunteer_hours: float | None = None
+    # Ficha 7F (D6)
+    waste_handler: str | None = None
+    waste_destination: str | None = None
+    sludge_volume_m3: float | None = None
 
 
 @app.post("/maintenance-orders/{order_id}/close")
@@ -1430,6 +1441,7 @@ def close_maintenance_order_endpoint(order_id: str, body: CloseOrderRequest, ten
                 conn, tenant_id, order_id, body.status,
                 body.labor_hours, body.materials_used, body.root_cause, body.failure_code_id,
                 body.steps_done, body.responsible, body.pending_notes, body.community_participants, body.volunteer_hours,
+                body.waste_handler, body.waste_destination, body.sludge_volume_m3,
             )
         except InvalidCommunityWorkError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -2372,6 +2384,7 @@ class LabSampleRequest(BaseModel):
     report_ref: str | None = None
     reason: str = "plan"
     notes: str | None = None
+    discharge_id: str | None = None
 
 
 @app.post("/quality/samples", status_code=201)
@@ -2385,6 +2398,7 @@ def record_lab_sample_endpoint(body: LabSampleRequest, actor: dict = Depends(get
             return record_lab_sample(
                 conn, actor["tenant_id"], body.sampled_at, body.laboratory, [r.model_dump() for r in body.results],
                 requested_by_label(actor), body.sampling_point_id, body.plan_item_id, body.report_ref, body.reason, body.notes,
+                body.discharge_id,
             )
         except _QUALITY_ERRORS as exc:
             raise _quality_errors(exc) from exc
@@ -2615,6 +2629,67 @@ def list_warehouse_movements_endpoint(tenant_id: str = Depends(get_tenant_id), i
             return list_movements(conn, tenant_id, item_id, max(1, min(limit, 500)))
         except WarehouseNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+# ── Saneamiento (Track D, D6, 0039) ───────────────────────────────────
+
+@app.get("/sanitation")
+def sanitation_endpoint(tenant_id: str = Depends(get_tenant_id)) -> dict:
+    """Componentes de saneamiento con el estado del retiro de lodos, registro
+    7F y descargas productivas con su seguimiento y analisis."""
+    with db_conn() as conn:
+        today, _, _, _ = _tenant_day(conn, tenant_id)
+        return sanitation_overview(conn, tenant_id, today)
+
+
+@app.post("/sanitation/register/{order_id}/verify")
+def verify_sanitation_destination_endpoint(order_id: str, actor: dict = Depends(get_actor)) -> dict:
+    with db_conn() as conn:
+        try:
+            return verify_destination(conn, actor["tenant_id"], order_id, requested_by_label(actor))
+        except SanitationNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except InvalidRecordError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+class DischargeRequest(BaseModel):
+    activity_code: str
+    name: str
+    owner: str | None = None
+    location_text: str | None = None
+    asset_id: str | None = None
+    problem: str | None = None
+
+
+@app.post("/sanitation/discharges", status_code=201)
+def create_discharge_endpoint(body: DischargeRequest, actor: dict = Depends(get_actor)) -> dict:
+    with db_conn() as conn:
+        try:
+            return create_discharge(conn, actor["tenant_id"], requested_by_label(actor), body.activity_code, body.name, body.owner,
+                                    body.location_text, body.asset_id, body.problem)
+        except SanitationNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except InvalidRecordError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+class DischargeFollowupRequest(BaseModel):
+    note: str
+    new_status: str | None = None
+    agreement: str | None = None
+
+
+@app.post("/sanitation/discharges/{discharge_id}/followups", status_code=201)
+def add_discharge_followup_endpoint(discharge_id: str, body: DischargeFollowupRequest, actor: dict = Depends(get_actor)) -> dict:
+    with db_conn() as conn:
+        try:
+            return add_discharge_followup(conn, actor["tenant_id"], discharge_id, requested_by_label(actor), body.note,
+                                          body.new_status, body.agreement)
+        except SanitationNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except InvalidRecordError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.get("/calendar")

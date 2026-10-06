@@ -711,7 +711,12 @@ Las matrices de G1 y G6 (priorización, Plan de Mejora, presupuesto) son D7, no 
 - Cruce del cloro: bitácora 7C contra salidas de bodega.
 - EPP mínimo por tarea.
 
-**Siguiente en RenfyGrid:** D6 (saneamiento), D7 (plan mínimo y Plan de Mejora) y D12 (agrupación).
+**D6, saneamiento:** ✅ En producción 2026-10-06 (migración 0039).
+- Componentes de saneamiento con el estado del retiro de lodos frente al plazo anual del paquete.
+- Ficha 7F en el cierre de órdenes: quién retiró y a qué destino seguro; la directiva verifica.
+- Descargas productivas con seguimiento y acuerdo; DBO/DQO por laboratorio con su relación.
+
+**Siguiente en RenfyGrid:** D7 (plan mínimo y Plan de Mejora) y D12 (agrupación).
 
 **D8–D11 (padrón, caja, costos y tarifa, recaudación, POA) van en `renfy_pool`.** Según este mismo
 plan, antes hay que cruzarlos con lo que ya existe allá; queda pendiente de esa revisión con el

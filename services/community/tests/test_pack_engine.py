@@ -18,6 +18,7 @@ from pack_engine import (  # noqa: E402
     InvalidRuleError,
     RegisterWentDownError,
     check_register,
+    bod_cod_ratio,
     checklist_status,
     chlorine_reconciliation,
     compliance_pct,
@@ -36,6 +37,7 @@ from pack_engine import (  # noqa: E402
     sampling_points_status,
     maturity_score,
     questionnaire_analysis,
+    sludge_status,
     stage_summary,
     stock_level,
     to_base_unit,
@@ -580,6 +582,21 @@ class WarehouseTests(unittest.TestCase):
                 {"expires_on": None}]
         out = expiring_lots(lots, today, 30)
         self.assertEqual([(l["days_left"], l["expired"]) for l in out], [(-6, True), (14, False)])
+
+
+class SanitationTests(unittest.TestCase):
+    def test_ratio(self):
+        self.assertEqual(bod_cod_ratio(450, 900), 0.5)
+        self.assertIsNone(bod_cod_ratio(450, None))
+        self.assertIsNone(bod_cod_ratio(450, 0))
+
+    def test_sludge(self):
+        today = date(2026, 10, 6)
+        self.assertEqual(sludge_status(None, 365, today)["status"], "never")
+        self.assertEqual(sludge_status(date(2025, 9, 1), 365, today)["status"], "overdue")
+        ok = sludge_status(date(2026, 3, 1), 365, today)
+        self.assertEqual((ok["status"], ok["days_since"], ok["due_on"]), ("ok", 219, "2027-03-01"))
+        self.assertIsNone(sludge_status(date(2026, 3, 1), None, today)["status"])
 
 
 if __name__ == "__main__":
