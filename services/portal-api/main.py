@@ -225,6 +225,19 @@ from permissions import (  # noqa: E402
     set_role_permissions,
     update_user,
 )
+from quality_service import (  # noqa: E402
+    QualityConflictError,
+    QualityNotFoundError,
+    create_plan_item,
+    get_lab_sample,
+    list_lab_samples,
+    list_plan,
+    list_quality_parameters,
+    quality_overview,
+    record_lab_sample,
+    review_plan,
+    update_plan_item,
+)
 from meter_manual_service import (  # noqa: E402
     MeterNotFoundError,
     MeterReadingConflictError,
@@ -2184,6 +2197,137 @@ def update_user_endpoint(user_id: str, body: UpdateUserRequest, actor: dict = De
                                body.role, body.is_active, body.password)
         except (UserNotFoundError, PermissionAdminError) as exc:
             raise _admin_errors(exc) from exc
+
+
+# ── Calidad del agua y laboratorio (Track D, D2, 0034) ─────────────────
+
+def _quality_errors(exc: Exception) -> HTTPException:
+    if isinstance(exc, QualityNotFoundError):
+        return HTTPException(status_code=404, detail=str(exc))
+    if isinstance(exc, QualityConflictError):
+        return HTTPException(status_code=409, detail=str(exc))
+    return HTTPException(status_code=422, detail=str(exc))
+
+
+_QUALITY_ERRORS = (QualityNotFoundError, QualityConflictError, InvalidRecordError)
+
+
+@app.get("/quality/overview")
+def quality_overview_endpoint(tenant_id: str = Depends(get_tenant_id)) -> dict:
+    """Alertas de calidad abiertas (las criticas aparte), plan de muestreo y su revision."""
+    with db_conn() as conn:
+        return quality_overview(conn, tenant_id, datetime.now(timezone.utc))
+
+
+@app.get("/quality/parameters")
+def quality_parameters_endpoint(tenant_id: str = Depends(get_tenant_id)) -> list[dict]:
+    with db_conn() as conn:
+        return list_quality_parameters(conn, tenant_id)
+
+
+@app.get("/quality/plan")
+def quality_plan_endpoint(tenant_id: str = Depends(get_tenant_id), include_inactive: bool = False) -> dict:
+    with db_conn() as conn:
+        return list_plan(conn, tenant_id, datetime.now(timezone.utc), include_inactive)
+
+
+class LabPlanItemRequest(BaseModel):
+    name: str
+    parameters: list[str]
+    frequency_days: int
+    sampling_point_id: str | None = None
+    source_note: str | None = None
+
+
+@app.post("/quality/plan", status_code=201)
+def create_plan_item_endpoint(body: LabPlanItemRequest, tenant_id: str = Depends(get_tenant_id)) -> dict:
+    with db_conn() as conn:
+        try:
+            return create_plan_item(conn, tenant_id, body.name, body.parameters, body.frequency_days,
+                                    body.sampling_point_id, body.source_note)
+        except _QUALITY_ERRORS as exc:
+            raise _quality_errors(exc) from exc
+
+
+class LabPlanItemUpdateRequest(BaseModel):
+    name: str | None = None
+    parameters: list[str] | None = None
+    frequency_days: int | None = None
+    sampling_point_id: str | None = None
+    source_note: str | None = None
+    active: bool | None = None
+
+
+@app.patch("/quality/plan/{plan_item_id}")
+def update_plan_item_endpoint(plan_item_id: str, body: LabPlanItemUpdateRequest,
+                              tenant_id: str = Depends(get_tenant_id)) -> dict:
+    with db_conn() as conn:
+        try:
+            return update_plan_item(conn, tenant_id, plan_item_id, **body.model_dump(exclude_unset=True))
+        except _QUALITY_ERRORS as exc:
+            raise _quality_errors(exc) from exc
+
+
+class LabPlanReviewRequest(BaseModel):
+    reviewed_on: date
+    notes: str | None = None
+
+
+@app.post("/quality/plan/reviews", status_code=201)
+def review_plan_endpoint(body: LabPlanReviewRequest, actor: dict = Depends(get_actor)) -> dict:
+    with db_conn() as conn:
+        return review_plan(conn, actor["tenant_id"], body.reviewed_on, requested_by_label(actor), body.notes)
+
+
+class LabResultRequest(BaseModel):
+    parameter_code: str
+    value: float
+    qualifier: str = "="
+
+
+class LabSampleRequest(BaseModel):
+    sampled_at: datetime
+    laboratory: str
+    results: list[LabResultRequest]
+    sampling_point_id: str | None = None
+    plan_item_id: str | None = None
+    report_ref: str | None = None
+    reason: str = "plan"
+    notes: str | None = None
+
+
+@app.post("/quality/samples", status_code=201)
+def record_lab_sample_endpoint(body: LabSampleRequest, actor: dict = Depends(get_actor)) -> dict:
+    """Muestra de laboratorio con sus resultados (interpretados con la regla
+    vigente a la fecha de la muestra)."""
+    if body.sampled_at.tzinfo is None:
+        raise HTTPException(status_code=422, detail="sampled_at debe incluir la zona horaria")
+    with db_conn() as conn:
+        try:
+            return record_lab_sample(
+                conn, actor["tenant_id"], body.sampled_at, body.laboratory, [r.model_dump() for r in body.results],
+                requested_by_label(actor), body.sampling_point_id, body.plan_item_id, body.report_ref, body.reason, body.notes,
+            )
+        except _QUALITY_ERRORS as exc:
+            raise _quality_errors(exc) from exc
+
+
+@app.get("/quality/samples")
+def list_lab_samples_endpoint(tenant_id: str = Depends(get_tenant_id), point_id: str | None = None, limit: int = 100) -> list[dict]:
+    with db_conn() as conn:
+        try:
+            return list_lab_samples(conn, tenant_id, point_id, limit)
+        except QualityNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get("/quality/samples/{sample_id}")
+def get_lab_sample_endpoint(sample_id: str, tenant_id: str = Depends(get_tenant_id)) -> dict:
+    with db_conn() as conn:
+        try:
+            return get_lab_sample(conn, tenant_id, sample_id)
+        except QualityNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @app.get("/settings/instrumentation")

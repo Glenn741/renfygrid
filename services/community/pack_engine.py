@@ -467,6 +467,33 @@ def sampling_points_status(points: list[dict], last_reading_on: dict[str, date],
     return rows
 
 
+# ── Laboratorio (0034) ─────────────────────────────────────────────────
+
+QUALIFIERS = ("=", "<", ">")
+
+
+def interpret_lab_result(bands: list[dict], value: float, qualifier: str) -> dict[str, Any] | None:
+    """Interpretacion de un resultado de laboratorio. Con '<' (bajo el limite
+    de deteccion) o '>' (sobre el rango) el valor real es un intervalo: se
+    interpreta solo si TODO el intervalo cae en el mismo tramo; si no, el
+    resultado no es concluyente (None) y no se inventa una interpretacion.
+      '<X' -> [0, X)      '>X' -> (X, infinito)"""
+    if qualifier not in QUALIFIERS:
+        raise InvalidRecordError(f"Calificador invalido: {qualifier!r} (validos: {list(QUALIFIERS)})")
+    if value < 0:
+        raise InvalidRecordError("El resultado no puede ser negativo")
+    if qualifier == "=":
+        return interpret_reading(bands, value)
+    if qualifier == "<":
+        low, high = 0.0, math.nextafter(value, -math.inf) if value > 0 else 0.0
+    else:
+        low, high = math.nextafter(value, math.inf), math.inf
+    first, last = matching_band(bands, low), matching_band(bands, high)
+    if first["code"] != last["code"]:
+        return None
+    return interpret_reading(bands, low)
+
+
 # ── Lectura manual de medidor (0032) ───────────────────────────────────
 
 class RegisterWentDownError(InvalidRecordError):

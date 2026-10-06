@@ -92,6 +92,15 @@ export const NAV_GROUPS: { title: string | null; items: NavItemDef[] }[] = [
           { id: "findings", label: "Hallazgos", badge: OPEN_FINDINGS },
         ],
       },
+      {
+        to: "/quality", label: "Calidad del agua", icon: "\u{1F9EA}",
+        sections: [
+          { id: "alerts", label: "Alertas" },
+          { id: "lab", label: "Registrar análisis" },
+          { id: "plan", label: "Plan de muestreo" },
+          { id: "results", label: "Resultados" },
+        ],
+      },
       { to: "/inspections", label: "Ruta y revisiones", icon: "\u{1F4CB}", dynamic: "route" },
       {
         to: "/maintenance", label: "Mantenimiento", icon: "\u{1F527}",

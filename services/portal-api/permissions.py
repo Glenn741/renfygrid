@@ -55,6 +55,8 @@ ROUTE_RULES: list[tuple[frozenset[str] | None, re.Pattern, str | None]] = [
     (None, re.compile(r"^/(vee/invalid-readings/edit|consumption/resolve)$"), "metering.manage"),
     (frozenset({"POST"}), re.compile(r"^/control-orders$"), "control.request"),
     (None, re.compile(rf"^/control-orders/{_ID}/approve$"), "control.approve"),
+    (None, re.compile(r"^/quality/samples$"), "quality.record"),
+    (None, re.compile(r"^/quality/plan(/.*)?$"), "quality.plan"),
     (None, re.compile(r"^/(users|roles)(/.*)?$"), USERS_PERMISSION),
     (None, re.compile(r"^/(settings|packs|vee-rules|consumption-anomaly-rules|control-approval-levels|obis-mappings)(/.*)?$"),
      "settings.manage"),

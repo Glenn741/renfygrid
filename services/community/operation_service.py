@@ -308,9 +308,9 @@ def record_field_reading(
                 if interpretation and interpretation["out_of_range"]:
                     source_ref = f"reading:{sampling_point_id or 'sin-punto'}:{parameter_code}"
                     cur.execute(
-                        "SELECT id FROM finding WHERE tenant_id = %s AND source_kind = 'reading' AND source_ref = %s "
+                        "SELECT id FROM finding WHERE tenant_id = %s AND source_kind = 'reading' AND source_ref = ANY(%s) "
                         "AND status <> 'closed' ORDER BY created_at DESC LIMIT 1",
-                        (tenant_id, source_ref),
+                        (tenant_id, [source_ref, source_ref.replace("reading:", "lab:", 1)]),
                     )
                     open_row = cur.fetchone()
                     if open_row:
@@ -498,10 +498,12 @@ def operation_day(
         with tenant_scope(conn, tenant_id):
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT count(*) FROM finding WHERE tenant_id = %s AND source_kind = 'reading' AND status <> 'closed'",
+                    "SELECT count(*), count(*) FILTER (WHERE EXISTS (SELECT 1 FROM lab_result r WHERE r.finding_id = f.id "
+                    "AND r.severity = 'critical')) FROM finding f "
+                    "WHERE f.tenant_id = %s AND f.source_kind = 'reading' AND f.status <> 'closed'",
                     (tenant_id,),
                 )
-                open_reading_findings = cur.fetchone()[0]
+                open_reading_findings, critical_quality_open = cur.fetchone()
     return {
         "date": today.isoformat(), "moments": moments,
         "unassigned_entries": [e for e in entries if e["moment_code"] is None],
@@ -513,6 +515,7 @@ def operation_day(
             "entries_today": len(entries),
             "alerts_today": sum(1 for e in entries if e["status"] == "alert"),
             "open_reading_findings": open_reading_findings,
+            "critical_quality_open": critical_quality_open,
         },
     }
 

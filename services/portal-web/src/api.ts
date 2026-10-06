@@ -1398,11 +1398,110 @@ export interface OperationDay {
   unassigned_entries: OperationLogEntry[];
   points: SamplingPoint[];
   readings: FieldReading[];
-  summary: { points_due: number; readings_today: number; out_of_range_today: number; entries_today: number; alerts_today: number; open_reading_findings: number };
+  summary: { points_due: number; readings_today: number; out_of_range_today: number; entries_today: number; alerts_today: number; open_reading_findings: number; critical_quality_open: number };
 }
 
 export function getOperationsToday(): Promise<OperationDay> {
   return request("/operations/today");
+}
+
+// ── Calidad del agua y laboratorio (0034) ─────────────────────────────
+
+export interface QualityParameter {
+  code: string;
+  label: string;
+  unit: string;
+  measured_by: "field" | "lab";
+  bands: RuleBand[] | null;
+  citation: string | null;
+}
+
+export function getQualityParameters(): Promise<QualityParameter[]> {
+  return request("/quality/parameters");
+}
+
+export interface LabPlanItem {
+  plan_item_id: string;
+  name: string;
+  parameters: string[];
+  point_id: string | null;
+  point_name: string | null;
+  frequency_days: number;
+  source_note: string | null;
+  active: boolean;
+  last_sample_id: string | null;
+  last_sampled_at: string | null;
+  status: "never" | "ok" | "overdue" | "done";
+  days_to_due: number | null;
+  next_due_at: string | null;
+}
+
+export interface LabPlan {
+  items: LabPlanItem[];
+  review: { last_reviewed_on: string | null; reviewed_by: string | null; notes: string | null; period_days: number | null;
+            source: string | null; status: "never" | "ok" | "overdue" | null; next_due_at: string | null };
+}
+
+export function createLabPlanItem(body: { name: string; parameters: string[]; frequency_days: number; sampling_point_id?: string | null; source_note?: string | null }): Promise<LabPlanItem> {
+  return request("/quality/plan", { method: "POST", body: JSON.stringify(body) });
+}
+
+export function updateLabPlanItem(id: string, body: Partial<{ name: string; parameters: string[]; frequency_days: number; active: boolean }>): Promise<LabPlanItem> {
+  return request(`/quality/plan/${id}`, { method: "PATCH", body: JSON.stringify(body) });
+}
+
+export function reviewLabPlan(body: { reviewed_on: string; notes?: string | null }): Promise<LabPlan["review"]> {
+  return request("/quality/plan/reviews", { method: "POST", body: JSON.stringify(body) });
+}
+
+export interface LabResult {
+  parameter_code: string;
+  parameter_label: string;
+  unit: string;
+  value: number;
+  qualifier: "=" | "<" | ">";
+  result_code: string | null;
+  result_label: string | null;
+  severity: "ok" | "alert" | "critical" | null;
+  finding_id: string | null;
+  interpretation: "interpreted" | "inconclusive" | "no_rule";
+}
+
+export interface LabSample {
+  sample_id: string;
+  point_id: string | null;
+  point_name: string | null;
+  plan_item_id: string | null;
+  plan_name: string | null;
+  sampled_at: string;
+  laboratory: string;
+  report_ref: string | null;
+  reason: "plan" | "alert" | "other";
+  notes: string | null;
+  recorded_by: string;
+  results: LabResult[];
+}
+
+export function recordLabSample(body: {
+  sampled_at: string; laboratory: string; results: { parameter_code: string; value: number; qualifier: string }[];
+  sampling_point_id?: string | null; plan_item_id?: string | null; report_ref?: string | null; reason: string; notes?: string | null;
+}): Promise<LabSample & { findings_created: number; critical: boolean }> {
+  return request("/quality/samples", { method: "POST", body: JSON.stringify(body) });
+}
+
+export function getLabSamples(limit = 100): Promise<LabSample[]> {
+  return request(`/quality/samples?limit=${limit}`);
+}
+
+export interface QualityOverview {
+  alerts: { finding_id: string; description: string; priority: string; status: string; created_at: string; critical: boolean }[];
+  critical_open: number;
+  plan_overdue: number;
+  plan: LabPlan;
+}
+
+export function getQualityOverview(): Promise<QualityOverview> {
+  return request("/quality/overview");
 }
 
 // ── Productos quimicos y dosificacion (0031) ──────────────────────────

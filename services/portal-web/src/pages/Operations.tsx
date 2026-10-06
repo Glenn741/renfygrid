@@ -214,6 +214,12 @@ function TodaySection() {
       title={`Hoy · ${new Date(`${data.date}T12:00:00`).toLocaleDateString("es", { weekday: "long", day: "numeric", month: "long" })}`}
       description="La rutina diaria en el orden de la guía. Registre cada toma en su momento; si el cloro sale fuera de rango, la toma queda en alerta y se abre un hallazgo para la directiva."
     >
+      {s.critical_quality_open > 0 && (
+        <Link to="/quality#alerts" className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-900 hover:bg-red-100">
+          <span><strong>Alerta crítica de calidad:</strong> {s.critical_quality_open} resultado{s.critical_quality_open === 1 ? "" : "s"} de laboratorio con contaminación (E. coli). Informe a la directiva y coordine con el GAD, MSP o ARCA.</span>
+          <span className="font-semibold">Ver ›</span>
+        </Link>
+      )}
       <Link to="/operator" className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-900 hover:bg-indigo-100">
         <span><strong>App del operador:</strong> para el teléfono, funciona sin conexión y envía al volver la señal.</span>
         <span className="font-semibold">Abrir ›</span>

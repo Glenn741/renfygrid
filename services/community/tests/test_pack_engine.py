@@ -24,6 +24,7 @@ from pack_engine import (  # noqa: E402
     evaluate_bands,
     findings_from_answers,
     follow_up_schedule,
+    interpret_lab_result,
     interpret_reading,
     log_entry_status,
     passport_rows,
@@ -502,6 +503,38 @@ class RegisterTests(unittest.TestCase):
     def test_negative_rejected(self):
         with self.assertRaises(InvalidRecordError):
             check_register(None, -1, True)
+
+
+# Tramos de E. coli de 0030 y un limite quimico de prueba (no es la norma).
+E_COLI_D2 = [
+    {"upper": 0, "upper_inclusive": True, "code": "absent", "label": "Ausente", "severity": "ok", "action": "Archivar"},
+    {"upper": None, "code": "present", "label": "Presente", "severity": "critical", "finding_priority": "high", "action": "Alerta"},
+]
+LIMIT_TEST = [
+    {"upper": 0.01, "upper_inclusive": True, "code": "ok", "label": "Cumple", "severity": "ok"},
+    {"upper": None, "code": "over", "label": "No cumple", "severity": "alert", "finding_priority": "high"},
+]
+
+
+class LabResultTests(unittest.TestCase):
+    def test_exact_values(self):
+        self.assertEqual(interpret_lab_result(E_COLI_D2, 0, "=")["code"], "absent")
+        present = interpret_lab_result(E_COLI_D2, 3, "=")
+        self.assertEqual((present["severity"], present["finding_priority"]), ("critical", "high"))
+
+    def test_below_detection_limit(self):
+        self.assertEqual(interpret_lab_result(LIMIT_TEST, 0.005, "<")["code"], "ok", "<0,005 con limite 0,01: cumple")
+        self.assertIsNone(interpret_lab_result(LIMIT_TEST, 0.05, "<"), "<0,05 con limite 0,01: no concluyente")
+
+    def test_above_range(self):
+        self.assertEqual(interpret_lab_result(LIMIT_TEST, 0.02, ">")["code"], "over")
+        self.assertIsNone(interpret_lab_result(LIMIT_TEST, 0.001, ">"))
+
+    def test_invalid(self):
+        with self.assertRaises(InvalidRecordError):
+            interpret_lab_result(LIMIT_TEST, 1, "~")
+        with self.assertRaises(InvalidRecordError):
+            interpret_lab_result(LIMIT_TEST, -1, "=")
 
 
 if __name__ == "__main__":

@@ -666,7 +666,24 @@ Las matrices de G1 y G6 (priorización, Plan de Mejora, presupuesto) son D7, no 
 | **D1.4a** | Lectura manual de micro y macromedidor (migración 0032): entra a `raw_reading` como `manual` y la valida VEE; control de registro que baja; en la app sin conexión | ✅ En producción 2026-10-06 |
 | **D1.4b** | Roles reales (migración 0033): Administración, Directiva, Operador e Integración; permisos por defecto ajustables por organización; toda escritura revisada; usuarios y roles en Configuración | ✅ En producción 2026-10-06 |
 
-**D1 completo.** Siguiente: D2 (calidad y laboratorio).
+**D1 completo.**
+
+**D2, calidad y laboratorio:** ✅ En producción 2026-10-06 (migración 0034):
+- muestras y resultados de laboratorio interpretados con la regla vigente a la fecha de la
+  muestra;
+- E. coli presente → alerta crítica con hallazgo, también visible en "Hoy";
+- plan de muestreo definido por la junta;
+- revisión anual del plan, con el plazo del paquete.
+
+**Falta, por documentos externos:**
+- **Límites de la NTE INEN 1108** (nitratos, fluoruro, arsénico, hierro, manganeso, coliformes):
+  los parámetros están en el catálogo sin regla y se guardan sin interpretar hasta cargar la
+  norma.
+- **Plan de muestreo por categoría poblacional de ARCA:** sin el documento, la junta fija su
+  frecuencia.
+- **Activación del plan de contaminación por E. coli:** va con D5.
+
+Siguiente: D3 (O&M comunitario).
 
 ### 11.5 Modelo comercial, criterio de éxito y pendientes
 

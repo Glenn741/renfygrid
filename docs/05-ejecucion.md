@@ -2110,3 +2110,59 @@ nadie más cambie la configuración.
 
 **Pendiente menor:** en desarrollo local, con origen cruzado, la respuesta 403 del middleware
 no lleva cabeceras CORS. En producción el Portal y la API comparten origen (`/api`) y no afecta.
+
+### D2 Calidad del agua y laboratorio (2026-10-06)
+
+Fuente: Guía 3 §3.4 y calendario 7G. Lo que la guía **no** fija se dejó como dato de la junta o
+de la norma, sin inventarlo:
+- los límites químicos son los de la NTE INEN 1108;
+- la frecuencia de muestreo la define ARCA según la población abastecida.
+
+**Migración 0034:**
+- Parámetros de laboratorio en el catálogo, sin regla: coliformes totales, nitratos, fluoruro,
+  arsénico, hierro y manganeso. E. coli ya tenía regla y su resultado positivo es crítico.
+- `program_rule`: plazos de un programa que no son de una lista. Revisión del plan de muestreo
+  cada 365 días, con la cita de la guía.
+- Tablas por junta con RLS: `lab_plan_item`, `lab_plan_review`, `lab_sample` y `lab_result`
+  (con calificador `=`, `<` o `>`).
+- Permisos `quality.record` (operador, directiva y administración) y `quality.plan` (directiva
+  y administración).
+
+**Motor:** `interpret_lab_result`. Con "<" o ">" el valor real es un intervalo: se interpreta
+solo si todo el intervalo cae en el mismo tramo y, si no, queda "no concluyente". Por ejemplo,
+"cloro < 1" puede ser bajo o adecuado. Para E. coli, "Ausencia" o "< 1" se registra como 0.
+
+**Servicio `quality_service.py`:**
+- La interpretación usa la regla vigente a la fecha de la muestra y queda guardada.
+- Un resultado fuera de rango abre hallazgo o se suma al abierto del mismo punto y parámetro.
+  Campo y laboratorio comparten ese hallazgo: lo encontró la demo, que con una turbiedad de
+  laboratorio abrió un segundo hallazgo sobre la misma turbiedad medida en campo.
+- Una severidad crítica marca la alerta como "ALERTA CRÍTICA".
+- El plan de muestreo tiene estado por parte (sin muestra, al día, vencido) y estado de su
+  revisión.
+
+**API:**
+- `GET /quality/overview` y `GET /quality/parameters`;
+- `GET/POST /quality/plan` y `PATCH /quality/plan/{id}`;
+- `POST /quality/plan/reviews`;
+- `POST/GET /quality/samples` y `GET /quality/samples/{id}`.
+
+La vista "Hoy" cuenta `critical_quality_open`.
+
+**Portal:**
+- Página "Calidad del agua" con Alertas, Registrar análisis (elegir una parte del plan carga
+  sus parámetros), Plan de muestreo con su revisión, y Resultados.
+- Aviso rojo de alerta crítica en Operación diaria → Hoy.
+
+**Verificación:**
+- 57 pruebas del motor.
+- E2E nuevo `verify_water_quality_end_to_end.py`: catálogo, plan, alerta crítica, hallazgo
+  compartido entre campo y laboratorio, "<" y ">", validaciones, permisos y aislamiento.
+- Regresión de operación, roles, paquetes y lectura manual en verde.
+
+**Demo en `jaas001`:**
+- Plan semestral con la frecuencia del ejemplo ficticio de la guía (15 de mayo y 15 de
+  noviembre), marcada para reemplazar por la de ARCA. Revisión del 20 de septiembre.
+- 15 de mayo: muestra sin hallazgos.
+- 28 de septiembre: tras la lluvia, E. coli 2 en el tanque, alerta crítica.
+- 1 de octubre: control después de desinfectar, E. coli 0; la alerta se cerró.
