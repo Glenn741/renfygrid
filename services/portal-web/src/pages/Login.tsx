@@ -50,10 +50,10 @@ export function LoginPage() {
           required
         />
 
-        <label htmlFor="login-user" className="block text-sm font-medium text-slate-700 mb-1">Usuario</label>
+        <label htmlFor="login-user" className="block text-sm font-medium text-slate-700 mb-1">Usuario (correo)</label>
         <input
           id="login-user"
-          type="text"
+          type="email"
           name="username"
           autoComplete="username"
           className="w-full rounded-lg border border-slate-300 px-3 py-2 mb-4 text-sm"
