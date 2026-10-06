@@ -9,6 +9,7 @@ import {
   createSamplingPoint,
   getChemicalProducts,
   getFieldReadings,
+  getManualMeterReadings,
   getOperationLog,
   getOperationsCatalog,
   getOperationsToday,
@@ -522,6 +523,50 @@ function ReadingsSection() {
   );
 }
 
+// ── Lecturas manuales de medidores (0032) ─────────────────────────────
+
+function ManualReadingsSection() {
+  const { data } = useQuery({ queryKey: ["manual-readings"], queryFn: () => getManualMeterReadings({ limit: 100 }) });
+  return (
+    <SectionCard
+      title="Lecturas manuales de medidores"
+      description="Lecturas de micro y macromedidores tomadas a mano (en la app del operador, también sin conexión). Entran al mismo camino que la telemetría: las valida el motor VEE y de ahí salen consumo y balance."
+    >
+      <Link to="/operator" className="mb-3 inline-block text-sm font-semibold text-indigo-700 hover:underline">Tomar lecturas en la app del operador ›</Link>
+      {data && data.length === 0 && <EmptyState message="Todavía no hay lecturas manuales." />}
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
+              <th className="py-2 pr-3 font-semibold">Fecha y hora</th>
+              <th className="py-2 pr-3 font-semibold">Medidor</th>
+              <th className="py-2 pr-3 font-semibold">Lectura</th>
+              <th className="py-2 pr-3 font-semibold">Desde la anterior</th>
+              <th className="py-2 pr-3 font-semibold">Leído por</th>
+              <th className="py-2 font-semibold">Observaciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(data ?? []).map((r) => (
+              <tr key={r.manual_reading_id} className="border-b border-slate-100 align-top last:border-0">
+                <td className="whitespace-nowrap py-2 pr-3 tabular-nums text-slate-700">{dateTime(r.read_at)}</td>
+                <td className="py-2 pr-3 text-slate-700">{r.account_number} <span className="text-xs text-slate-500">({r.meter_type === "macro" ? "macro" : "micro"})</span></td>
+                <td className="py-2 pr-3 tabular-nums">{r.value.toLocaleString("es")} <span className="text-xs text-slate-500">{r.channel}</span></td>
+                <td className="py-2 pr-3 tabular-nums">
+                  {r.lower_confirmed ? <span className="text-xs font-semibold text-amber-800">medidor cambiado</span>
+                    : r.previous_value !== null ? (r.value - r.previous_value).toLocaleString("es", { maximumFractionDigits: 3 }) : "—"}
+                </td>
+                <td className="py-2 pr-3 text-slate-600">{r.read_by.replace(/^portal:/, "")}</td>
+                <td className="py-2 text-slate-600">{r.notes ?? ""}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </SectionCard>
+  );
+}
+
 // ── Puntos de medicion ────────────────────────────────────────────────
 
 const POINT_STATUS: Record<SamplingPoint["status"], { label: (p: SamplingPoint) => string; cls: string }> = {
@@ -592,6 +637,7 @@ export function OperationsPage() {
       <NavSection id="dosing"><DosingSection /></NavSection>
       <NavSection id="log"><LogSection /></NavSection>
       <NavSection id="readings"><ReadingsSection /></NavSection>
+      <NavSection id="meters"><ManualReadingsSection /></NavSection>
       <NavSection id="points"><PointsSection /></NavSection>
     </StagePage>
   );

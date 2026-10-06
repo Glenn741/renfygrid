@@ -11,7 +11,7 @@
 // Cada elemento lleva el tenant del token con que se registro: en un equipo
 // compartido nunca se envia a otra organizacion.
 
-import { ApiError, createOperationLogEntry, getToken, recordFieldReading } from "../api";
+import { ApiError, createOperationLogEntry, getToken, recordFieldReading, recordManualMeterReading } from "../api";
 
 const DB_NAME = "renfygrid-operator";
 const STORE = "outbox";
@@ -39,11 +39,21 @@ export interface LogPayload {
   logged_at: string;
 }
 
+export interface MeterPayload {
+  meter_id: string;
+  channel: string;
+  value: number;
+  read_at: string;
+  /** El operador confirmo que el registro bajo (medidor cambiado o reiniciado). */
+  lower_confirmed: boolean;
+  notes: string | null;
+}
+
 export interface OutboxItem {
   client_id: string;
   tenant_id: string;
-  kind: "reading" | "log";
-  payload: ReadingPayload | LogPayload;
+  kind: "reading" | "log" | "meter";
+  payload: ReadingPayload | LogPayload | MeterPayload;
   /** Resumen legible para la lista (p. ej. "Cloro 0,2 mg/L en Escuela"). */
   label: string;
   created_at: string;
@@ -133,11 +143,12 @@ export interface SyncReport {
   stopped: "offline" | "session" | null;
 }
 
-/** Envia lo pendiente del tenant actual: mediciones primero, despues tomas. */
+/** Envia lo pendiente del tenant actual: mediciones, lecturas de medidor y al final las tomas. */
 export async function syncOutbox(tenantId: string): Promise<SyncReport> {
   const report: SyncReport = { sent: 0, failed: 0, stopped: null };
   const items = (await listOutbox(tenantId)).filter((i) => i.status === "pending").reverse();
-  const ordered = [...items.filter((i) => i.kind === "reading"), ...items.filter((i) => i.kind === "log")];
+  const ordered = [...items.filter((i) => i.kind === "reading"), ...items.filter((i) => i.kind === "meter"),
+    ...items.filter((i) => i.kind === "log")];
   const readingIds = new Map<string, string>(
     (await listOutbox(tenantId)).filter((i) => i.kind === "reading" && i.server_id).map((i) => [i.client_id, i.server_id!]),
   );
@@ -150,6 +161,11 @@ export async function syncOutbox(tenantId: string): Promise<SyncReport> {
         item.server_id = r.reading_id;
         item.server_note = [r.result_label, r.finding_created ? "abrió un hallazgo" : r.finding_id ? "sumado al hallazgo abierto" : null]
           .filter(Boolean).join(" · ") || null;
+      } else if (item.kind === "meter") {
+        const p = item.payload as MeterPayload;
+        const m = await recordManualMeterReading({ ...p, client_id: item.client_id });
+        item.server_id = m.manual_reading_id;
+        item.server_note = m.delta !== null ? `${m.delta} desde la anterior` : m.lower_confirmed ? "medidor cambiado" : "primera lectura";
       } else {
         const p = item.payload as LogPayload;
         let readingId: string | null = null;

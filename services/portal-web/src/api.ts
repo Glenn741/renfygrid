@@ -1390,6 +1390,54 @@ export function calculateDosing(body: { product_id: string; flow_lps: number; do
   return request("/dosing/calculate", { method: "POST", body: JSON.stringify(body) });
 }
 
+// ── Lectura manual de medidores (0032) ────────────────────────────────
+
+export interface ManualMeter {
+  meter_id: string;
+  account_number: string;
+  serial_number: string;
+  brand: string;
+  meter_type: "micro" | "macro" | string;
+  zone_name: string | null;
+  channels?: { channel: string; last_value: number | null; last_at: string | null; last_source: string | null }[];
+}
+
+export function getManualMeters(params: { search?: string; meter_type?: string; limit?: number } = {}): Promise<ManualMeter[]> {
+  const q = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined && v !== "").map(([k, v]) => [k, String(v)]));
+  return request(`/manual-reading/meters${q.toString() ? `?${q}` : ""}`);
+}
+
+export interface ManualMeterReading {
+  manual_reading_id: string;
+  meter_id: string;
+  channel: string;
+  value: number;
+  read_at: string;
+  read_by: string;
+  previous_value: number | null;
+  lower_confirmed: boolean;
+  notes: string | null;
+  account_number?: string;
+  meter_type?: string;
+}
+
+export function recordManualMeterReading(body: {
+  meter_id: string;
+  channel: string;
+  value: number;
+  read_at?: string;
+  lower_confirmed?: boolean;
+  notes?: string | null;
+  client_id?: string;
+}): Promise<ManualMeterReading & { duplicate: boolean; delta: number | null }> {
+  return request("/manual-reading", { method: "POST", body: JSON.stringify(body) });
+}
+
+export function getManualMeterReadings(params: { meter_id?: string; limit?: number } = {}): Promise<ManualMeterReading[]> {
+  const q = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined && v !== "").map(([k, v]) => [k, String(v)]));
+  return request(`/manual-reading${q.toString() ? `?${q}` : ""}`);
+}
+
 // ── Pasaporte de productos (T-07) y seguimiento 7-30-90 (T-09), 0028 ──
 
 export type ProductStatus = "complete" | "to_validate" | "pending";

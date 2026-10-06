@@ -16,6 +16,8 @@ from pack_engine import (  # noqa: E402
     InvalidInstrumentationError,
     InvalidRecordError,
     InvalidRuleError,
+    RegisterWentDownError,
+    check_register,
     checklist_status,
     chlorine_product_per_day,
     dosing_guard_codes,
@@ -484,6 +486,22 @@ class DosingTests(unittest.TestCase):
         self.assertEqual(dosing_guard_codes("disinfection", "low", False, False), ["low_residual", "no_reading_today"] + always)
         self.assertEqual(dosing_guard_codes("disinfection", None, False, False), ["no_reading_today"] + always)
         self.assertEqual(dosing_guard_codes("coagulation", "adequate", True, False), ["not_disinfectant", "safety"])
+
+
+class RegisterTests(unittest.TestCase):
+    def test_consumption_since_previous(self):
+        self.assertEqual(check_register(100, 105.5, False), {"delta": 5.5, "went_down": False})
+        self.assertEqual(check_register(None, 12, False), {"delta": None, "went_down": False})
+        self.assertEqual(check_register(100, 100, False)["delta"], 0)
+
+    def test_register_going_down_needs_confirmation(self):
+        with self.assertRaises(RegisterWentDownError):
+            check_register(100, 3, False)
+        self.assertEqual(check_register(100, 3, True), {"delta": None, "went_down": True})
+
+    def test_negative_rejected(self):
+        with self.assertRaises(InvalidRecordError):
+            check_register(None, -1, True)
 
 
 if __name__ == "__main__":

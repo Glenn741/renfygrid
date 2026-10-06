@@ -467,6 +467,31 @@ def sampling_points_status(points: list[dict], last_reading_on: dict[str, date],
     return rows
 
 
+# ── Lectura manual de medidor (0032) ───────────────────────────────────
+
+class RegisterWentDownError(InvalidRecordError):
+    """El registro acumulado quedo por debajo de la lectura anterior y el
+    operador no confirmo cambio o reinicio del medidor."""
+
+
+def check_register(previous_value: float | None, value: float, lower_confirmed: bool) -> dict[str, Any]:
+    """Un medidor acumula: la lectura nueva no puede ser menor que la anterior
+    salvo que el operador confirme que el medidor se cambio o se reinicio
+    (en ese caso no hay consumo calculable contra la anterior)."""
+    if value < 0:
+        raise InvalidRecordError("La lectura no puede ser negativa")
+    if previous_value is None:
+        return {"delta": None, "went_down": False}
+    if value < previous_value:
+        if not lower_confirmed:
+            raise RegisterWentDownError(
+                f"La lectura {value:g} es menor que la anterior ({previous_value:g}). Si el medidor se cambió o se "
+                "reinició, confírmelo; si no, revise el número leído."
+            )
+        return {"delta": None, "went_down": True}
+    return {"delta": round(value - previous_value, 3), "went_down": False}
+
+
 # ── Dosificacion (0031) ────────────────────────────────────────────────
 
 SECONDS_PER_DAY = 86_400

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { getOperationsCatalog, getSamplingPoints, type OperationsCatalog, type RuleBand, type SamplingPoint } from "../api";
+import { getManualMeters, getOperationsCatalog, getSamplingPoints, type ManualMeter, type OperationsCatalog, type RuleBand, type SamplingPoint } from "../api";
 import {
   enqueue,
   listOutbox,
@@ -12,6 +12,7 @@ import {
   syncOutbox,
   tokenTenantId,
   type LogPayload,
+  type MeterPayload,
   type OutboxItem,
   type ReadingPayload,
 } from "../offline/outbox";
@@ -26,6 +27,8 @@ import {
 interface Snapshot {
   catalog: OperationsCatalog;
   points: SamplingPoint[];
+  /** Medidores con sus canales y ultima lectura (lectura manual, D1.4a). */
+  meters?: ManualMeter[];
 }
 
 const APPEARANCE: Record<"clear" | "turbid" | "colored", string> = { clear: "Clara", turbid: "Turbia", colored: "Con color" };
@@ -204,6 +207,102 @@ function LogForm({ snap, todayReadings, onSaved }: { snap: Snapshot; todayReadin
   );
 }
 
+function MeterForm({ snap, onSaved }: { snap: Snapshot; onSaved: (label: string) => void }) {
+  const tenantId = tokenTenantId()!;
+  const [search, setSearch] = useState("");
+  const [meterId, setMeterId] = useState("");
+  const [channel, setChannel] = useState("");
+  const [value, setValue] = useState("");
+  const [lowerOk, setLowerOk] = useState(false);
+  const [notes, setNotes] = useState("");
+  const meters = snap.meters ?? [];
+  const q = search.trim().toLowerCase();
+  const matches = q ? meters.filter((m) => m.account_number.toLowerCase().includes(q) || m.serial_number.toLowerCase().includes(q)).slice(0, 8) : meters.filter((m) => m.meter_type === "macro");
+  const meter = meters.find((m) => m.meter_id === meterId);
+  const channels = meter?.channels ?? [];
+  const ch = channels.find((c) => c.channel === channel) ?? (channels.length === 1 ? channels[0] : undefined);
+  const last = ch?.last_value ?? null;
+  const goesDown = value !== "" && last !== null && Number(value) < last;
+
+  const pick = (m: ManualMeter) => {
+    setMeterId(m.meter_id);
+    setChannel(m.channels?.length === 1 ? m.channels[0].channel : "");
+    setValue("");
+    setLowerOk(false);
+  };
+
+  const save = async () => {
+    if (!meter || !ch) return;
+    const payload: MeterPayload = {
+      meter_id: meter.meter_id, channel: ch.channel, value: Number(value), read_at: new Date().toISOString(),
+      lower_confirmed: goesDown && lowerOk, notes: notes.trim() || null,
+    };
+    const label = `Medidor ${meter.account_number} (${meter.meter_type}) · ${value}${last !== null && !goesDown ? ` · ${(Number(value) - last).toFixed(2)} desde la anterior` : ""}`;
+    await enqueue(tenantId, "meter", payload, label);
+    // La foto se actualiza con lo leido, para que la proxima lectura compare contra esta.
+    ch.last_value = Number(value);
+    ch.last_at = payload.read_at;
+    setValue(""); setNotes(""); setLowerOk(false); setMeterId(""); setSearch("");
+    onSaved(label);
+  };
+
+  if (meters.length === 0) return <p className="text-sm text-slate-600">La junta no tiene medidores registrados para lectura manual.</p>;
+
+  return (
+    <div className="space-y-4">
+      {!meter && (
+        <>
+          <input aria-label="Buscar medidor" className="w-full rounded-xl border-2 border-slate-300 px-4 py-3 text-base" placeholder="Cuenta o serie del medidor" value={search} onChange={(e) => setSearch(e.target.value)} />
+          {!q && <p className="text-xs text-slate-500">Macromedidores (escriba para buscar un micromedidor):</p>}
+          <div className="grid gap-2">
+            {matches.map((m) => (
+              <BigButton key={m.meter_id} active={false} onClick={() => pick(m)}>
+                {m.account_number}<span className="block text-xs font-normal opacity-80">{m.meter_type === "macro" ? "Macromedidor" : "Micromedidor"} · {m.serial_number}{m.zone_name ? ` · ${m.zone_name}` : ""}</span>
+              </BigButton>
+            ))}
+            {q && matches.length === 0 && <p className="text-sm text-slate-500">Ningún medidor coincide.</p>}
+          </div>
+        </>
+      )}
+      {meter && (
+        <>
+          <div className="rounded-xl border border-slate-200 bg-white p-3">
+            <p className="text-base font-semibold text-slate-900">{meter.account_number} · {meter.meter_type === "macro" ? "Macromedidor" : "Micromedidor"}</p>
+            <p className="text-xs text-slate-500">{meter.brand} · serie {meter.serial_number}{meter.zone_name ? ` · ${meter.zone_name}` : ""}</p>
+            <button onClick={() => setMeterId("")} className="mt-1 text-xs font-semibold text-indigo-700">Cambiar de medidor</button>
+          </div>
+          {channels.length > 1 && (
+            <div className="grid gap-2">
+              {channels.map((c) => <BigButton key={c.channel} active={channel === c.channel} onClick={() => setChannel(c.channel)}>{c.channel}</BigButton>)}
+            </div>
+          )}
+          {channels.length === 0 && <p className="text-sm text-amber-800">Este medidor no tiene un canal conocido; regístrelo primero en el Portal.</p>}
+          {ch && (
+            <p className="text-sm text-slate-600">
+              Lectura anterior: {last !== null ? <strong>{last.toLocaleString("es")}</strong> : "ninguna"}
+              {ch.last_at && ` · ${new Date(ch.last_at).toLocaleDateString("es", { day: "numeric", month: "short" })}`}
+            </p>
+          )}
+          <label className="block text-sm font-semibold text-slate-700">Lectura del registro (m³)
+            <input type="number" inputMode="decimal" step="any" min={0} className="mt-1 w-full rounded-xl border-2 border-slate-300 px-4 py-3 text-2xl tabular-nums" value={value} onChange={(e) => setValue(e.target.value)} />
+          </label>
+          {value !== "" && last !== null && !goesDown && <p className="text-sm text-emerald-800">Consumo desde la anterior: {(Number(value) - last).toFixed(2)} m³</p>}
+          {goesDown && (
+            <label className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+              <input type="checkbox" className="mt-1" checked={lowerOk} onChange={(e) => setLowerOk(e.target.checked)} />
+              La lectura es menor que la anterior. Confirmo que el medidor se cambió o se reinició (si no, revise el número).
+            </label>
+          )}
+          <input aria-label="Observaciones" className="w-full rounded-xl border-2 border-slate-300 px-4 py-3 text-base" placeholder="Observaciones (medidor dañado, sin acceso…)" value={notes} onChange={(e) => setNotes(e.target.value)} />
+          <button onClick={save} disabled={!ch || value === "" || (goesDown && !lowerOk)} className="w-full rounded-xl bg-indigo-600 py-4 text-lg font-bold text-white disabled:opacity-40">
+            Guardar lectura
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
 const STATUS_PILL: Record<OutboxItem["status"], { label: string; cls: string }> = {
   pending: { label: "Por enviar", cls: "bg-amber-100 text-amber-900" },
   synced: { label: "Enviado", cls: "bg-emerald-100 text-emerald-800" },
@@ -214,7 +313,7 @@ export function OperatorPage() {
   const tenantId = tokenTenantId();
   const online = useOnline();
   const [snap, setSnap] = useState<{ saved_at: string; data: Snapshot } | null>(() => (tenantId ? loadSnapshot<Snapshot>(tenantId) : null));
-  const [tab, setTab] = useState<"measure" | "log" | "outbox">("measure");
+  const [tab, setTab] = useState<"measure" | "log" | "meter" | "outbox">("measure");
   const [items, setItems] = useState<OutboxItem[]>([]);
   const [message, setMessage] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
@@ -238,9 +337,9 @@ export function OperatorPage() {
   // Foto del catalogo y los puntos cada vez que hay conexion.
   useEffect(() => {
     if (!tenantId || !online) return;
-    Promise.all([getOperationsCatalog(), getSamplingPoints()])
-      .then(([catalog, points]) => {
-        const data = { catalog, points };
+    Promise.all([getOperationsCatalog(), getSamplingPoints(), getManualMeters({ limit: 1000 })])
+      .then(([catalog, points, meters]) => {
+        const data = { catalog, points, meters };
         saveSnapshot(tenantId, data);
         setSnap({ saved_at: new Date().toISOString(), data });
       })
@@ -302,8 +401,8 @@ export function OperatorPage() {
         </div>
       )}
 
-      <nav className="mx-4 mt-3 grid grid-cols-3 gap-2" aria-label="Secciones">
-        {([["measure", "Medir"], ["log", "Bitácora"], ["outbox", `Pendientes${pending ? ` (${pending})` : ""}`]] as const).map(([key, label]) => (
+      <nav className="mx-4 mt-3 grid grid-cols-4 gap-2" aria-label="Secciones">
+        {([["measure", "Cloro"], ["log", "Bitácora"], ["meter", "Medidor"], ["outbox", `Envíos${pending ? ` (${pending})` : ""}`]] as const).map(([key, label]) => (
           <button key={key} onClick={() => setTab(key)} aria-current={tab === key ? "page" : undefined}
             className={`rounded-xl py-3 text-sm font-bold ${tab === key ? "bg-slate-900 text-white" : "bg-white text-slate-700 border border-slate-300"}`}>
             {label}
@@ -319,6 +418,7 @@ export function OperatorPage() {
         )}
         {snap && tab === "measure" && <MeasureForm snap={snap.data} onSaved={onSaved} />}
         {snap && tab === "log" && <LogForm snap={snap.data} todayReadings={todayReadings} onSaved={onSaved} />}
+        {snap && tab === "meter" && <MeterForm snap={snap.data} onSaved={(label) => { if (tenantId) saveSnapshot(tenantId, snap.data); void onSaved(label); }} />}
         {tab === "outbox" && (
           <ul className="space-y-2">
             {items.length === 0 && <li className="text-sm text-slate-500">Nada registrado hoy en este teléfono.</li>}

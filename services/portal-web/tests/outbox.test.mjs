@@ -16,6 +16,7 @@ export const state: any = (globalThis as any).__api;
 export function getToken() { return state.token; }
 export async function recordFieldReading(body: any) { return state.reading(body); }
 export async function createOperationLogEntry(body: any) { return state.log(body); }
+export async function recordManualMeterReading(body: any) { return state.meter(body); }
 `);
 
 let checks = 0;
@@ -27,6 +28,7 @@ const api = {
   mode: "ok",            // ok | offline | session
   readings: new Map(),   // client_id -> server record
   logs: new Map(),
+  meters: new Map(),
   calls: [],
 };
 globalThis.__api = api;
@@ -42,6 +44,16 @@ api.reading = async (body) => {
               finding_created: body.value < 0.3, finding_id: body.value < 0.3 ? "F1" : null };
   api.readings.set(body.client_id, r);
   return { ...r, duplicate: false };
+};
+api.meter = async (body) => {
+  api.calls.push(["meter", body.client_id]);
+  if (api.mode === "offline") throw new TypeError("Failed to fetch");
+  if (body.value < 100 && !body.lower_confirmed) throw new ApiError(422, "La lectura es menor que la anterior");
+  if (api.meters.has(body.client_id)) return { ...api.meters.get(body.client_id), duplicate: true };
+  const m = { manual_reading_id: "M" + (api.meters.size + 1), delta: body.lower_confirmed ? null : body.value - 100,
+              lower_confirmed: body.lower_confirmed };
+  api.meters.set(body.client_id, m);
+  return { ...m, duplicate: false };
 };
 api.log = async (body) => {
   api.calls.push(["log", body.client_id, body.reading_id]);
@@ -107,6 +119,21 @@ check(rep.stopped === "offline" && rep.failed === 0, "5xx: se reintenta después
 api.mode = "ok";
 rep = await ob.syncOutbox("T1");
 check(rep.sent === 1, "al volver, se envía");
+
+console.log("5b. Lectura manual de medidor sin conexion (D1.4a)");
+api.mode = "offline";
+const m1 = await ob.enqueue("T1", "meter", { meter_id: "MET-1", channel: "volume_m3", value: 105.5, read_at: "2026-10-06T08:00:00Z", lower_confirmed: false, notes: null }, "Medidor GUA-0001");
+const m2 = await ob.enqueue("T1", "meter", { meter_id: "MET-2", channel: "volume_m3", value: 3, read_at: "2026-10-06T08:05:00Z", lower_confirmed: true, notes: "cambiado" }, "Medidor cambiado");
+const m3 = await ob.enqueue("T1", "meter", { meter_id: "MET-3", channel: "volume_m3", value: 3, read_at: "2026-10-06T08:10:00Z", lower_confirmed: false, notes: null }, "Lectura dudosa");
+rep = await ob.syncOutbox("T1");
+check(rep.stopped === "offline" && (await ob.listOutbox("T1")).filter((i) => i.kind === "meter").every((i) => i.status === "pending"), "sin red: las lecturas esperan");
+api.mode = "ok"; api.calls = [];
+rep = await ob.syncOutbox("T1");
+const ms = await ob.listOutbox("T1");
+check(ms.find((i) => i.client_id === m1.client_id).server_note === "5.5 desde la anterior", "consumo desde la anterior según el servidor");
+check(ms.find((i) => i.client_id === m2.client_id).server_note === "medidor cambiado", "medidor cambiado confirmado");
+check(ms.find((i) => i.client_id === m3.client_id).status === "failed", "registro que baja sin confirmar: rechazado con motivo");
+check(rep.sent === 2 && rep.failed === 1, "2 enviadas, 1 rechazada");
 
 console.log("6. Limpieza de lo ya enviado de dias anteriores");
 await ob.pruneSynced("T1", new Date("2099-01-01"));

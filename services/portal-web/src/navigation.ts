@@ -79,6 +79,7 @@ export const NAV_GROUPS: { title: string | null; items: NavItemDef[] }[] = [
           { id: "dosing", label: "Dosificación" },
           { id: "log", label: "Bitácora 7C" },
           { id: "readings", label: "Mediciones 7B" },
+          { id: "meters", label: "Lecturas de medidores" },
           { id: "points", label: "Puntos de medición" },
         ],
       },

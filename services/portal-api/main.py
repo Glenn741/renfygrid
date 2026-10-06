@@ -210,6 +210,13 @@ from pack_service import (  # noqa: E402
     update_follow_up_item,
 )
 from pack_engine import InvalidRecordError  # noqa: E402
+from meter_manual_service import (  # noqa: E402
+    MeterNotFoundError,
+    MeterReadingConflictError,
+    find_meters,
+    list_manual_meter_readings,
+    record_manual_meter_reading,
+)
 from operation_service import (  # noqa: E402
     OperationConflictError,
     OperationNotFoundError,
@@ -1995,6 +2002,59 @@ def calculate_dosing_endpoint(body: DosingRequest, tenant_id: str = Depends(get_
             return calculate_dosing(conn, tenant_id, body.product_id, body.flow_lps, body.dose_mg_l, start, end)
         except _OPERATION_ERRORS as exc:
             raise _operation_errors(exc) from exc
+
+
+# ── Lectura manual de micro y macromedidor (Track D, 0032) ─────────────
+
+@app.get("/manual-reading/meters")
+def manual_reading_meters_endpoint(
+    tenant_id: str = Depends(get_tenant_id), search: str | None = None, meter_type: str | None = None,
+    with_channels: bool = True, limit: int = 50,
+) -> list[dict]:
+    """Medidores para leer a mano (cuenta o serie), con sus canales y la
+    ultima lectura de cada uno."""
+    with db_conn() as conn:
+        return find_meters(conn, tenant_id, search, meter_type, with_channels, limit)
+
+
+class ManualMeterReadingRequest(BaseModel):
+    meter_id: str
+    channel: str
+    value: float
+    read_at: datetime | None = None
+    lower_confirmed: bool = False
+    notes: str | None = None
+    client_id: str | None = None
+
+
+@app.post("/manual-reading", status_code=201)
+def record_manual_meter_reading_endpoint(body: ManualMeterReadingRequest, actor: dict = Depends(get_actor)) -> dict:
+    """La lectura entra a raw_reading (source_quality = 'manual') y la valida
+    el pase VEE como a cualquier otra."""
+    read_at = body.read_at or datetime.now(timezone.utc)
+    if read_at.tzinfo is None:
+        raise HTTPException(status_code=422, detail="read_at debe incluir la zona horaria")
+    with db_conn() as conn:
+        try:
+            return record_manual_meter_reading(conn, actor["tenant_id"], body.meter_id, body.channel, body.value, read_at,
+                                               requested_by_label(actor), body.lower_confirmed, body.notes, body.client_id)
+        except MeterNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except MeterReadingConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except InvalidRecordError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/manual-reading")
+def list_manual_meter_readings_endpoint(
+    tenant_id: str = Depends(get_tenant_id), meter_id: str | None = None, since: datetime | None = None, limit: int = 200,
+) -> list[dict]:
+    with db_conn() as conn:
+        try:
+            return list_manual_meter_readings(conn, tenant_id, meter_id, since, limit)
+        except MeterNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @app.get("/settings/instrumentation")

@@ -2022,3 +2022,40 @@ Queda pendiente con el usuario.
 `npm audit` marca `source-map-js` (alta), que ya estaba en el lock antes de este cambio. Es una
 dependencia transitiva de las herramientas de build y no se envía al navegador. Queda anotada
 para una actualización aparte.
+
+### D1.4a Lectura manual de micro y macromedidor (2026-10-06)
+
+- **Mismo camino que la telemetría:** la lectura entra a `raw_reading` con
+  `source_quality = 'manual'` y el pase VEE la encuentra para validarla, sin cambios en VEE.
+  Consumo y balance salen de ahí.
+- **Migración 0032:** tabla `manual_meter_reading` con RLS. Guarda quién leyó, el `client_id`
+  del dispositivo (idempotente), la lectura anterior con que se comparó y si se confirmó que el
+  registro bajó.
+- **Canal sin valores fijos:** se aceptan solo los canales que ese medidor ya reporta. Si nunca
+  reportó, los que reportan los medidores de su mismo tipo (micro o macro) en la junta. Así un
+  macro ofrece `volume_m3_bulk` y un micro `volume_m3`, sin escribirlos en el código.
+- **Motor:** `check_register`. Un registro acumulado que baja da 422 si no se confirma un
+  cambio o reinicio del medidor; si se confirma, entra sin consumo calculado.
+- **API:**
+  - `GET /manual-reading/meters`: búsqueda por cuenta o serie, filtro micro o macro, canales con
+    su última lectura;
+  - `POST /manual-reading`: el mismo instante da 409; canal ajeno, medidor inexistente o mal
+    formado dan 404; hora sin zona da 422;
+  - `GET /manual-reading`.
+- **App del operador:** pestaña "Medidor", que funciona sin conexión.
+  - La foto local incluye los medidores con su última lectura.
+  - Muestra los macromedidores primero y busca micros por cuenta o serie.
+  - Calcula el consumo desde la anterior y pide confirmar si el registro baja.
+  - La cola envía mediciones, después lecturas de medidor y al final las tomas.
+- **Portal:** sección "Lecturas de medidores" en Operación diaria, con el historial.
+
+**Verificación:**
+- 53 pruebas del motor.
+- E2E nuevo `verify_manual_meter_reading_end_to_end.py`: canales propios y por tipo, 5,5 m³
+  desde la anterior, entrada como `manual` y visible para VEE, registro que baja, idempotencia,
+  409, 404 y 422, aislamiento.
+- `npm run test:offline` con 25 verificaciones, sumando lecturas de medidor sin conexión.
+- En vivo, `col001` (3 macros, 108 medidores) y `jaas001` (2 macros, 98) listan los medidores
+  con su canal y su última lectura.
+- No se cargaron lecturas manuales de demo: los medidores de las dos demos tienen telemetría y
+  una lectura manual alteraría su balance.
