@@ -19,6 +19,7 @@ import {
 import { StagePage, EmptyState } from "../components/StagePage";
 import { NavSection, SectionNav } from "../components/SectionNav";
 
+import { sectionsFor } from "../navigation";
 // "Mi sistema" -- Track D, Sprint D0.3 (docs/04-plan-sprints.md SS11.4).
 // Pantalla de operacion, no de formato: el recorrido, el semaforo, el tren
 // de tratamiento y los hallazgos salen de lo que la junta registra. Los
@@ -26,12 +27,7 @@ import { NavSection, SectionNav } from "../components/SectionNav";
 // informacion vista como reporte. Ningun texto de aca depende de un pais:
 // tipos, etiquetas y escalas vienen del paquete adoptado.
 
-const SECTIONS = [
-  { id: "route", label: "Recorrido" },
-  { id: "traffic-light", label: "Semáforo" },
-  { id: "treatment", label: "Tratamiento" },
-  { id: "findings", label: "Hallazgos" },
-];
+const SECTIONS = sectionsFor("/system");
 
 const SERVICE_LABEL: Record<string, string> = { water: "Agua potable", sanitation: "Saneamiento", support: "Soporte" };
 const STATUS_LABEL: Record<string, string> = { operational: "Operativo", maintenance: "En mantenimiento", out_of_service: "Fuera de servicio" };

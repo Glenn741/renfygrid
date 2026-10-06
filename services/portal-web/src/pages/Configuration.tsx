@@ -36,6 +36,7 @@ import {
 import { StagePage, EmptyState } from "../components/StagePage";
 import { NavSection, SectionNav } from "../components/SectionNav";
 
+import { sectionsFor } from "../navigation";
 // Pulido de usabilidad (2026-09-14): esta era la pagina mas larga del
 // portal -- 5 secciones de administracion sin ninguna relacion visual
 // entre si, apiladas en un solo scroll ciego. Convertida al patron real
@@ -43,20 +44,7 @@ import { NavSection, SectionNav } from "../components/SectionNav";
 // docs/05-ejecucion.md, pulido de navegacion) -- barra de secciones
 // pegajosa arriba, cada `SectionCard` con su propio `id` para saltar
 // directo.
-const SECTIONS = [
-  { id: "session", label: "Sesión" },
-  { id: "packs", label: "Paquetes" },
-  { id: "instrumentation", label: "Instrumentación" },
-  { id: "hes-settings", label: "HES" },
-  { id: "vee-rules", label: "Reglas VEE" },
-  { id: "consumption-rules", label: "Reglas de consumo" },
-  { id: "approval-levels", label: "Aprobación (SCR)" },
-  { id: "protocol-mapping", label: "Mapeo OBIS" },
-  { id: "protected-accounts", label: "Cuentas protegidas" },
-  { id: "sla-policies", label: "SLA de mantenimiento" },
-  { id: "failure-codes", label: "Códigos de falla" },
-  { id: "crews", label: "Cuadrillas" },
-];
+const SECTIONS = sectionsFor("/configuration");
 
 const PRIORITY_LABEL: Record<string, string> = {
   low: "Baja", medium: "Media", high: "Alta", emergency: "Emergencia",

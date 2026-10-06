@@ -13,11 +13,8 @@ import { StagePage, EmptyState } from "../components/StagePage";
 import { SectionNav } from "../components/SectionNav";
 import { TrendBars } from "../components/TrendBars";
 
-const SECTIONS = [
-  { id: "validation", label: "V · Validación" },
-  { id: "estimation", label: "E · Estimación" },
-  { id: "manual-edit", label: "E · Edición manual" },
-];
+import { sectionsFor } from "../navigation";
+const SECTIONS = sectionsFor("/vee");
 
 // Validacion (VEE), por etapa -- Sprint C11-3, sobre el feedback directo
 // del usuario: "cada letra V.E.E. implica un nivel de procesamiento y

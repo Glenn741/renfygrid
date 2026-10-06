@@ -19,6 +19,7 @@ import { StagePage, EmptyState } from "../components/StagePage";
 import { SectionNav } from "../components/SectionNav";
 import { NetworkMap } from "../components/NetworkMap";
 
+import { sectionsFor } from "../navigation";
 // Pulido de usabilidad (2026-09-14): 5 secciones reales apiladas (flota,
 // concentradores, cola de reintentos, eventos/alarmas, medidores) sin
 // forma de saltar entre ellas -- mismo patron de barra de secciones que
@@ -31,15 +32,7 @@ import { NetworkMap } from "../components/NetworkMap";
 // presion -- mide el inflow TOTAL, la diferencia contra el consumo micro
 // sumado es el NRW real de ese sector). Grounded en el estandar real de
 // DMA/smart metering (KROHNE, McCrometer -- ver docs/05-ejecucion.md).
-const SECTIONS = [
-  { id: "map", label: "Mapa de medidores" },
-  { id: "distribution", label: "Distribución estadística" },
-  { id: "fleet", label: "Flota" },
-  { id: "gateways", label: "Concentradores" },
-  { id: "retry-queue", label: "Cola de reintentos" },
-  { id: "events", label: "Eventos y alarmas" },
-  { id: "meters-list", label: "Medidores" },
-];
+const SECTIONS = sectionsFor("/meters");
 
 const METER_TYPE_LABEL: Record<string, string> = { micro: "Micro (cliente)", macro: "Macro (sector)" };
 const METER_TYPE_COLOR: Record<string, string> = { micro: "#0ea5e9", macro: "#7c3aed" };

@@ -15,10 +15,8 @@ import { StagePage, EmptyState } from "../components/StagePage";
 import { NetworkMap } from "../components/NetworkMap";
 import { SectionNav } from "../components/SectionNav";
 
-const SECTIONS = [
-  { id: "map", label: "Mapa de activos" },
-  { id: "assets", label: "Activos" },
-];
+import { sectionsFor } from "../navigation";
+const SECTIONS = sectionsFor("/digital-twin");
 
 // Gemelo Digital -- Track B, Sprint B5 (docs/07-track-b-alcance-funcional.md
 // SS5): inventario de activos de red (tuberías, válvulas, tanques, bombas,

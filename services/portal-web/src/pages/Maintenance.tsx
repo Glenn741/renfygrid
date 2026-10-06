@@ -22,6 +22,7 @@ import {
 import { StagePage, EmptyState } from "../components/StagePage";
 import { SectionNav } from "../components/SectionNav";
 
+import { sectionsFor } from "../navigation";
 // Gestion de Mantenimiento -- CMMS real (2026-09-14, docs/04-plan-sprints.md
 // SS9): el panel anterior (Sprint B7) generaba la orden y la enviaba a
 // BayForce, pero BayForce nunca tuvo un endpoint real que la recibiera
@@ -33,11 +34,7 @@ import { SectionNav } from "../components/SectionNav";
 // OPCIONAL (el boton "Enviar a BayForce" sigue existiendo, sin ser el
 // unico camino).
 
-const SECTIONS = [
-  { id: "kpis", label: "Estado general" },
-  { id: "orders", label: "Órdenes" },
-  { id: "pm-plans", label: "Mantenimiento preventivo" },
-];
+const SECTIONS = sectionsFor("/maintenance");
 
 const TYPE_LABEL: Record<string, string> = {
   preventive: "Preventivo", corrective: "Correctivo", inspection: "Inspección",

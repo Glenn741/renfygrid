@@ -1,52 +1,111 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { getProcessRoute } from "../api";
+import { NAV_GROUPS, type NavBadge, type NavItemDef } from "../navigation";
+import { ActiveSectionProvider, scrollToSection, useActiveSection } from "./activeSection";
 import { SessionMenu, useSessionInfo } from "./SessionMenu";
 import { ROUTE_QUERY_KEY, STAGE_STATE_STYLE, stageState } from "./routeStatus";
 
-const ROUTE_PATH = "/inspections";
-const ROUTE_OPEN_KEY = "renfygrid.nav.route.open";
+// Shell visual compartido (Sprint C9; menu agrupado por proceso y submenus
+// contextuales 2026-10-05, a pedido del usuario: "la vision de proceso no es
+// claramente visible en el menu" y "optimiza asi los otros menus").
+//
+// Cada modulo con secciones internas muestra esas secciones como submenu:
+//   - aparece solo dentro del modulo, o si el usuario lo despliega con la
+//     flecha (se recuerda por navegador);
+//   - marca la seccion visible (estado compartido con la barra de secciones
+//     de la pagina) y lleva directo a cualquier seccion desde otro modulo;
+//   - las secciones que piden atencion muestran un contador.
+// "Ruta y revisiones" muestra en cambio las etapas de la ruta del paquete de
+// la organizacion. La estructura vive en src/navigation.ts.
 
-function readRouteOpen(): boolean {
+const OPEN_KEY = "renfygrid.nav.open";
+
+function readOpen(): Record<string, boolean> {
   try {
-    return window.localStorage.getItem(ROUTE_OPEN_KEY) === "1";
+    const raw = window.localStorage.getItem(OPEN_KEY);
+    return raw ? (JSON.parse(raw) as Record<string, boolean>) : {};
   } catch {
-    return false;
+    return {};
   }
 }
 
-function writeRouteOpen(open: boolean): void {
+function writeOpen(value: Record<string, boolean>): void {
   try {
-    window.localStorage.setItem(ROUTE_OPEN_KEY, open ? "1" : "0");
+    window.localStorage.setItem(OPEN_KEY, JSON.stringify(value));
   } catch {
     // preferencia de vista; si el navegador no deja guardar, no pasa nada
   }
 }
 
-/** Submenu contextual de "Ruta y revisiones" (2026-10-05): las etapas de la
- * ruta del paquete de la organizacion, con su estado. Solo aparece dentro del
- * modulo o si el usuario lo despliega; sin ruta (p. ej. un tenant solo MDM)
- * no muestra nada. */
-function RouteSubmenu({ pathname, onNavigate }: { pathname: string; onNavigate?: () => void }) {
+function isActive(pathname: string, to: string): boolean {
+  if (to === "/") return pathname === "/";
+  return pathname === to || pathname.startsWith(`${to}/`);
+}
+
+const SUBITEM_CLASS = "flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px] transition-colors";
+const SUBITEM_ACTIVE = "bg-white/10 font-semibold text-white";
+const SUBITEM_IDLE = "text-slate-400 hover:bg-white/5 hover:text-white";
+
+function BadgeCount({ badge }: { badge: NavBadge }) {
+  const { data } = useQuery({ queryKey: badge.queryKey, queryFn: badge.fetch, staleTime: 60_000 });
+  if (!data) return null;
+  const tone = badge.tone === "alert" ? "bg-red-500/90 text-white" : "bg-white/15 text-slate-200";
+  return (
+    <span className={`shrink-0 rounded-full px-1.5 text-[10px] font-bold leading-4 tabular-nums ${tone}`} aria-label={`${data} ${badge.meaning}`} title={`${data} ${badge.meaning}`}>
+      {data > 99 ? "99+" : data}
+    </span>
+  );
+}
+
+function SectionSubmenu({ item, pathname, onNavigate }: { item: NavItemDef; pathname: string; onNavigate?: () => void }) {
+  const { active } = useActiveSection();
+  const here = pathname === item.to;
+  return (
+    <ol className="mt-0.5 mb-1 ml-5 space-y-0.5 border-l border-white/10 pl-2" aria-label={`Secciones de ${item.label}`}>
+      {(item.sections ?? []).map((s) => {
+        const current = here && active === s.id;
+        return (
+          <li key={s.id}>
+            <Link
+              to={`${item.to}#${s.id}`}
+              onClick={() => {
+                // En la misma pantalla, el hash puede no cambiar (mismo destino dos veces): llevar igual.
+                if (here) scrollToSection(s.id);
+                onNavigate?.();
+              }}
+              aria-current={current ? "location" : undefined}
+              className={`${SUBITEM_CLASS} ${current ? SUBITEM_ACTIVE : SUBITEM_IDLE}`}
+            >
+              <span className="min-w-0 flex-1 truncate">{s.label}</span>
+              {s.badge && <BadgeCount badge={s.badge} />}
+            </Link>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+/** Etapas de la ruta del paquete de la organizacion; sin ruta no muestra nada. */
+function RouteSubmenu({ basePath, pathname, onNavigate }: { basePath: string; pathname: string; onNavigate?: () => void }) {
   const { data } = useQuery({ queryKey: ROUTE_QUERY_KEY, queryFn: getProcessRoute, staleTime: 60_000 });
   if (!data || data.stages.length === 0) return null;
   return (
     <ol className="mt-0.5 mb-1 ml-5 space-y-0.5 border-l border-white/10 pl-2" aria-label="Etapas de la ruta">
       {data.stages.map((s) => {
-        const to = `${ROUTE_PATH}/${s.code}`;
-        const active = pathname === to;
+        const to = `${basePath}/${s.code}`;
+        const current = pathname === to;
         const style = STAGE_STATE_STYLE[stageState(s)];
         return (
           <li key={s.code}>
             <Link
               to={to}
               onClick={onNavigate}
-              aria-current={active ? "page" : undefined}
+              aria-current={current ? "page" : undefined}
               title={`${s.title} · ${style.label}`}
-              className={`flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px] transition-colors ${
-                active ? "bg-white/10 font-semibold text-white" : "text-slate-400 hover:bg-white/5 hover:text-white"
-              }`}
+              className={`${SUBITEM_CLASS} ${current ? SUBITEM_ACTIVE : SUBITEM_IDLE}`}
             >
               <span className="w-3 shrink-0 text-right text-[11px] tabular-nums text-slate-500">{s.order}</span>
               <span className="min-w-0 flex-1 truncate">{s.title}</span>
@@ -59,74 +118,15 @@ function RouteSubmenu({ pathname, onNavigate }: { pathname: string; onNavigate?:
   );
 }
 
-// Shell visual compartido (Sprint C9, docs/04-plan-sprints.md E18): rebranding
-// + navegacion lateral real para las 9 pantallas existentes -- capa puramente
-// visual, ninguna pantalla cambia su logica (queries, mutaciones, tablas)
-// para adoptar esto; solo cambia el wrapper que las envuelve (StagePage) o,
-// en el caso de Overview, su JSX de layout.
-
-interface NavItem {
-  to: string;
-  label: string;
-  icon: string;
-}
-
-// Menu agrupado por proceso (2026-10-05, a pedido del usuario: "la vision
-// de proceso no es claramente visible en el menu"). Los grupos siguen el
-// recorrido del agua y de la gestion: operar el sistema, medir, entender las
-// perdidas de la red, mantener, y la plataforma. Son la estructura del
-// producto (vocabulario fijo del motor), no datos de un tenant.
-const NAV_GROUPS: { title: string | null; items: NavItem[] }[] = [
-  { title: null, items: [{ to: "/", label: "Vista general", icon: "⌂" }] },
-  {
-    title: "Operación del sistema",
-    items: [
-      { to: "/system", label: "Mi sistema", icon: "\u{1F6B0}" },
-      { to: "/inspections", label: "Ruta y revisiones", icon: "\u{1F4CB}" },
-      { to: "/maintenance", label: "Mantenimiento", icon: "\u{1F527}" },
-    ],
-  },
-  {
-    title: "Medición (MDM)",
-    items: [
-      { to: "/meters", label: "HES / Ingesta", icon: "\u{1F4E1}" },
-      { to: "/vee", label: "VEE", icon: "✓" },
-      { to: "/consumption", label: "Consumo", icon: "\u{1F4C8}" },
-      { to: "/control", label: "Control (SCR)", icon: "⚡" },
-    ],
-  },
-  {
-    title: "Red y pérdidas",
-    items: [
-      { to: "/network-balance", label: "Balance de Red", icon: "\u{1F4A7}" },
-      { to: "/digital-twin", label: "Gemelo Digital", icon: "\u{1F5FA}" },
-      { to: "/network-model", label: "Modelado Hidráulico", icon: "\u{1F30A}" },
-    ],
-  },
-  {
-    title: "Plataforma",
-    items: [
-      { to: "/integrations", label: "Integraciones (CIS)", icon: "\u{1F517}" },
-      { to: "/observability", label: "Observabilidad", icon: "\u{1FA7A}" },
-      { to: "/configuration", label: "Configuración", icon: "⚙" },
-    ],
-  },
-];
-
-function isActive(pathname: string, to: string): boolean {
-  if (to === "/") return pathname === "/";
-  return pathname === to || pathname.startsWith(`${to}/`);
-}
-
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const location = useLocation();
   const { data: session } = useSessionInfo();
-  const [routeOpen, setRouteOpen] = useState(readRouteOpen);
-  const inRoute = isActive(location.pathname, ROUTE_PATH);
-  const toggleRoute = () => {
-    setRouteOpen((open) => {
-      writeRouteOpen(!open);
-      return !open;
+  const [open, setOpen] = useState<Record<string, boolean>>(readOpen);
+  const toggle = (to: string) => {
+    setOpen((current) => {
+      const next = { ...current, [to]: !current[to] };
+      writeOpen(next);
+      return next;
     });
   };
 
@@ -153,15 +153,15 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
             <div className="space-y-0.5">
               {group.items.map((item) => {
                 const active = isActive(location.pathname, item.to);
-                const isRoute = item.to === ROUTE_PATH;
-                const expanded = isRoute && (inRoute || routeOpen);
+                const hasSubmenu = Boolean(item.dynamic || (item.sections && item.sections.length > 1));
+                const expanded = hasSubmenu && (active || Boolean(open[item.to]));
                 return (
                   <div key={item.to}>
                     <div className="flex items-center">
                       <Link
                         to={item.to}
                         onClick={onNavigate}
-                        aria-current={active && location.pathname === item.to ? "page" : undefined}
+                        aria-current={location.pathname === item.to ? "page" : undefined}
                         className={`flex flex-1 items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
                           active
                             ? "bg-indigo-600 text-white"
@@ -171,19 +171,22 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
                         <span className="text-base leading-none">{item.icon}</span>
                         {item.label}
                       </Link>
-                      {isRoute && !inRoute && (
+                      {hasSubmenu && !active && (
                         <button
-                          onClick={toggleRoute}
+                          onClick={() => toggle(item.to)}
                           aria-expanded={expanded}
-                          aria-label={expanded ? "Ocultar las etapas de la ruta" : "Mostrar las etapas de la ruta"}
-                          title={expanded ? "Ocultar etapas" : "Mostrar etapas"}
+                          aria-label={expanded ? `Ocultar el contenido de ${item.label}` : `Mostrar el contenido de ${item.label}`}
+                          title={expanded ? "Ocultar" : "Mostrar contenido"}
                           className="ml-1 flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-white/5 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
                         >
                           <span aria-hidden className={`text-xs transition-transform ${expanded ? "rotate-90" : ""}`}>▸</span>
                         </button>
                       )}
                     </div>
-                    {expanded && <RouteSubmenu pathname={location.pathname} onNavigate={onNavigate} />}
+                    {expanded && item.dynamic === "route" && (
+                      <RouteSubmenu basePath={item.to} pathname={location.pathname} onNavigate={onNavigate} />
+                    )}
+                    {expanded && !item.dynamic && <SectionSubmenu item={item} pathname={location.pathname} onNavigate={onNavigate} />}
                   </div>
                 );
               })}
@@ -195,13 +198,36 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
+/** Al llegar con #seccion (desde el submenu de otro modulo), llevar a esa
+ * seccion. Se reintenta una vez porque los datos de la pagina pueden mover
+ * la posicion mientras cargan. */
+function useScrollToHash() {
+  const { pathname, hash } = useLocation();
+  useEffect(() => {
+    if (!hash) return;
+    const id = decodeURIComponent(hash.slice(1));
+    const first = window.setTimeout(() => scrollToSection(id), 80);
+    const second = window.setTimeout(() => scrollToSection(id), 700);
+    return () => { window.clearTimeout(first); window.clearTimeout(second); };
+  }, [pathname, hash]);
+}
+
 interface AppShellProps {
   title: string;
   children: ReactNode;
 }
 
 export function AppShell({ title, children }: AppShellProps) {
+  return (
+    <ActiveSectionProvider>
+      <ShellLayout title={title}>{children}</ShellLayout>
+    </ActiveSectionProvider>
+  );
+}
+
+function ShellLayout({ title, children }: AppShellProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  useScrollToHash();
 
   return (
     <div className="min-h-screen bg-slate-50 lg:flex">

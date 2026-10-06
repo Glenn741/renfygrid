@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
+import { scrollToSection, useActiveSection } from "./activeSection";
 
 // Navegacion interna de pagina -- pulido de usabilidad (2026-09-14), a
 // pedido del usuario ("la navegacion dentro de cada menu no se ve
@@ -24,8 +25,11 @@ export interface SectionNavItem {
 }
 
 export function SectionNav({ items }: { items: SectionNavItem[] }) {
-  const [active, setActive] = useState(items[0]?.id);
+  // Estado compartido con el submenu lateral (2026-10-05): la seccion que se
+  // detecta aca con el scroll es la misma que el menu marca.
+  const { active, setActive } = useActiveSection();
   const ticking = useRef(false);
+  useEffect(() => () => setActive(undefined), [setActive]);
 
   useEffect(() => {
     const onScroll = () => {
@@ -49,7 +53,7 @@ export function SectionNav({ items }: { items: SectionNavItem[] }) {
     window.addEventListener("scroll", onScroll, { passive: true });
     onScroll();
     return () => window.removeEventListener("scroll", onScroll);
-  }, [items]);
+  }, [items, setActive]);
 
   if (items.length < 2) return null;
 
@@ -58,7 +62,7 @@ export function SectionNav({ items }: { items: SectionNavItem[] }) {
       {items.map((item) => (
         <button
           key={item.id}
-          onClick={() => document.getElementById(item.id)?.scrollIntoView({ behavior: "smooth", block: "start" })}
+          onClick={() => scrollToSection(item.id)}
           className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold border transition-colors ${
             active === item.id
               ? "bg-indigo-600 text-white border-indigo-600"

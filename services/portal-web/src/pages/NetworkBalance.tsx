@@ -17,11 +17,8 @@ import { StagePage, EmptyState } from "../components/StagePage";
 import { NetworkMap, nrwColorForMap } from "../components/NetworkMap";
 import { SectionNav } from "../components/SectionNav";
 
-const SECTIONS = [
-  { id: "map", label: "Mapa de zonas" },
-  { id: "zones", label: "Zonas de red" },
-  { id: "balances", label: "Balances por período" },
-];
+import { sectionsFor } from "../navigation";
+const SECTIONS = sectionsFor("/network-balance");
 
 // Balance de Red -- Track B, Sprint B1/B1-2 (docs/07-track-b-alcance-funcional.md):
 // matriz de Balance Hidrico IWA completa. Venta modular -- este panel no

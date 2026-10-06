@@ -11,10 +11,8 @@ import {
 import { StagePage, EmptyState } from "../components/StagePage";
 import { SectionNav } from "../components/SectionNav";
 
-const SECTIONS = [
-  { id: "under-review", label: "En revisión" },
-  { id: "orders", label: "Órdenes de relectura / inspección" },
-];
+import { sectionsFor } from "../navigation";
+const SECTIONS = sectionsFor("/consumption");
 
 // Gestion de Consumos (Sprint C11-6, benchmark real: docs/05-ejecucion.md
 // -- Bynry: "MDMS reporting and analytics covers... billing validation

@@ -15,6 +15,7 @@ import { NetworkMap, nrwColorForMap } from "../components/NetworkMap";
 import { TrendBars } from "../components/TrendBars";
 import { SectionNav } from "../components/SectionNav";
 
+import { sectionsFor } from "../navigation";
 // Nivel 1 (F48, Sprint C1) -- rediseñada 2026-09-14 a pedido directo del
 // usuario: la version anterior solo tenia 4 tiles de Track A y se veia
 // "escueta... como una plataforma escolar". Esta version es un reflejo
@@ -26,12 +27,7 @@ import { SectionNav } from "../components/SectionNav";
 // expuestos por los endpoints existentes, nada inventado para "verse
 // lleno".
 
-const SECTIONS = [
-  { id: "kpis", label: "Estado general" },
-  { id: "map", label: "Mapa de la red" },
-  { id: "trends", label: "Tendencias" },
-  { id: "modules", label: "Todos los módulos" },
-];
+const SECTIONS = sectionsFor("/");
 
 interface ModuleCard {
   to: string;
