@@ -2440,3 +2440,84 @@ saneamiento evita que el agua usada salga contaminando a la comunidad."
 - **Fosa:** queda al día; la PTAR sigue sin retiro registrado.
 - **Quesera San Pedro:** con acuerdo; DBO 1800 y DQO 3600 mg/L (relación 0,5).
 - **Chanchera El Carmen:** identificada.
+
+
+### D7 Plan mínimo y Plan de Mejora (2026-10-06)
+
+Fuente: Guía 3, sección 4 (acción transformadora final) y fichas 7G.2 y 7H.
+
+**Migración 0040:**
+- **Catálogo `minimum_plan_row`:** las 8 filas del plan mínimo. Cada fila trae la pregunta de la
+  tabla en blanco, el ejemplo de referencia de la guía y el detector de evidencia que la respalda.
+- **Catálogo `evidence_label`:** cómo se cita cada origen en la 7G.2 ("Registro 7B", "Mapa técnico
+  (Actividad 1)", "Registro de lodos 7F", etc.).
+- **Tablas por junta con RLS:**
+  - `minimum_plan_entry`: decisión, responsable y plazo;
+  - `improvement_input`: las columnas de la 7G.2, con `source_ref` único para no trasladar dos
+    veces la misma evidencia.
+- **Lista `MA-G3-7H`:** tipo `products`, igual que la 7H de las Guías 2 y 6. Cada ítem trae
+  `evidence.kind`, el detector del motor.
+- **Permisos:**
+  - `improvement.record`: operador, directiva y administración;
+  - `improvement.manage`: quitar filas; directiva y administración.
+
+**Migración 0041:** `evidence_label.stage_code`. Visto en vivo en la demo: la 7G.2 de la Guía 3
+proponía los "Falta" de la asamblea de la Guía 2. Ahora cada candidato dice de qué etapa viene:
+- las listas, la etapa de su plantilla;
+- lecturas, laboratorio, mapa, lodos y descargas, la del catálogo.
+
+El portal propone por defecto la evidencia de la guía del tablero 7H; la de otras guías se ve a
+pedido.
+
+**Motor:** `minimum_plan_view`, `improvement_candidates` (prioridad y antigüedad) y
+`products_board`. Un producto "completo" sin registro en el sistema queda señalado para revisar,
+pero la decisión sigue siendo de quien verifica.
+
+**Servicio `improvement_service.py`:**
+- **Plan mínimo:** cada fila trae la evidencia viva:
+  - días con bitácora de la última semana, en la zona horaria de la junta;
+  - puntos de cloro y cloro fuera de rango sin cerrar;
+  - preventivos de los próximos 31 días;
+  - lodos, descargas y hallazgos de saneamiento;
+  - bodega bajo el mínimo y lotes por vencer;
+  - emergencias activadas antes;
+  - hallazgos que piden apoyo del GAD o especializado;
+  - filas de la 7G.2.
+- **7G.2:** los candidatos son los hallazgos abiertos de todas las fuentes, las fosas sin retiro
+  de lodos y las descargas sin controlar, con la evidencia ya citada. Ejemplos:
+  - "3 mediciones de Cloro residual en …: 0.15; 0.18; 0.17 mg/L. Registro 7B";
+  - "7G.1 …: respuesta «No» (fecha)".
+- **Trasladar un candidato:** marca `finding.to_improvement_plan`. Quitar la fila lo desmarca y el
+  candidato vuelve a aparecer.
+- **Tablero 7H:** detectores por producto y último estado verificado.
+
+**API:**
+- `GET /improvement/minimum-plan` y `PUT /improvement/minimum-plan/{pack}/{row}`;
+- `GET/POST /improvement/inputs`, `PATCH/DELETE /improvement/inputs/{id}`;
+- `GET /improvement/products/{template_id}`.
+
+**Portal:** página "Plan mínimo y mejora" con tres secciones.
+- **Plan mínimo:** el ejemplo de la guía como guía de llenado y la evidencia bajo cada fila.
+- **Ficha 7G.2:** filas editables con acción, apoyo, costo y plazo; candidatos para "Llevar a la
+  7G.2"; filas manuales.
+- **Productos 7H:** evidencia por producto y enlace a la verificación.
+
+**Verificación:**
+- Pruebas del motor.
+- E2E nuevo `verify_improvement_end_to_end.py`.
+- **Regresión completa:** 30 E2E en verde. Se ajustaron los conteos de listas en
+  `verify_community_packs` y `verify_pack_service` (26 listas; G3 con 7).
+
+**Demo en `jaas001`:**
+- **Plan mínimo:** 8 de 8 filas decididas.
+- **7G.2:** 6 filas, USD 380 estimados, 3 por cotizar:
+  - cloro bajo en el extremo de la red;
+  - caja que rebosa junto a la escuela (7E);
+  - EPP faltante (7G.1);
+  - lodos del humedal;
+  - chanchera El Carmen;
+  - rehabilitación del filtro, como fila manual.
+- **7H:** 13 de 13 productos con registro, verificados por la directiva.
+- El operador no puede quitar filas (403).
+- **Corrección hecha en vivo:** se quitaron 4 filas de la Guía 2 que la primera carga trasladó
+  por error.

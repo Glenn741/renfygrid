@@ -64,6 +64,8 @@ ROUTE_RULES: list[tuple[frozenset[str] | None, re.Pattern, str | None]] = [
     (None, re.compile(r"^/warehouse/items(/.*)?$"), "warehouse.manage"),
     (None, re.compile(r"^/sanitation/discharges(/.*)?$"), "sanitation.record"),
     (None, re.compile(rf"^/sanitation/register/{_ID}/verify$"), "sanitation.verify"),
+    (frozenset({"DELETE"}), re.compile(rf"^/improvement/inputs/{_ID}$"), "improvement.manage"),
+    (None, re.compile(r"^/improvement/(minimum-plan|inputs)(/.*)?$"), "improvement.record"),
     (None, re.compile(r"^/(users|roles)(/.*)?$"), USERS_PERMISSION),
     (None, re.compile(r"^/(settings|packs|vee-rules|consumption-anomaly-rules|control-approval-levels|obis-mappings)(/.*)?$"),
      "settings.manage"),

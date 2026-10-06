@@ -91,7 +91,7 @@ def run(dsn: str) -> None:
             check(r.status_code == 404, "sin paquete normativo no hay regla de cloro -> 404")
             r = client.post("/packs/EC-ARCA/adopt", headers=h)
             check(r.status_code == 200 and len(r.json()["active_packs"]) == 3, "3 paquetes activos de nuevo")
-            check(len(client.get("/checklist-templates", headers=h).json()) == 25, "25 listas disponibles (G2-G6, CAP y Evaluar antes de comprar)")
+            check(len(client.get("/checklist-templates", headers=h).json()) == 26, "26 listas disponibles (G2-G6, CAP, Evaluar antes de comprar y 7H de la Guía 3)")
             g6_req = next(t for t in client.get("/checklist-templates", headers=h).json() if t["id"] == "MA-G6-7F")
             check(len(g6_req["items"]) == 25 and g6_req["stage_code"] == "G6", "7F de la Guía 6: 25 requisitos en la etapa G6")
             check(len(client.get("/parameter-rules", headers=h).json()) == 4, "4 reglas vigentes")
@@ -139,13 +139,13 @@ def run(dsn: str) -> None:
             route = client.get("/process-route", headers=h).json()
             check([s["code"] for s in route["stages"]] == ["G1", "G2", "G3", "G4", "G5", "G6", "INT"], "7 etapas en orden")
             g3 = {i["template_id"]: i for i in route["stages"][2]["lists"]}
-            check(set(g3) == {"MA-G3-START", "MA-AP2", "MA-7A", "MA-7E", "MA-7G1", "MA-G3-BUY"}, "la etapa G3 agrupa sus 6 listas")
+            check(set(g3) == {"MA-G3-START", "MA-AP2", "MA-7A", "MA-7E", "MA-7G1", "MA-G3-BUY", "MA-G3-7H"}, "la etapa G3 agrupa sus 7 listas")
             check(g3["MA-AP2"]["status"] == "done" and g3["MA-7A"]["status"] == "never", "semáforo aplicado, 7A sin aplicar")
             check(g3["MA-7A"]["frequency_days"] == 90 and g3["MA-7E"]["frequency_days"] == 30, "frecuencias del catálogo")
             check(route["stages"][2]["summary"]["applied"] == 1, "resumen de la etapa: 1 aplicada")
             check(route["stages"][0]["lists"] == [] and route["stages"][0]["products"], "etapa sin listas muestra sus productos")
             counts = {s["code"]: s["summary"]["total"] for s in route["stages"]}
-            check(counts == {"G1": 0, "G2": 4, "G3": 6, "G4": 3, "G5": 7, "G6": 4, "INT": 1}, f"listas por etapa {counts}")
+            check(counts == {"G1": 0, "G2": 4, "G3": 7, "G4": 3, "G5": 7, "G6": 4, "INT": 1}, f"listas por etapa {counts}")
 
             print("6c. Lista de productos (0024): 'Falta' no genera hallazgo")
             products = [{"item_key": k, "answer_code": "pending" if i % 2 else "ready"} for i, k in enumerate(

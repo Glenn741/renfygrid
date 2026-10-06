@@ -128,6 +128,14 @@ export const NAV_GROUPS: { title: string | null; items: NavItemDef[] }[] = [
           { id: "discharges", label: "Descargas productivas" },
         ],
       },
+      {
+        to: "/improvement", label: "Plan mínimo y mejora", icon: "\u{1F5D2}",
+        sections: [
+          { id: "minimum-plan", label: "Plan mínimo de O&M" },
+          { id: "inputs", label: "Insumos 7G.2" },
+          { id: "products", label: "Productos 7H" },
+        ],
+      },
       { to: "/inspections", label: "Ruta y revisiones", icon: "\u{1F4CB}", dynamic: "route" },
       {
         to: "/maintenance", label: "Mantenimiento", icon: "\u{1F527}",

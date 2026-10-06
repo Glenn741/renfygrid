@@ -716,7 +716,13 @@ Las matrices de G1 y G6 (priorización, Plan de Mejora, presupuesto) son D7, no 
 - Ficha 7F en el cierre de órdenes: quién retiró y a qué destino seguro; la directiva verifica.
 - Descargas productivas con seguimiento y acuerdo; DBO/DQO por laboratorio con su relación.
 
-**Siguiente en RenfyGrid:** D7 (plan mínimo y Plan de Mejora) y D12 (agrupación).
+**D7, plan mínimo y Plan de Mejora:** ✅ En producción 2026-10-06 (migraciones 0040 y 0041).
+- Plan mínimo de O&M (8 filas) con la evidencia viva de la junta bajo cada fila.
+- Ficha 7G.2 generada desde la evidencia: hallazgos abiertos, lodos y descargas, con la
+  evidencia citada y filtrada por la guía.
+- Tablero 7H con detectores de evidencia por producto.
+
+**Siguiente en RenfyGrid:** D12 (tablero de la agrupación y reporte al ente rector).
 
 **D8–D11 (padrón, caja, costos y tarifa, recaudación, POA) van en `renfy_pool`.** Según este mismo
 plan, antes hay que cruzarlos con lo que ya existe allá; queda pendiente de esa revisión con el

@@ -12,6 +12,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from pack_engine import (  # noqa: E402
+    improvement_candidates,
+    minimum_plan_view,
+    products_board,
     InvalidAnswersError,
     InvalidInstrumentationError,
     InvalidRecordError,
@@ -597,6 +600,40 @@ class SanitationTests(unittest.TestCase):
         ok = sludge_status(date(2026, 3, 1), 365, today)
         self.assertEqual((ok["status"], ok["days_since"], ok["due_on"]), ("ok", 219, "2027-03-01"))
         self.assertIsNone(sludge_status(date(2026, 3, 1), None, today)["status"])
+
+
+class ImprovementPlanTests(unittest.TestCase):
+    def test_minimum_plan(self):
+        rows = [{"pack_id": "P", "code": "a", "suggestion_source": "daily_routine"},
+                {"pack_id": "P", "code": "b", "suggestion_source": "warehouse_ppe"}]
+        v = minimum_plan_view(rows, {("P", "a"): {"decision": "Revisar"}}, {"warehouse_ppe": ["Guantes bajo el mínimo"]})
+        self.assertEqual(v["summary"], {"total": 2, "decided": 1, "complete": False})
+        self.assertEqual(v["rows"][1]["suggestions"], ["Guantes bajo el mínimo"])
+        v = minimum_plan_view(rows, {("P", "a"): {"decision": "x"}, ("P", "b"): {"decision": " "}}, {})
+        self.assertFalse(v["summary"]["complete"])
+
+    def test_candidates(self):
+        findings = [
+            {"finding_id": "f1", "status": "open", "priority": "low", "since": "2026-09-01"},
+            {"finding_id": "f2", "status": "closed", "priority": "high", "since": "2026-09-01"},
+            {"finding_id": "f3", "status": "in_progress", "priority": "high", "since": "2026-10-01"},
+            {"finding_id": "f4", "status": "open", "priority": "high", "since": "2026-09-15"},
+        ]
+        derived = [{"source_ref": "sludge:a", "priority": None, "since": None},
+                   {"source_ref": "discharge:d", "priority": "medium", "since": "2026-10-02"}]
+        out = improvement_candidates(findings, derived, {"f4", "discharge:x"})
+        self.assertEqual([c["source_ref"] for c in out], ["f3", "discharge:d", "f1", "sludge:a"])
+
+    def test_products_board(self):
+        items = [{"key": "a", "text": "A", "evidence": {"kind": "operation_log"}}, {"key": "b", "text": "B", "evidence": {"kind": "x"}},
+                 {"key": "c", "text": "C"}]
+        b = products_board(items, {"a": {"answer_code": "complete"}, "b": {"answer_code": "complete"},
+                                   "c": {"answer_code": "pending", "observation": "falta firma"}},
+                           {"a": {"count": 3, "last_at": "2026-10-05"}})
+        self.assertEqual([(r["status"], r["has_evidence"], r["check"]) for r in b["items"]],
+                         [("complete", True, False), ("complete", False, True), ("pending", False, False)])
+        self.assertEqual(b["summary"], {"total": 3, "complete": 2, "pending": 1, "with_evidence": 1})
+        self.assertEqual(b["items"][2]["note"], "falta firma")
 
 
 if __name__ == "__main__":

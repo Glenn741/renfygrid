@@ -1620,6 +1620,66 @@ export function addDischargeFollowup(id: string, body: { note: string; new_statu
   return request(`/sanitation/discharges/${id}/followups`, { method: "POST", body: JSON.stringify(body) });
 }
 
+// ── Plan mínimo, ficha 7G.2 y tablero 7H (0040) ───────────────────────
+
+export interface MinimumPlanRow {
+  pack_id: string; code: string; sort_order: number; component: string; guidance: string;
+  example_decision: string | null; example_responsible: string | null; example_term: string | null; suggestion_source: string;
+  entry: { decision: string; responsible: string | null; term: string | null; due_date: string | null; updated_at: string; updated_by: string } | null;
+  suggestions: string[];
+}
+
+export function getMinimumPlan(): Promise<{ rows: MinimumPlanRow[]; summary: { total: number; decided: number; complete: boolean } }> {
+  return request("/improvement/minimum-plan");
+}
+
+export function saveMinimumPlanEntry(packId: string, rowCode: string, body: { decision: string; responsible?: string; term?: string; due_date?: string | null }) {
+  return request(`/improvement/minimum-plan/${packId}/${rowCode}`, { method: "PUT", body: JSON.stringify(body) });
+}
+
+export interface ImprovementInput {
+  input_id: string; source_kind: string; source_ref: string | null; finding_id: string | null; problem: string; evidence: string | null;
+  proposed_action: string | null; community_action: string | null; support_required: string | null;
+  support_level: "community" | "local_government" | "specialized" | null; cost_estimate: number | null; cost_note: string | null;
+  term: string | null; priority: "high" | "medium" | "low"; created_by: string; created_at: string; updated_at: string;
+}
+
+export interface ImprovementCandidate {
+  source_ref: string; source_kind: string; stage_code: string | null; finding_id: string | null; problem: string; evidence: string | null;
+  priority: "high" | "medium" | "low" | null; support_level: string | null; since: string | null; location_text: string | null;
+}
+
+export function getImprovementInputs(): Promise<{
+  inputs: ImprovementInput[]; candidates: ImprovementCandidate[];
+  summary: { inputs: number; candidates: number; cost_estimate_total: number; to_quote: number };
+}> {
+  return request("/improvement/inputs");
+}
+
+export function createImprovementInput(body: Record<string, unknown>): Promise<ImprovementInput> {
+  return request("/improvement/inputs", { method: "POST", body: JSON.stringify(body) });
+}
+
+export function updateImprovementInput(id: string, body: Record<string, unknown>): Promise<ImprovementInput> {
+  return request(`/improvement/inputs/${id}`, { method: "PATCH", body: JSON.stringify(body) });
+}
+
+export function deleteImprovementInput(id: string) {
+  return request(`/improvement/inputs/${id}`, { method: "DELETE" });
+}
+
+export interface ProductBoard {
+  template_id: string; title: string; purpose: string; stage_code: string | null;
+  last_run: { run_id: string; performed_at: string; performed_by: string } | null;
+  items: { key: string; text: string; status: string | null; note: string | null; evidence: { count: number; last_at: string | null };
+    has_evidence: boolean; check: boolean }[];
+  summary: { total: number; complete: number; pending: number; with_evidence: number };
+}
+
+export function getProductBoard(templateId: string): Promise<ProductBoard> {
+  return request(`/improvement/products/${templateId}`);
+}
+
 // ── Bodega y EPP (0038) ───────────────────────────────────────────────
 
 export interface WarehouseItem {

@@ -233,6 +233,17 @@ from permissions import (  # noqa: E402
     update_user,
 )
 from calendar_service import annual_calendar  # noqa: E402
+from improvement_service import (  # noqa: E402
+    ImprovementConflictError,
+    ImprovementNotFoundError,
+    create_improvement_input,
+    delete_improvement_input,
+    improvement_overview,
+    minimum_plan,
+    product_board,
+    save_minimum_plan_entry,
+    update_improvement_input,
+)
 from sanitation_service import (  # noqa: E402
     SanitationNotFoundError,
     add_discharge_followup,
@@ -2690,6 +2701,108 @@ def add_discharge_followup_endpoint(discharge_id: str, body: DischargeFollowupRe
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except InvalidRecordError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+# ── Plan minimo, ficha 7G.2 y tablero 7H (Track D, D7, 0040) ──────────
+
+@app.get("/improvement/minimum-plan")
+def minimum_plan_endpoint(tenant_id: str = Depends(get_tenant_id)) -> dict:
+    """Las filas del plan minimo con la decision de la junta y la evidencia
+    viva que respalda cada una."""
+    with db_conn() as conn:
+        today, tz_name, start, _ = _tenant_day(conn, tenant_id)
+        return minimum_plan(conn, tenant_id, today, start, tz_name)
+
+
+class MinimumPlanEntryRequest(BaseModel):
+    decision: str
+    responsible: str | None = None
+    term: str | None = None
+    due_date: date | None = None
+
+
+@app.put("/improvement/minimum-plan/{pack_id}/{row_code}")
+def save_minimum_plan_entry_endpoint(pack_id: str, row_code: str, body: MinimumPlanEntryRequest,
+                                     actor: dict = Depends(get_actor)) -> dict:
+    with db_conn() as conn:
+        try:
+            return save_minimum_plan_entry(conn, actor["tenant_id"], pack_id, row_code, requested_by_label(actor), body.decision,
+                                           body.responsible, body.term, body.due_date)
+        except ImprovementNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except InvalidRecordError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/improvement/inputs")
+def improvement_inputs_endpoint(tenant_id: str = Depends(get_tenant_id)) -> dict:
+    """Ficha 7G.2: filas de la junta y lo que la evidencia propone llevar."""
+    with db_conn() as conn:
+        today, _, _, _ = _tenant_day(conn, tenant_id)
+        return improvement_overview(conn, tenant_id, today)
+
+
+class ImprovementInputRequest(BaseModel):
+    source_ref: str | None = None
+    problem: str | None = None
+    evidence: str | None = None
+    proposed_action: str | None = None
+    community_action: str | None = None
+    support_required: str | None = None
+    support_level: str | None = None
+    cost_estimate: float | None = None
+    cost_note: str | None = None
+    term: str | None = None
+    priority: str | None = None
+
+
+@app.post("/improvement/inputs", status_code=201)
+def create_improvement_input_endpoint(body: ImprovementInputRequest, actor: dict = Depends(get_actor)) -> dict:
+    data = body.model_dump()
+    source_ref = data.pop("source_ref")
+    with db_conn() as conn:
+        today, _, _, _ = _tenant_day(conn, actor["tenant_id"])
+        try:
+            return create_improvement_input(conn, actor["tenant_id"], requested_by_label(actor), today, source_ref, **data)
+        except ImprovementNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ImprovementConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except InvalidRecordError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.patch("/improvement/inputs/{input_id}")
+def update_improvement_input_endpoint(input_id: str, body: ImprovementInputRequest, actor: dict = Depends(get_actor)) -> dict:
+    data = body.model_dump(exclude_unset=True)
+    data.pop("source_ref", None)
+    with db_conn() as conn:
+        try:
+            return update_improvement_input(conn, actor["tenant_id"], input_id, **data)
+        except ImprovementNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except InvalidRecordError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.delete("/improvement/inputs/{input_id}", status_code=204)
+def delete_improvement_input_endpoint(input_id: str, actor: dict = Depends(get_actor)) -> None:
+    with db_conn() as conn:
+        try:
+            delete_improvement_input(conn, actor["tenant_id"], input_id)
+        except ImprovementNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get("/improvement/products/{template_id}")
+def product_board_endpoint(template_id: str, tenant_id: str = Depends(get_tenant_id)) -> dict:
+    """Tablero de productos finales (7H): ultimo estado verificado y la
+    evidencia que el sistema tiene de cada producto."""
+    with db_conn() as conn:
+        try:
+            return product_board(conn, tenant_id, template_id)
+        except ImprovementNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @app.get("/calendar")

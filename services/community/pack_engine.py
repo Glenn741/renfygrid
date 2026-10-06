@@ -679,3 +679,61 @@ def validate_instrumentation(levels: dict[str, str]) -> None:
             raise InvalidInstrumentationError(f"Modulo desconocido: {module!r} (validos: {list(INSTRUMENTATION_MODULES)})")
         if level not in INSTRUMENTATION_LEVELS:
             raise InvalidInstrumentationError(f"Nivel invalido para {module}: {level!r} (validos: {list(INSTRUMENTATION_LEVELS)})")
+
+
+
+# ── Plan minimo, ficha 7G.2 y tablero 7H (D7) ──────────────────────────
+
+PRIORITY_ORDER = {"high": 0, "medium": 1, "low": 2}
+
+
+def minimum_plan_view(rows: list[dict], entries: dict[tuple[str, str], dict],
+                      suggestions: dict[str, list[str]]) -> dict[str, Any]:
+    """Une las filas del catalogo con lo que decidio la junta y la evidencia
+    viva de cada fila. `entries`: {(pack_id, row_code): entrada}.
+    `suggestions`: {suggestion_source: [hechos]}."""
+    out = []
+    for r in rows:
+        e = entries.get((r["pack_id"], r["code"]))
+        out.append({**r, "entry": e, "suggestions": suggestions.get(r["suggestion_source"], [])})
+    done = sum(1 for x in out if x["entry"] and (x["entry"].get("decision") or "").strip())
+    return {"rows": out, "summary": {"total": len(out), "decided": done, "complete": bool(out) and done == len(out)}}
+
+
+def improvement_candidates(findings: list[dict], derived: list[dict], taken_refs: set[str]) -> list[dict[str, Any]]:
+    """Lo que la evidencia propone llevar a la 7G.2 y aun no se llevo.
+    `findings`: hallazgos abiertos (source_ref del candidato = id del
+    hallazgo). `derived`: evidencia que no es hallazgo (fosa sin retiro,
+    descarga abierta), ya con su `source_ref`. Orden: prioridad, luego lo
+    mas antiguo primero (lleva mas tiempo sin resolverse)."""
+    out = []
+    for f in findings:
+        if f["status"] == "closed" or f["finding_id"] in taken_refs:
+            continue
+        out.append({**f, "source_ref": f["finding_id"]})
+    out += [d for d in derived if d["source_ref"] not in taken_refs]
+    return sorted(out, key=lambda c: (PRIORITY_ORDER.get(c.get("priority") or "", 3), c.get("since") or ""))
+
+
+def products_board(items: list[dict], answers: dict[str, dict], evidence: dict[str, dict]) -> dict[str, Any]:
+    """Tablero 7H: cada producto con su ultimo estado verificado (de la
+    ultima aplicacion de la lista) y lo que el sistema tiene registrado.
+    `answers`: {item_key: {answer_code, observation}}; `evidence`:
+    {item_key: {count, last_at}}. "Sin evidencia" con "completo" se marca
+    para que quien verifica lo revise; no cambia la decision."""
+    rows = []
+    for it in items:
+        a = answers.get(it["key"])
+        ev = evidence.get(it["key"]) or {"count": 0, "last_at": None}
+        status = a["answer_code"] if a else None
+        rows.append({
+            "key": it["key"], "text": it["text"], "status": status, "note": a.get("observation") if a else None,
+            "evidence": ev, "has_evidence": ev["count"] > 0,
+            "check": status == "complete" and ev["count"] == 0 and "evidence" in it,
+        })
+    return {
+        "items": rows,
+        "summary": {"total": len(rows), "complete": sum(1 for r in rows if r["status"] == "complete"),
+                    "pending": sum(1 for r in rows if r["status"] != "complete"),
+                    "with_evidence": sum(1 for r in rows if r["has_evidence"])},
+    }

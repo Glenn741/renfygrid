@@ -120,7 +120,7 @@ def main(dsn: str) -> None:
                    "sin paquete normativo no hay regla de cloro (no se inventa un umbral)")
             result = adopt_pack(conn, tenant_a, "EC-ARCA")
             check(sorted(result["active_packs"]) == ["EC-ARCA", "EC-MUNICIPIOS-AZULES", "core"], "3 paquetes activos de nuevo")
-            check(len(list_checklist_templates(conn, tenant_a)) == 25, "25 listas del programa visibles (G2-G6, CAP y Evaluar antes de comprar)")
+            check(len(list_checklist_templates(conn, tenant_a)) == 26, "26 listas del programa visibles (G2-G6, CAP, Evaluar antes de comprar y 7H de la Guía 3)")
 
             print("3. Evaluacion con la regla del paquete")
             check(evaluate_parameter(conn, tenant_a, "free_chlorine", 0.8)["result"]["code"] == "adequate", "cloro 0,8 adecuado")
