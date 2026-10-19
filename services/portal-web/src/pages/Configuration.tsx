@@ -1069,7 +1069,7 @@ function TimezoneSettingsSection() {
   );
 }
 
-function UsersRolesSection() {
+export function UsersRolesSection() {
   const queryClient = useQueryClient();
   const { data: session } = useSessionInfo();
   const canManage = session?.permissions.includes("users.manage") ?? false;
@@ -1177,7 +1177,7 @@ function UsersRolesSection() {
       </div>
 
       <div className="mt-3 grid gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 p-3 sm:grid-cols-[1fr_12rem_10rem_auto]">
-        <input aria-label="Correo del usuario" type="email" className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm" placeholder="correo@organizacion.com" value={email} onChange={(e) => setEmail(e.target.value)} />
+        <input aria-label="Usuario o correo" type="text" autoCapitalize="none" className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm" placeholder="usuario (p. ej. asesor01) o correo" value={email} onChange={(e) => setEmail(e.target.value)} />
         <input aria-label="Clave inicial" type="text" className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm" placeholder="Clave inicial (8+)" value={password} onChange={(e) => setPassword(e.target.value)} />
         <select aria-label="Rol" className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm" value={role} onChange={(e) => setRole(e.target.value)}>
           {assignable.map((r) => <option key={r.code} value={r.code}>{r.label}</option>)}

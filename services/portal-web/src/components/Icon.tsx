@@ -1,7 +1,7 @@
 import {
-  Activity, ArrowLeft, Building2, ChartLine, Check, ChevronDown, ChevronRight, CircleCheck, ClipboardCheck, Droplets, FileCheck2,
+  Activity, ArrowLeft, BookOpenCheck, Building2, ChartLine, Check, ChevronDown, ChevronRight, CircleCheck, ClipboardCheck, Droplets, FileCheck2,
   FlaskConical, Gauge, House, Link2, ListChecks, Map, Menu, Minus, Network, NotebookPen, Package, Power, RadioTower, Recycle,
-  Settings, Siren, Target, TriangleAlert, Users, Waves, Wrench, X, type LucideIcon,
+  Presentation, Settings, Siren, Target, TriangleAlert, Upload, Download, Users, Waves, Wrench, X, type LucideIcon,
 } from "lucide-react";
 
 // Iconos SVG de linea (mismo estilo del set corporativo: trazo 2, extremos
@@ -18,6 +18,10 @@ const ICONS: Record<string, LucideIcon> = {
   improvement: Target,
   report: FileCheck2,
   inspections: ClipboardCheck,
+  guides: BookOpenCheck,
+  workshop: Presentation,
+  upload: Upload,
+  download: Download,
   maintenance: Wrench,
   metering: RadioTower,
   validation: ListChecks,

@@ -1098,7 +1098,12 @@ export interface SessionInfo {
   permissions: string[];
   issued_at: string | null;
   expires_at: string;
+  /** Tipo de organizacion (0047): el menu se arma segun este tipo. */
+  tenant_kind: TenantKind | null;
+  tenant_display_name: string | null;
 }
+
+export type TenantKind = "provider" | "group" | "advisor" | "platform";
 
 export function getSession(): Promise<SessionInfo> {
   return request("/auth/me");
@@ -1247,6 +1252,8 @@ export interface ChecklistItem {
   groups?: Record<string, string>;
   /** Que decision orienta la pregunta (texto de la guia, 0036). */
   help?: string;
+  /** Area dentro de la lista (p. ej. "Infraestructura" en la tarjeta de diagnostico, 0047). */
+  group?: string;
 }
 
 /** Dato que pide cada aplicación de la lista (0026), p. ej. momento y participante. */
@@ -1270,7 +1277,7 @@ export interface QuestionnaireAnalysisSpec {
 export interface ChecklistTemplate {
   id: string;
   pack_id: string;
-  kind: "inspection" | "traffic_light" | "self_assessment" | "products" | "questionnaire";
+  kind: "inspection" | "traffic_light" | "self_assessment" | "products" | "questionnaire" | "record" | "table";
   title: string;
   purpose: string;
   scale: ScaleEntry[];
@@ -1279,6 +1286,76 @@ export interface ChecklistTemplate {
   frequency_days: number | null;
   run_fields: RunField[];
   analysis: QuestionnaireAnalysisSpec | null;
+  /** Definicion de una ficha o tabla (0047). */
+  form_spec: FormSpec | null;
+}
+
+// ── Fichas y tablas de las guias (Track E, 0047) ──────────────────────
+
+export type FieldType = "text" | "textarea" | "integer" | "number" | "choice" | "multi" | "geo" | "list" | "date" | "boolean";
+
+export interface FormFieldDef {
+  key: string;
+  label: string;
+  type: FieldType;
+  required?: boolean;
+  options?: { code: string; label: string }[];
+  /** Donde verificar el dato (Guia 1). */
+  verify?: string;
+  group?: string;
+  platform_note?: string;
+}
+
+export interface FormSpec {
+  fields?: FormFieldDef[];
+  columns?: FormFieldDef[];
+  min_rows?: number;
+  max_rows?: number;
+  suggested_rows?: number;
+  preset_rows?: Record<string, unknown>[];
+  personal_data?: boolean;
+}
+
+export type FieldValue = string | number | boolean | string[] | { lat: number; lon: number } | null;
+
+export interface RecordFieldEntry {
+  value: FieldValue;
+  estimated?: boolean;
+  note?: string | null;
+}
+
+export interface FormData {
+  fields?: Record<string, RecordFieldEntry>;
+  rows?: Record<string, FieldValue>[];
+}
+
+export interface FormProgress {
+  complete: boolean;
+  missing_required: string[];
+  filled?: number;
+  total?: number;
+  estimated?: number;
+  rows?: number;
+  min_rows?: number;
+}
+
+export interface FormEntry {
+  template: { id: string; pack_id: string; kind: "record" | "table"; title: string; purpose: string; stage_code: string | null; form_spec: FormSpec };
+  entry_id: string | null;
+  data: FormData;
+  progress: FormProgress;
+  updated_at: string | null;
+  updated_by: string | null;
+  workshop_id: string | null;
+  versions: number;
+}
+
+export function getForm(templateId: string): Promise<FormEntry> {
+  return request(`/forms/${encodeURIComponent(templateId)}`);
+}
+
+export function saveForm(templateId: string, data: FormData): Promise<FormEntry> {
+  return request(`/forms/${encodeURIComponent(templateId)}`, { method: "PUT", body: JSON.stringify({ data }) });
 }
 
 /** Escala de un ítem: la propia si la trae, si no la común de la lista. */
@@ -1286,7 +1363,7 @@ export function itemScale(template: ChecklistTemplate, item: ChecklistItem): Sca
   return item.options && item.options.length > 0 ? item.options : template.scale;
 }
 
-export type ListStatus = "never" | "done" | "ok" | "overdue";
+export type ListStatus = "never" | "draft" | "done" | "ok" | "overdue";
 
 export interface RouteList {
   template_id: string;
@@ -1300,6 +1377,8 @@ export interface RouteList {
   status: ListStatus;
   days_to_due: number | null;
   next_due_at: string | null;
+  /** Avance de una ficha o tabla (0047). */
+  progress?: FormProgress | null;
 }
 
 export interface RouteStageInfo {
@@ -1314,10 +1393,15 @@ export interface RouteStageInfo {
   /** La etapa gestiona el seguimiento 7-30-90 del programa (0028). */
   has_follow_up: boolean;
   lists: RouteList[];
-  summary: { total: number; never: number; done: number; ok: number; overdue: number; applied: number };
+  summary: { total: number; never: number; draft: number; done: number; ok: number; overdue: number; applied: number };
 }
 
-export function getProcessRoute(): Promise<{ stages: RouteStageInfo[]; other_lists: RouteList[] }> {
+export interface ProcessRoute {
+  stages: RouteStageInfo[];
+  other_lists: RouteList[];
+}
+
+export function getProcessRoute(): Promise<ProcessRoute> {
   return request("/process-route");
 }
 
@@ -2298,6 +2382,220 @@ export function getInstrumentation(): Promise<{ levels: Record<string, string> }
 
 export function setInstrumentation(levels: Record<string, string>): Promise<{ levels: Record<string, string> }> {
   return request("/settings/instrumentation", { method: "PUT", body: JSON.stringify({ levels }) });
+}
+
+// ── Track E (0047): asesoria de la ONG y organizaciones ──────────────
+
+export type RunResult = { run_id: string; template_id: string; performed_at: string; score: Score; findings_created: string[] };
+export type RunBody = { template_id: string; answers: ChecklistAnswerInput[]; notes?: string | null; context?: Record<string, string> };
+
+export interface StageCoverage { total: number; started: number; complete: number; pct: number | null }
+
+export interface AdvisedOperator {
+  operator_id: string;
+  name: string;
+  community: string | null;
+  contact_name: string | null;
+  contact_phone: string | null;
+  contact_email: string | null;
+  origin: "workshop" | "direct" | "import";
+  status: "active" | "transferred" | "inactive";
+  notes: string | null;
+  transferred_tenant_id: string | null;
+  transferred_tenant_name: string | null;
+  transferred_at: string | null;
+  transferred_by: string | null;
+  created_at: string;
+  created_by: string;
+  coverage: Record<string, StageCoverage>;
+  stages_in_workshops: string[];
+  workshops: { workshop_id: string; title: string; held_on: string; stage_codes: string[] }[];
+  profile: { location?: { lat: number; lon: number } | null; size?: number | null; color?: string | null; shape?: string | null };
+}
+
+export interface AdvisedOperatorDetail extends AdvisedOperator {
+  route: ProcessRoute;
+}
+
+export interface MapLayer { template_id: string; field_key: string; label: string }
+
+export interface AdvisoryDashboard {
+  kpis: { operators: number; trained: number; transferred: number; workshops: number; attendees: number; users_covered: number };
+  stages: { code: string; title: string; order: number; operators_trained: number; avg_complete_pct: number | null }[];
+  operators: Pick<AdvisedOperator, "operator_id" | "name" | "community" | "status" | "coverage" | "stages_in_workshops" | "workshops" | "profile" | "transferred_tenant_name">[];
+  map: {
+    features: { operator_id: string; name: string; status: string; lat: number; lon: number; size: number | null; color: string | null; shape: string | null; stages_in_workshops: string[]; complete_pct: number | null }[];
+    without_location: { operator_id: string; name: string }[];
+    legend: { color?: { label: string; options: { code: string; label: string }[] }; shape?: { label: string; options: { code: string; label: string }[] }; size?: { label: string } };
+    layers: Partial<Record<"location" | "size" | "color" | "shape", MapLayer>>;
+  };
+  recent_workshops: Workshop[];
+}
+
+export interface Workshop {
+  workshop_id: string;
+  title: string;
+  held_on: string;
+  place: string | null;
+  stage_codes: string[];
+  facilitators: string | null;
+  notes: string | null;
+  created_at: string;
+  created_by: string;
+  operator_count?: number;
+  attendee_count?: number;
+  operators?: { operator_id: string; name: string }[];
+  attendees?: { attendee_id: string; operator_id: string | null; full_name: string; role_label: string | null; sector: string | null; support_needs: string | null }[];
+}
+
+export function getAdvisoryDashboard(): Promise<AdvisoryDashboard> {
+  return request("/advisory/dashboard");
+}
+
+export function getAdvisedOperators(): Promise<AdvisedOperator[]> {
+  return request("/advisory/operators");
+}
+
+export function getAdvisedOperator(id: string): Promise<AdvisedOperatorDetail> {
+  return request(`/advisory/operators/${id}`);
+}
+
+export function createAdvisedOperator(body: {
+  name: string; community?: string | null; contact_name?: string | null; contact_phone?: string | null; contact_email?: string | null;
+  origin?: string; notes?: string | null; workshop_id?: string | null; profile?: Record<string, FieldValue> | null;
+}): Promise<AdvisedOperatorDetail> {
+  return request("/advisory/operators", { method: "POST", body: JSON.stringify(body) });
+}
+
+export function updateAdvisedOperator(id: string, body: Partial<Pick<AdvisedOperator, "name" | "community" | "contact_name" | "contact_phone" | "contact_email" | "notes">> & { status?: "active" | "inactive" }): Promise<AdvisedOperatorDetail> {
+  return request(`/advisory/operators/${id}`, { method: "PATCH", body: JSON.stringify(body) });
+}
+
+export function transferAdvisedOperator(id: string, body: { code: string; admin_username: string; admin_password: string }): Promise<{
+  organization: { tenant_id: string; name: string; display_name: string | null; admin: AppUser };
+  copied_runs: number; copied_forms: number; findings_created: number; operator: AdvisedOperatorDetail;
+}> {
+  return request(`/advisory/operators/${id}/transfer`, { method: "POST", body: JSON.stringify(body) });
+}
+
+export function getWorkshops(): Promise<Workshop[]> {
+  return request("/advisory/workshops");
+}
+
+export function getWorkshop(id: string): Promise<Workshop> {
+  return request(`/advisory/workshops/${id}`);
+}
+
+export function createWorkshop(body: { title: string; held_on: string; stage_codes: string[]; place?: string | null; facilitators?: string | null; notes?: string | null; operator_ids?: string[] }): Promise<Workshop> {
+  return request("/advisory/workshops", { method: "POST", body: JSON.stringify(body) });
+}
+
+export function updateWorkshop(id: string, body: Partial<{ title: string; held_on: string; stage_codes: string[]; place: string | null; facilitators: string | null; notes: string | null; operator_ids: string[] }>): Promise<Workshop> {
+  return request(`/advisory/workshops/${id}`, { method: "PATCH", body: JSON.stringify(body) });
+}
+
+export function addWorkshopAttendee(id: string, body: { full_name: string; operator_id?: string | null; role_label?: string | null; sector?: string | null; support_needs?: string | null }): Promise<Workshop> {
+  return request(`/advisory/workshops/${id}/attendees`, { method: "POST", body: JSON.stringify(body) });
+}
+
+export function removeWorkshopAttendee(id: string, attendeeId: string): Promise<Workshop> {
+  return request(`/advisory/workshops/${id}/attendees/${attendeeId}`, { method: "DELETE" });
+}
+
+/** Descarga la plantilla Excel (con el token; un enlace directo no lo lleva). */
+export async function downloadImportTemplate(stages: string[], operatorIds: string[] = []): Promise<void> {
+  const params = new URLSearchParams();
+  if (stages.length) params.set("stages", stages.join(","));
+  if (operatorIds.length) params.set("operators", operatorIds.join(","));
+  const token = getToken();
+  const response = await fetch(`${API_BASE}/advisory/import/template?${params}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new ApiError(response.status, body.detail ?? `Error ${response.status}`);
+  }
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `plantilla-guias${stages.length ? `-${stages.join("-")}` : ""}.xlsx`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+export interface ImportResult {
+  dry_run: boolean;
+  operators_created: string[];
+  lists_saved: number;
+  forms_saved: number;
+  by_operator: { operator: string; lists: string[]; forms: string[] }[];
+  errors: { sheet: string; row: number | null; message: string }[];
+}
+
+export function importGuidesFile(body: { filename: string; content_base64: string; dry_run: boolean; workshop_id?: string | null }): Promise<ImportResult> {
+  return request("/advisory/import", { method: "POST", body: JSON.stringify(body) });
+}
+
+export interface Organization {
+  tenant_id: string;
+  name: string;
+  kind: TenantKind;
+  is_active: boolean;
+  created_at: string;
+  display_name: string | null;
+}
+
+export function getOrganizations(): Promise<Organization[]> {
+  return request("/organizations");
+}
+
+export function createOrganization(body: {
+  name: string; kind: TenantKind; admin_username: string; admin_password: string; display_name?: string | null;
+  timezone?: string | null; session_ttl_seconds?: number | null; currency?: string | null; locale?: string | null; packs: string[];
+}): Promise<Organization & { admin: AppUser; packs: string[] }> {
+  return request("/organizations", { method: "POST", body: JSON.stringify(body) });
+}
+
+/** Donde se leen y graban las guias: la propia organizacion o un operador
+ * asesorado por la ONG (0047). Las pantallas de guias usan solo esto. */
+export interface GuideScope {
+  key: readonly unknown[];
+  getRoute: () => Promise<ProcessRoute>;
+  submitRun: (body: RunBody) => Promise<RunResult>;
+  getRuns: () => Promise<ChecklistRunSummary[]>;
+  getRun: (runId: string) => Promise<ChecklistRunDetail>;
+  getForm: (templateId: string) => Promise<FormEntry>;
+  saveForm: (templateId: string, data: FormData) => Promise<FormEntry>;
+  /** Pasaporte de productos y seguimiento: solo en la organizacion propia. */
+  ownOrganization: boolean;
+  /** Si no es null, las guias se ven pero no se pueden cambiar (y por que). */
+  readOnly: string | null;
+}
+
+export const OWN_SCOPE: GuideScope = {
+  key: ["guides", "own"],
+  getRoute: getProcessRoute,
+  submitRun: submitChecklistRun,
+  getRuns: () => getChecklistRuns(),
+  getRun: getChecklistRun,
+  getForm,
+  saveForm,
+  ownOrganization: true,
+  readOnly: null,
+};
+
+export function operatorScope(operatorId: string, workshopId: string | null, readOnly: string | null): GuideScope {
+  const base = `/advisory/operators/${operatorId}`;
+  return {
+    key: ["guides", "operator", operatorId],
+    getRoute: async () => (await getAdvisedOperator(operatorId)).route,
+    submitRun: (body) => request(`${base}/checklist-runs`, { method: "POST", body: JSON.stringify({ ...body, workshop_id: workshopId }) }),
+    getRuns: () => request(`${base}/checklist-runs`),
+    getRun: (runId) => request(`${base}/checklist-runs/${runId}`),
+    getForm: (templateId) => request(`${base}/forms/${encodeURIComponent(templateId)}`),
+    saveForm: (templateId, data) => request(`${base}/forms/${encodeURIComponent(templateId)}`, { method: "PUT", body: JSON.stringify({ data, workshop_id: workshopId }) }),
+    ownOrganization: false,
+    readOnly,
+  };
 }
 
 export { ApiError };

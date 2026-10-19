@@ -96,7 +96,7 @@ def run(dsn: str) -> None:
             r = client.post("/users", headers=adm, json={"email": "directiva@junta-d14b.test", "password": "clave-dir-1", "role": "board"})
             check(r.status_code == 201, "directiva creada")
             board_id = r.json()["user_id"]
-            for body, msg in (({"email": "operador2", "password": "clave-oper-1", "role": "operator"}, "usuario sin @ -> 422"),
+            for body, msg in (({"email": "operador 2", "password": "clave-oper-1", "role": "operator"}, "usuario con espacios (ni correo ni nombre de usuario) -> 422"),
                               ({"email": "cis@junta.test", "password": "clave-cis-12", "role": "integration"}, "rol de servicio -> 422"),
                               ({"email": "x@junta.test", "password": "corta", "role": "operator"}, "clave corta -> 422"),
                               ({"email": "operador@junta-d14b.test", "password": "clave-oper-1", "role": "operator"}, "repetido -> 422")):

@@ -1,8 +1,8 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, Navigate, useLocation } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { getProcessRoute } from "../api";
-import { NAV_GROUPS, type NavBadge, type NavItemDef } from "../navigation";
+import { NAV_GROUPS, homeFor, pathAllowed, visibleFor, type NavBadge, type NavItemDef } from "../navigation";
 import { ActiveSectionProvider, scrollToSection, useActiveSection } from "./activeSection";
 import { SessionMenu, useSessionInfo } from "./SessionMenu";
 import { ROUTE_QUERY_KEY, STAGE_STATE_STYLE, stageState } from "./routeStatus";
@@ -40,9 +40,16 @@ function writeOpen(value: Record<string, boolean>): void {
   }
 }
 
-function isActive(pathname: string, to: string): boolean {
+function matches(pathname: string, to: string): boolean {
   if (to === "/") return pathname === "/";
   return pathname === to || pathname.startsWith(`${to}/`);
+}
+
+/** Activo = el modulo que mejor coincide con la ruta (/advisory/operators no
+ * marca tambien /advisory). */
+function isActive(pathname: string, to: string): boolean {
+  if (!matches(pathname, to)) return false;
+  return !NAV_GROUPS.some((g) => g.items.some((i) => i.to.length > to.length && matches(pathname, i.to)));
 }
 
 const SUBITEM_CLASS = "flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px] transition-colors";
@@ -140,13 +147,14 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
         <div className="min-w-0">
           <div className="text-sm font-bold text-white leading-tight">RenfyGrid</div>
           <div className="text-[11px] text-slate-400 leading-tight truncate" title={session?.tenant_name ?? undefined}>
-            {session?.tenant_name ?? "Portal operativo"}
+            {session?.tenant_display_name ?? session?.tenant_name ?? "Portal operativo"}
           </div>
         </div>
       </div>
 
       <nav className="flex-1 px-3 pb-4 overflow-y-auto" aria-label="Menú principal">
-        {NAV_GROUPS.map((group) => (
+        {NAV_GROUPS.map((group) => ({ ...group, items: group.items.filter((item) => session && visibleFor(item, session.tenant_kind)) }))
+          .filter((group) => group.items.length > 0).map((group) => (
           <div key={group.title ?? "inicio"} className="mb-3">
             {group.title && (
               <div className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wider text-slate-500">{group.title}</div>
@@ -228,7 +236,15 @@ export function AppShell({ title, children }: AppShellProps) {
 
 function ShellLayout({ title, children }: AppShellProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const { pathname } = useLocation();
+  const { data: session } = useSessionInfo();
   useScrollToHash();
+
+  // Track E (0047): cada tipo de organizacion ve solo sus modulos; una ONG
+  // que entra a /vee (o a la Vista general) va a su tablero.
+  if (session && !pathAllowed(pathname, session.tenant_kind)) {
+    return <Navigate to={homeFor(session.tenant_kind)} replace />;
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 lg:flex">

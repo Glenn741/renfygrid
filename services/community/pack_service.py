@@ -26,6 +26,7 @@ import psycopg  # noqa: E402
 from psycopg.types.json import Json  # noqa: E402
 
 from pack_engine import (  # noqa: E402
+    InvalidAnswersError,
     InvalidRecordError,
     answer_label,
     checklist_status,
@@ -46,6 +47,7 @@ from pack_engine import (  # noqa: E402
     validate_answers,
     validate_instrumentation,
 )
+from form_engine import FORM_KINDS, completeness as form_completeness  # noqa: E402
 from renmeter_common.db import tenant_scope  # noqa: E402
 
 CORE_PACK = "core"
@@ -250,15 +252,15 @@ def list_checklist_templates(conn: psycopg.Connection, tenant_id: str) -> list[d
     packs = active_pack_ids(conn, tenant_id)
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT id, pack_id, kind, title, purpose, scale, items, stage_code, frequency_days, run_fields, analysis "
+            "SELECT id, pack_id, kind, title, purpose, scale, items, stage_code, frequency_days, run_fields, analysis, form_spec "
             "FROM checklist_template "
-            "WHERE pack_id = ANY(%s) ORDER BY id",
+            "WHERE pack_id = ANY(%s) ORDER BY coalesce(sort_order, 50), id",
             (packs,),
         )
         rows = cur.fetchall()
     return [
         {"id": r[0], "pack_id": r[1], "kind": r[2], "title": r[3], "purpose": r[4], "scale": r[5], "items": r[6],
-         "stage_code": r[7], "frequency_days": r[8], "run_fields": r[9], "analysis": r[10]}
+         "stage_code": r[7], "frequency_days": r[8], "run_fields": r[9], "analysis": r[10], "form_spec": r[11]}
         for r in rows
     ]
 
@@ -278,16 +280,26 @@ def submit_checklist_run(
     performed_by: str,
     notes: str | None = None,
     context: dict | None = None,
+    advised_operator_id: str | None = None,
+    workshop_id: str | None = None,
+    performed_at: datetime | None = None,
 ) -> dict:
     """Guarda una aplicacion completa de la lista y crea, en la misma
     transaccion, un hallazgo por cada respuesta que la escala marca como
     hallazgo. `answers`: [{item_key, answer_code, observation?, action?,
     responsible?, due_date?, asset_id?}]. `context`: los datos que pide la
-    plantilla en `run_fields` (p. ej. momento y codigo de participante)."""
+    plantilla en `run_fields` (p. ej. momento y codigo de participante).
+
+    Track E (0047): con `advised_operator_id` la lista es un registro de la
+    ONG levantado con ese operador. No crea hallazgos: son de la operacion
+    del acueducto y nacen en su organizacion cuando se crea con estos datos
+    (`advisory_service.transfer_operator`)."""
     template = _template(conn, tenant_id, template_id)
+    if template["kind"] in FORM_KINDS:
+        raise InvalidAnswersError(f"{template_id} es una ficha o tabla: se guarda como formulario, no como lista")
     validate_answers(template, answers)
     clean_context = validate_run_context(template, context)
-    pending_findings = findings_from_answers(template, answers)
+    pending_findings = [] if advised_operator_id else findings_from_answers(template, answers)
     asset_by_item = {a["item_key"]: a.get("asset_id") for a in answers}
     _assert_assets_belong(conn, tenant_id, {a for a in asset_by_item.values() if a})
 
@@ -295,9 +307,11 @@ def submit_checklist_run(
         with tenant_scope(conn, tenant_id):
             with conn.cursor() as cur:
                 cur.execute(
-                    "INSERT INTO checklist_run (tenant_id, template_id, performed_by, notes, context) "
-                    "VALUES (%s, %s, %s, %s, %s) RETURNING id, performed_at",
-                    (tenant_id, template_id, performed_by, notes, Json(clean_context)),
+                    "INSERT INTO checklist_run (tenant_id, template_id, performed_by, notes, context, advised_operator_id, "
+                    "workshop_id, performed_at) VALUES (%s, %s, %s, %s, %s, %s, %s, coalesce(%s, now())) "
+                    "RETURNING id, performed_at",
+                    (tenant_id, template_id, performed_by, notes, Json(clean_context), advised_operator_id, workshop_id,
+                     performed_at),
                 )
                 run_id, performed_at = cur.fetchone()
                 for a in answers:
@@ -323,10 +337,12 @@ def submit_checklist_run(
     }
 
 
-def list_checklist_runs(conn: psycopg.Connection, tenant_id: str, template_id: str | None = None) -> list[dict]:
+def list_checklist_runs(conn: psycopg.Connection, tenant_id: str, template_id: str | None = None,
+                        advised_operator_id: str | None = None) -> list[dict]:
     """Historial con el puntaje y los hallazgos que dejo cada aplicacion,
-    para que el historial diga algo sin tener que abrir cada revision."""
-    params: list[Any] = [tenant_id]
+    para que el historial diga algo sin tener que abrir cada revision. Sin
+    `advised_operator_id`, las de la propia organizacion (0047)."""
+    params: list[Any] = [tenant_id, advised_operator_id]
     clause = ""
     if template_id:
         clause = "AND r.template_id = %s"
@@ -341,7 +357,8 @@ def list_checklist_runs(conn: psycopg.Connection, tenant_id: str, template_id: s
                     "(SELECT count(*) FROM finding f WHERE f.tenant_id = r.tenant_id AND f.source_ref LIKE r.id::text || ':%%'), "
                     "r.context "
                     "FROM checklist_run r LEFT JOIN checklist_answer a ON a.run_id = r.id "
-                    f"WHERE r.tenant_id = %s {clause} GROUP BY r.id ORDER BY r.performed_at DESC",
+                    "WHERE r.tenant_id = %s AND r.advised_operator_id IS NOT DISTINCT FROM %s::uuid "
+                    f"{clause} GROUP BY r.id ORDER BY r.performed_at DESC",
                     params,
                 )
                 rows = cur.fetchall()
@@ -358,32 +375,59 @@ def list_checklist_runs(conn: psycopg.Connection, tenant_id: str, template_id: s
     return result
 
 
-def process_route(conn: psycopg.Connection, tenant_id: str, now: datetime | None = None) -> dict:
+def process_route(conn: psycopg.Connection, tenant_id: str, now: datetime | None = None,
+                  advised_operator_id: str | None = None) -> dict:
     """Ruta del programa (0023): las etapas de los paquetes de programa
     adoptados, en orden, con sus listas y el estado de cada una (sin
     aplicar, al dia, vencida, aplicada). Las listas sin etapa van aparte.
     Las etapas sin listas todavia se muestran: la ruta completa es parte de
-    la informacion, aunque la plataforma aun no cubra esa etapa."""
+    la informacion, aunque la plataforma aun no cubra esa etapa.
+
+    Track E (0047): fichas y tablas con estado sin llenar / borrador
+    (`draft`) / completa (`done`). Con `advised_operator_id`, la ruta de ese
+    operador asesorado dentro de la ONG (sin pasaporte ni seguimiento, que
+    son de la organizacion del operador)."""
     now = now or datetime.now(timezone.utc)
     packs = active_pack_ids(conn, tenant_id)
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT pack_id, code, sort_order, title, source_ref, purpose FROM process_stage "
+            "SELECT pack_id, code, sort_order, title, source_ref, purpose, audience FROM process_stage "
             "WHERE pack_id = ANY(%s) ORDER BY pack_id, sort_order",
             (packs,),
         )
         stage_rows = cur.fetchall()
+    # Las etapas de la persona facilitadora (CAP, T-06, T-08) no son del operador asesorado.
+    hidden_stages = {(r[0], r[1]) for r in stage_rows if advised_operator_id and r[6] == "facilitator"}
+    stage_rows = [r[:6] for r in stage_rows if (r[0], r[1]) not in hidden_stages]
     with conn.transaction():
         with tenant_scope(conn, tenant_id):
             with conn.cursor() as cur:
                 cur.execute(
                     "SELECT DISTINCT ON (template_id) template_id, id, performed_at FROM checklist_run "
-                    "WHERE tenant_id = %s ORDER BY template_id, performed_at DESC",
-                    (tenant_id,),
+                    "WHERE tenant_id = %s AND advised_operator_id IS NOT DISTINCT FROM %s::uuid "
+                    "ORDER BY template_id, performed_at DESC",
+                    (tenant_id, advised_operator_id),
                 )
                 last_runs = {r[0]: (str(r[1]), r[2]) for r in cur.fetchall()}
+                cur.execute(
+                    "SELECT template_id, id, updated_at, complete, data FROM form_entry "
+                    "WHERE tenant_id = %s AND advised_operator_id IS NOT DISTINCT FROM %s::uuid",
+                    (tenant_id, advised_operator_id),
+                )
+                entries = {r[0]: (str(r[1]), r[2], r[3], r[4]) for r in cur.fetchall()}
 
     def describe(t: dict) -> dict:
+        if t["kind"] in FORM_KINDS:
+            entry_id, updated_at, complete, data = entries.get(t["id"], (None, None, False, None))
+            spec = t["form_spec"] or {}
+            return {
+                "template_id": t["id"], "title": t["title"], "kind": t["kind"], "purpose": t["purpose"],
+                "item_count": len(spec.get("fields") or spec.get("columns") or []), "frequency_days": None,
+                "last_run_id": None, "last_run_at": updated_at.isoformat() if updated_at else None,
+                "status": "never" if entry_id is None else "done" if complete else "draft",
+                "days_to_due": None, "next_due_at": None,
+                "progress": form_completeness(t["kind"], spec, data) if data is not None else None,
+            }
         run_id, last_at = last_runs.get(t["id"], (None, None))
         st = checklist_status(t["frequency_days"], last_at, now)
         return {
@@ -397,7 +441,7 @@ def process_route(conn: psycopg.Connection, tenant_id: str, now: datetime | None
     templates = list_checklist_templates(conn, tenant_id)
     stages = []
     staged: set[str] = set()
-    products = passport_rows(_catalog_products(conn, packs), _product_records(conn, tenant_id))
+    products = [] if advised_operator_id else passport_rows(_catalog_products(conn, packs), _product_records(conn, tenant_id))
     with conn.cursor() as cur:
         cur.execute("SELECT DISTINCT pack_id, stage_code FROM follow_up_milestone WHERE pack_id = ANY(%s)", (packs,))
         follow_up_stages = {(r[0], r[1]) for r in cur.fetchall()}
@@ -408,21 +452,26 @@ def process_route(conn: psycopg.Connection, tenant_id: str, now: datetime | None
         stages.append({
             "pack_id": pack_id, "code": code, "order": order, "title": title, "source_ref": source_ref,
             "purpose": purpose, "products": stage_products, "products_summary": passport_summary(stage_products),
-            "has_follow_up": (pack_id, code) in follow_up_stages,
+            "has_follow_up": not advised_operator_id and (pack_id, code) in follow_up_stages,
             "lists": lists, "summary": stage_summary(lists),
         })
-    other = [describe(t) for t in templates if t["id"] not in staged]
+    other = [describe(t) for t in templates
+             if t["id"] not in staged and (t["pack_id"], t["stage_code"]) not in hidden_stages]
     return {"stages": stages, "other_lists": other}
 
 
-def get_checklist_run(conn: psycopg.Connection, tenant_id: str, run_id: str) -> dict:
+def get_checklist_run(conn: psycopg.Connection, tenant_id: str, run_id: str, advised_operator_id: str | None = None) -> dict:
+    try:
+        uuid.UUID(str(run_id))
+    except ValueError:
+        raise RunNotFoundError(f"No existe la aplicación {run_id!r}") from None
     with conn.transaction():
         with tenant_scope(conn, tenant_id):
             with conn.cursor() as cur:
                 cur.execute(
                     "SELECT template_id, performed_at, performed_by, notes, context FROM checklist_run "
-                    "WHERE id = %s AND tenant_id = %s",
-                    (run_id, tenant_id),
+                    "WHERE id = %s AND tenant_id = %s AND advised_operator_id IS NOT DISTINCT FROM %s::uuid",
+                    (run_id, tenant_id, advised_operator_id),
                 )
                 run = cur.fetchone()
                 if run is None:

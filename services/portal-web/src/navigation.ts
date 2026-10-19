@@ -1,4 +1,4 @@
-import { getFindings, getMaintenanceKpis, getVeeSummary } from "./api";
+import { getFindings, getMaintenanceKpis, getVeeSummary, type TenantKind } from "./api";
 
 // Estructura de navegacion del Portal (2026-10-05): UNA sola definicion de
 // modulos y de sus secciones internas, usada por el menu lateral (submenu
@@ -34,6 +34,15 @@ export interface NavItemDef {
   dynamic?: "route";
   /** Que hace el modulo (tarjeta de la Vista general). */
   description?: string;
+  /** Tipos de organizacion que ven el modulo (0047). Sin indicar: prestador y agrupacion. */
+  kinds?: TenantKind[];
+}
+
+const OPERATING: TenantKind[] = ["provider", "group"];
+
+/** El modulo es visible para ese tipo de organizacion. */
+export function visibleFor(item: NavItemDef, kind: TenantKind | null | undefined): boolean {
+  return (item.kinds ?? OPERATING).includes(kind ?? "provider");
 }
 
 const OPEN_FINDINGS: NavBadge = {
@@ -70,6 +79,29 @@ export const NAV_GROUPS: { title: string | null; items: NavItemDef[] }[] = [
         { id: "modules", label: "Todos los módulos" },
       ],
     }],
+  },
+  // Track E (2026-10-19): las guias son el punto de partida de un acueducto
+  // sin guia de operacion; sus formularios dan el marco para operar.
+  {
+    title: "Punto de partida",
+    items: [
+      { to: "/inspections", label: "Guías", icon: "guides", description: "Las guías del programa: fichas, tablas y listas que dan el marco para operar", dynamic: "route" },
+    ],
+  },
+  // La ONG que asesora (tipo 'advisor') solo ve esto.
+  {
+    title: "Asesoría",
+    items: [
+      { to: "/advisory", label: "Tablero de asesoría", icon: "overview", kinds: ["advisor"], description: "Operadores capacitados, guías cubiertas con cada uno y mapa temático" },
+      { to: "/advisory/operators", label: "Operadores", icon: "organization", kinds: ["advisor"], description: "Operadores asesorados, sus guías y la carga por archivo" },
+      { to: "/advisory/workshops", label: "Talleres", icon: "workshop", kinds: ["advisor"], description: "Talleres, guías que cubren, operadores y asistencia" },
+    ],
+  },
+  {
+    title: "Plataforma",
+    items: [
+      { to: "/organizations", label: "Organizaciones", icon: "organization", kinds: ["platform"], description: "Crear organizaciones (juntas, agrupaciones, ONG) y su primer usuario" },
+    ],
   },
   {
     title: "Operación del sistema",
@@ -140,7 +172,6 @@ export const NAV_GROUPS: { title: string | null; items: NavItemDef[] }[] = [
         ],
       },
       { to: "/compliance-reports", label: "Informe de cumplimiento", icon: "report", description: "Informe del período para la autoridad, que la organización decide enviar" },
-      { to: "/inspections", label: "Ruta y revisiones", icon: "inspections", description: "Ruta del programa: revisiones, listas y productos por etapa", dynamic: "route" },
       {
         to: "/maintenance", label: "Mantenimiento", icon: "maintenance", description: "Órdenes, preventivo programado, eventos y calendario anual",
         sections: [
@@ -208,8 +239,9 @@ export const NAV_GROUPS: { title: string | null; items: NavItemDef[] }[] = [
     ],
   },
   {
-    title: "Plataforma",
+    title: "Organización",
     items: [
+      { to: "/team", label: "Usuarios", icon: "group", kinds: ["advisor", "platform"], description: "Usuarios de la organización y sus roles" },
       { to: "/group", label: "Agrupación", icon: "group", description: "Indicadores que cada organización miembro decide compartir" },
       { to: "/program-observations", label: "Observaciones del programa", icon: "observations", description: "Observaciones para mejorar los materiales del programa" },
       { to: "/integrations", label: "Integraciones (CIS)", icon: "integrations", description: "Feed unificado de órdenes y lecturas bajo demanda" },
@@ -238,6 +270,34 @@ export const NAV_GROUPS: { title: string | null; items: NavItemDef[] }[] = [
     ],
   },
 ];
+
+/** Primera pantalla de un tipo de organizacion (la ONG entra a su tablero). */
+export function homeFor(kind: TenantKind | null | undefined): string {
+  for (const group of NAV_GROUPS) {
+    for (const item of group.items) {
+      if (visibleFor(item, kind)) return item.to;
+    }
+  }
+  return "/";
+}
+
+/** La ruta pertenece a un modulo visible para ese tipo de organizacion. */
+export function pathAllowed(pathname: string, kind: TenantKind | null | undefined): boolean {
+  if (pathname === "/operator") return visibleFor({ to: "/operations", label: "", icon: "" }, kind);
+  let best: NavItemDef | null = null;
+  for (const group of NAV_GROUPS) {
+    for (const item of group.items) {
+      const match = item.to === "/" ? pathname === "/" : pathname === item.to || pathname.startsWith(`${item.to}/`);
+      if (match && (!best || item.to.length > best.to.length)) best = item;
+    }
+  }
+  // Pantallas de detalle sin item propio (p. ej. /control/:id) siguen a su modulo.
+  if (!best) {
+    const first = `/${pathname.split("/")[1] ?? ""}`;
+    for (const group of NAV_GROUPS) for (const item of group.items) if (item.to === first) best = item;
+  }
+  return best ? visibleFor(best, kind) : true;
+}
 
 /** Secciones de un modulo, para la barra de secciones de su pantalla. */
 export function sectionsFor(path: string): NavSectionDef[] {

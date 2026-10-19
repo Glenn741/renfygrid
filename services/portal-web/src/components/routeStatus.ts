@@ -10,7 +10,7 @@ export function stageState(stage: RouteStageInfo): StageState {
   if (stage.summary.total === 0) return "empty";
   if (stage.summary.overdue > 0) return "overdue";
   if (stage.summary.applied === stage.summary.total) return "complete";
-  if (stage.summary.applied > 0) return "started";
+  if (stage.summary.applied > 0 || stage.summary.draft > 0) return "started";
   return "pending";
 }
 

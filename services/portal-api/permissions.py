@@ -43,6 +43,12 @@ ROUTE_RULES: list[tuple[frozenset[str] | None, re.Pattern, str | None]] = [
     (None, re.compile(r"^/(field-readings|operation-log|manual-reading)$"), "operations.record"),
     (None, re.compile(rf"^/(sampling-points|chemical-products)(/{_ID})?$"), "operations.manage"),
     (None, re.compile(r"^/checklist-runs$"), "checklists.apply"),
+    (None, re.compile(rf"^/forms/{_ID}$"), "checklists.apply"),
+    (None, re.compile(rf"^/advisory/operators/{_ID}/transfer$"), "advisory.transfer"),
+    (None, re.compile(rf"^/advisory/operators/{_ID}/(checklist-runs|forms/{_ID})$"), "advisory.record"),
+    (None, re.compile(r"^/advisory/import$"), "advisory.record"),
+    (None, re.compile(r"^/advisory/(operators|workshops)(/.*)?$"), "advisory.manage"),
+    (None, re.compile(r"^/organizations$"), "organizations.manage"),
     (frozenset({"POST"}), re.compile(r"^/findings$"), "findings.report"),
     (None, re.compile(rf"^/findings/{_ID}$"), "findings.manage"),
     (None, re.compile(r"^/(passport|follow-up)(/.*)?$"), "program.manage"),
@@ -226,6 +232,9 @@ def reset_role_permissions(conn: psycopg.Connection, tenant_id: str, role: str) 
 # ── Usuarios ──────────────────────────────────────────────────────────
 
 _EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+# 2026-10-19 (Track E): muchas personas de una junta o de una ONG no tienen
+# correo; el usuario puede ser un nombre de usuario (p. ej. "asesor01").
+_USERNAME = re.compile(r"^[a-z0-9][a-z0-9._-]{2,39}$")
 
 
 def _user_row(r: tuple) -> dict:
@@ -258,8 +267,9 @@ def _check_password(password: str) -> None:
 
 def create_user(conn: psycopg.Connection, tenant_id: str, email: str, password: str, role: str) -> dict:
     email = (email or "").strip().lower()
-    if not _EMAIL.match(email):
-        raise PermissionAdminError("El usuario debe ser un correo (nombre@dominio)")
+    if not (_EMAIL.match(email) or _USERNAME.match(email)):
+        raise PermissionAdminError("El usuario debe ser un correo (nombre@dominio) o un nombre de usuario de 3 a 40 "
+                                   "caracteres: letras sin tilde, números, punto, guion o guion bajo")
     _assignable_role(conn, role)
     _check_password(password)
     try:

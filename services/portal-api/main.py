@@ -18,6 +18,8 @@ ya en el entorno -- ver config.py, nunca un valor fijo en código).
 
 from __future__ import annotations
 
+import base64
+import binascii
 import sys
 from contextlib import contextmanager
 from datetime import date, datetime, timedelta, timezone
@@ -40,7 +42,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "community"))
 import psycopg  # noqa: E402
 from fastapi import Depends, FastAPI, HTTPException, Request  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
-from fastapi.responses import JSONResponse, PlainTextResponse  # noqa: E402
+from fastapi.responses import JSONResponse, PlainTextResponse, Response  # noqa: E402
 from starlette.concurrency import run_in_threadpool  # noqa: E402
 from pydantic import BaseModel  # noqa: E402
 
@@ -338,6 +340,11 @@ from operation_service import (  # noqa: E402
     update_sampling_point,
 )
 from pack_service import AssetNotFoundError as PackAssetNotFoundError  # noqa: E402
+import advisory_service  # noqa: E402
+import form_service  # noqa: E402
+import import_service  # noqa: E402
+import organization_service  # noqa: E402
+from form_engine import InvalidFormError  # noqa: E402
 from renmeter_common.auth import TokenError, create_token, decode_token  # noqa: E402
 from renmeter_common.db import tenant_scope  # noqa: E402
 from renmeter_common.user_service import InvalidCredentialsError, authenticate, resolve_tenant_ref  # noqa: E402
@@ -448,7 +455,7 @@ def session_me(claims: dict = Depends(get_session_claims)) -> dict:
     tiene RLS, el filtro por id es explicito."""
     with db_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT name FROM tenant WHERE id = %s", (claims["tenant_id"],))
+            cur.execute("SELECT name, kind, config ->> 'display_name' FROM tenant WHERE id = %s", (claims["tenant_id"],))
             row = cur.fetchone()
         role = current_role(conn, claims["tenant_id"], claims.get("user_id"), claims.get("role"))
         permissions = effective_permissions(conn, claims["tenant_id"], role)
@@ -459,6 +466,10 @@ def session_me(claims: dict = Depends(get_session_claims)) -> dict:
     return {
         "tenant_id": claims["tenant_id"],
         "tenant_name": row[0] if row else None,
+        # Track E (0047): el menu se arma segun el tipo de organizacion (una
+        # ONG solo ve las guias; la plataforma, las organizaciones).
+        "tenant_kind": row[1] if row else None,
+        "tenant_display_name": row[2] if row else None,
         "email": claims.get("email") or claims.get("user_id"),
         "role": role,
         "role_label": role_label,
@@ -3081,3 +3092,306 @@ def set_instrumentation_endpoint(body: InstrumentationRequest, tenant_id: str = 
             return {"levels": set_instrumentation(conn, tenant_id, body.levels)}
         except InvalidInstrumentationError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+# ── Track E (0047): fichas y tablas, asesoria de la ONG, organizaciones ──
+# docs/04-plan-sprints.md §12. Quien hace algo sale siempre del JWT.
+
+_ADVISORY_NOT_FOUND = (advisory_service.AdvisoryNotFoundError, TemplateNotAvailableError, RunNotFoundError)
+_ADVISORY_INVALID = (InvalidFormError, InvalidAnswersError, InvalidRecordError, PermissionAdminError)
+_ADVISORY_CONFLICT = (advisory_service.AdvisoryConflictError, organization_service.OrganizationConflictError)
+
+
+@contextmanager
+def _advisory_errors() -> Iterator[None]:
+    try:
+        yield
+    except _ADVISORY_NOT_FOUND as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except _ADVISORY_CONFLICT as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except _ADVISORY_INVALID as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+class FormSaveRequest(BaseModel):
+    data: dict
+    workshop_id: str | None = None
+
+
+@app.get("/forms/{template_id}")
+def get_form_endpoint(template_id: str, tenant_id: str = Depends(get_tenant_id)) -> dict:
+    """Ficha o tabla de una guia de la propia organizacion (vacia si nunca se lleno)."""
+    with db_conn() as conn, _advisory_errors():
+        return form_service.get_form(conn, tenant_id, template_id)
+
+
+@app.put("/forms/{template_id}")
+def save_form_endpoint(template_id: str, body: FormSaveRequest, actor: dict = Depends(get_actor)) -> dict:
+    """Guarda la ficha o tabla (se puede a medias) y deja una version."""
+    with db_conn() as conn, _advisory_errors():
+        return form_service.save_form(conn, actor["tenant_id"], template_id, body.data, requested_by_label(actor))
+
+
+@app.get("/forms/{template_id}/versions")
+def form_versions_endpoint(template_id: str, tenant_id: str = Depends(get_tenant_id)) -> list[dict]:
+    with db_conn() as conn, _advisory_errors():
+        return form_service.form_versions(conn, tenant_id, template_id)
+
+
+# ── ONG: operadores asesorados ───────────────────────────────────────
+
+class AdvisedOperatorRequest(BaseModel):
+    name: str
+    community: str | None = None
+    contact_name: str | None = None
+    contact_phone: str | None = None
+    contact_email: str | None = None
+    origin: str = "workshop"
+    notes: str | None = None
+    workshop_id: str | None = None
+    profile: dict | None = None
+
+
+class AdvisedOperatorUpdate(BaseModel):
+    name: str | None = None
+    community: str | None = None
+    contact_name: str | None = None
+    contact_phone: str | None = None
+    contact_email: str | None = None
+    notes: str | None = None
+    status: str | None = None
+
+
+@app.get("/advisory/dashboard")
+def advisory_dashboard_endpoint(tenant_id: str = Depends(get_tenant_id)) -> dict:
+    with db_conn() as conn, _advisory_errors():
+        return advisory_service.dashboard(conn, tenant_id)
+
+
+@app.get("/advisory/operators")
+def advisory_operators_endpoint(tenant_id: str = Depends(get_tenant_id)) -> list[dict]:
+    with db_conn() as conn, _advisory_errors():
+        return advisory_service.list_operators(conn, tenant_id)
+
+
+@app.post("/advisory/operators", status_code=201)
+def advisory_create_operator_endpoint(body: AdvisedOperatorRequest, actor: dict = Depends(get_actor)) -> dict:
+    with db_conn() as conn, _advisory_errors():
+        return advisory_service.create_operator(conn, actor["tenant_id"], requested_by_label(actor), **body.model_dump())
+
+
+@app.get("/advisory/operators/{operator_id}")
+def advisory_operator_endpoint(operator_id: str, tenant_id: str = Depends(get_tenant_id)) -> dict:
+    with db_conn() as conn, _advisory_errors():
+        return advisory_service.get_operator(conn, tenant_id, operator_id)
+
+
+@app.patch("/advisory/operators/{operator_id}")
+def advisory_update_operator_endpoint(operator_id: str, body: AdvisedOperatorUpdate, actor: dict = Depends(get_actor)) -> dict:
+    with db_conn() as conn, _advisory_errors():
+        return advisory_service.update_operator(conn, actor["tenant_id"], operator_id, requested_by_label(actor),
+                                                **body.model_dump(exclude_unset=True))
+
+
+class OperatorRunRequest(ChecklistRunRequest):
+    workshop_id: str | None = None
+
+
+@app.get("/advisory/operators/{operator_id}/checklist-runs")
+def advisory_operator_runs_endpoint(operator_id: str, tenant_id: str = Depends(get_tenant_id)) -> list[dict]:
+    with db_conn() as conn, _advisory_errors():
+        return advisory_service.operator_runs(conn, tenant_id, operator_id)
+
+
+@app.get("/advisory/operators/{operator_id}/checklist-runs/{run_id}")
+def advisory_operator_run_endpoint(operator_id: str, run_id: str, tenant_id: str = Depends(get_tenant_id)) -> dict:
+    with db_conn() as conn, _advisory_errors():
+        return advisory_service.operator_run(conn, tenant_id, operator_id, run_id)
+
+
+@app.post("/advisory/operators/{operator_id}/checklist-runs", status_code=201)
+def advisory_submit_run_endpoint(operator_id: str, body: OperatorRunRequest, actor: dict = Depends(get_actor)) -> dict:
+    with db_conn() as conn, _advisory_errors():
+        return advisory_service.submit_operator_run(
+            conn, actor["tenant_id"], operator_id, body.template_id,
+            [a.model_dump(exclude={"asset_id"}) for a in body.answers], requested_by_label(actor),
+            notes=body.notes, context=body.context, workshop_id=body.workshop_id,
+        )
+
+
+@app.get("/advisory/operators/{operator_id}/forms/{template_id}")
+def advisory_operator_form_endpoint(operator_id: str, template_id: str, tenant_id: str = Depends(get_tenant_id)) -> dict:
+    with db_conn() as conn, _advisory_errors():
+        return advisory_service.operator_form(conn, tenant_id, operator_id, template_id)
+
+
+@app.put("/advisory/operators/{operator_id}/forms/{template_id}")
+def advisory_save_form_endpoint(operator_id: str, template_id: str, body: FormSaveRequest, actor: dict = Depends(get_actor)) -> dict:
+    with db_conn() as conn, _advisory_errors():
+        return advisory_service.save_operator_form(conn, actor["tenant_id"], operator_id, template_id, body.data,
+                                                   requested_by_label(actor), workshop_id=body.workshop_id)
+
+
+class TransferRequest(BaseModel):
+    code: str
+    admin_username: str
+    admin_password: str
+
+
+@app.post("/advisory/operators/{operator_id}/transfer", status_code=201)
+def advisory_transfer_endpoint(operator_id: str, body: TransferRequest, actor: dict = Depends(get_actor)) -> dict:
+    """Crea la organizacion del operador con los datos levantados por la ONG."""
+    with db_conn() as conn, _advisory_errors():
+        return advisory_service.transfer_operator(conn, actor["tenant_id"], operator_id, requested_by_label(actor),
+                                                  body.code, body.admin_username, body.admin_password)
+
+
+# ── ONG: talleres ─────────────────────────────────────────────────────
+
+class WorkshopRequest(BaseModel):
+    title: str
+    held_on: date
+    stage_codes: list[str] = []
+    place: str | None = None
+    facilitators: str | None = None
+    notes: str | None = None
+    operator_ids: list[str] = []
+
+
+class WorkshopUpdate(BaseModel):
+    title: str | None = None
+    held_on: date | None = None
+    stage_codes: list[str] | None = None
+    place: str | None = None
+    facilitators: str | None = None
+    notes: str | None = None
+    operator_ids: list[str] | None = None
+
+
+class AttendeeRequest(BaseModel):
+    full_name: str
+    operator_id: str | None = None
+    role_label: str | None = None
+    sector: str | None = None
+    support_needs: str | None = None
+
+
+@app.get("/advisory/workshops")
+def advisory_workshops_endpoint(tenant_id: str = Depends(get_tenant_id)) -> list[dict]:
+    with db_conn() as conn, _advisory_errors():
+        return advisory_service.list_workshops(conn, tenant_id)
+
+
+@app.post("/advisory/workshops", status_code=201)
+def advisory_create_workshop_endpoint(body: WorkshopRequest, actor: dict = Depends(get_actor)) -> dict:
+    with db_conn() as conn, _advisory_errors():
+        return advisory_service.create_workshop(conn, actor["tenant_id"], requested_by_label(actor), **body.model_dump())
+
+
+@app.get("/advisory/workshops/{workshop_id}")
+def advisory_workshop_endpoint(workshop_id: str, tenant_id: str = Depends(get_tenant_id)) -> dict:
+    with db_conn() as conn, _advisory_errors():
+        return advisory_service.get_workshop(conn, tenant_id, workshop_id)
+
+
+@app.patch("/advisory/workshops/{workshop_id}")
+def advisory_update_workshop_endpoint(workshop_id: str, body: WorkshopUpdate, tenant_id: str = Depends(get_tenant_id)) -> dict:
+    with db_conn() as conn, _advisory_errors():
+        return advisory_service.update_workshop(conn, tenant_id, workshop_id, **body.model_dump(exclude_unset=True))
+
+
+@app.post("/advisory/workshops/{workshop_id}/attendees", status_code=201)
+def advisory_add_attendee_endpoint(workshop_id: str, body: AttendeeRequest, tenant_id: str = Depends(get_tenant_id)) -> dict:
+    with db_conn() as conn, _advisory_errors():
+        return advisory_service.add_attendee(conn, tenant_id, workshop_id, **body.model_dump())
+
+
+@app.delete("/advisory/workshops/{workshop_id}/attendees/{attendee_id}")
+def advisory_remove_attendee_endpoint(workshop_id: str, attendee_id: str, tenant_id: str = Depends(get_tenant_id)) -> dict:
+    with db_conn() as conn, _advisory_errors():
+        return advisory_service.remove_attendee(conn, tenant_id, workshop_id, attendee_id)
+
+
+# ── ONG: carga por archivo ────────────────────────────────────────────
+
+@app.get("/advisory/import/template")
+def advisory_import_template_endpoint(tenant_id: str = Depends(get_tenant_id), stages: str | None = None,
+                                      operators: str | None = None) -> Response:
+    """Plantilla Excel de las guias elegidas (p. ej. `stages=G1,G2,G3`), con
+    los operadores elegidos ya escritos (`operators=<id>,<id>`; sin ellos,
+    todos los activos)."""
+    stage_codes = [s.strip() for s in (stages or "").split(",") if s.strip()] or None
+    operator_ids = [o.strip() for o in (operators or "").split(",") if o.strip()] or None
+    with db_conn() as conn, _advisory_errors():
+        content = import_service.build_template(conn, tenant_id, stage_codes, operator_ids)
+    name = "plantilla-guias" + ("-" + "-".join(stage_codes) if stage_codes else "") + ".xlsx"
+    return Response(content=content, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+
+class ImportRequest(BaseModel):
+    filename: str
+    content_base64: str
+    dry_run: bool = True
+    workshop_id: str | None = None
+    create_missing: bool = True
+
+
+@app.post("/advisory/import")
+def advisory_import_endpoint(body: ImportRequest, actor: dict = Depends(get_actor)) -> dict:
+    """Carga un Excel de la plantilla o un archivo plano. Con `dry_run` (por
+    defecto) dice lo que grabaria sin grabar nada."""
+    try:
+        content = base64.b64decode(body.content_base64, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise HTTPException(status_code=422, detail="El archivo no llegó completo; vuelva a cargarlo") from exc
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="El archivo supera 10 MB")
+    with db_conn() as conn, _advisory_errors():
+        try:
+            return import_service.import_file(conn, actor["tenant_id"], requested_by_label(actor), body.filename, content,
+                                              dry_run=body.dry_run, workshop_id=body.workshop_id,
+                                              create_missing=body.create_missing)
+        except import_service.ImportFileError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+# ── Plataforma: organizaciones ────────────────────────────────────────
+
+class OrganizationRequest(BaseModel):
+    name: str
+    kind: str
+    admin_username: str
+    admin_password: str
+    display_name: str | None = None
+    timezone: str | None = None
+    session_ttl_seconds: int | None = None
+    currency: str | None = None
+    locale: str | None = None
+    packs: list[str] = []
+
+
+def _require_platform(conn: psycopg.Connection, tenant_id: str) -> None:
+    if organization_service.tenant_kind(conn, tenant_id) != "platform":
+        raise HTTPException(status_code=403, detail="Solo la organización de la plataforma administra organizaciones.")
+
+
+@app.get("/organizations")
+def list_organizations_endpoint(tenant_id: str = Depends(get_tenant_id)) -> list[dict]:
+    with db_conn() as conn:
+        _require_platform(conn, tenant_id)
+        return organization_service.list_organizations(conn)
+
+
+@app.post("/organizations", status_code=201)
+def create_organization_endpoint(body: OrganizationRequest, actor: dict = Depends(get_actor)) -> dict:
+    with db_conn() as conn, _advisory_errors():
+        _require_platform(conn, actor["tenant_id"])
+        config = organization_service.config_from(conn, actor["tenant_id"])
+        config.update({k: v for k, v in {"timezone": body.timezone, "session_ttl_seconds": body.session_ttl_seconds,
+                                          "currency": body.currency, "locale": body.locale}.items() if v is not None})
+        return organization_service.create_organization(
+            conn, body.name, body.kind, body.admin_username, body.admin_password, requested_by_label(actor),
+            config=config, packs=body.packs, display_name=body.display_name,
+        )

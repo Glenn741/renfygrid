@@ -347,7 +347,8 @@ def checklist_status(frequency_days: int | None, last_run_at: datetime | None, n
 
 def stage_summary(lists: list[dict]) -> dict[str, int]:
     """Conteo por estado de las listas de una etapa (para el paso de la ruta)."""
-    counts = {"total": len(lists), "never": 0, "done": 0, "ok": 0, "overdue": 0}
+    # draft: ficha o tabla guardada a medias (0047); no cuenta como aplicada.
+    counts = {"total": len(lists), "never": 0, "draft": 0, "done": 0, "ok": 0, "overdue": 0}
     for item in lists:
         counts[item["status"]] += 1
     counts["applied"] = counts["done"] + counts["ok"] + counts["overdue"]

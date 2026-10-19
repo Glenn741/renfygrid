@@ -857,22 +857,22 @@ Herramientas del facilitador (T-01…T-10, CAP) y Configuración (solo usuarios)
 Balance Hídrico, Modelación, Gemelo ni los módulos operativos. El menú se filtra por tipo de
 organización.
 
-**Decisión de diseño (recomendada): la organización del operador se crea al registrarlo.**
-- En el taller, el asesor registra al operador con lo mínimo (nombre, cantón/parroquia, ubicación
-  en el mapa, contacto) y el sistema crea su organización (`provider`) en estado "en
-  acompañamiento", más un **acuerdo de asesoría** ONG ↔ operador.
-- Todo lo que el asesor llena queda **en la organización del operador** desde el primer día. No
-  hay migración posterior, y se respeta que cada junta es dueña de sus datos.
-- El acuerdo da a la ONG permiso de **escribir solo los formularios de las guías** de ese
-  operador. El permiso se valida en cada petición y se ejecuta con el alcance (RLS) del operador,
-  igual que el tablero de la agrupación (`group_service`).
-- El consentimiento del operador se registra en el taller (quién, cuándo). El operador puede
-  revocarlo o ampliarlo desde su organización.
-- Cuando el operador esté listo, el asesor le entrega su cuenta (usuario administrador de su
-  organización) y los dos siguen llenando el mismo registro.
-- Alternativa descartada: guardar los formularios en la ONG y migrarlos al crear la
-  organización. Duplica datos, rompe la propiedad de la junta y obliga a una migración por
-  operador.
+**Decisión del usuario (19-oct), reemplaza la propuesta de crear la organización al registrar:**
+- Lo que el asesor levanta con cada operador son **registros de la ONG** (`advised_operator` y
+  sus listas, fichas y tablas marcadas con el operador).
+- **Si el operador lo solicita**, se crea su organización con esos datos ("traspaso"): las listas
+  se vuelven a aplicar allá con su fecha original, y allá nacen sus hallazgos. Las fichas y tablas
+  se copian. Desde ese momento el registro de la ONG queda de solo lectura y el operador sigue
+  desde su organización.
+- Hay operadores que no pasan por un taller ni se alinean con las guías. El modelo de operación es
+  el mismo (suministro de agua residencial). Esos operadores ven las guías y pueden usarlas para
+  sus datos iniciales, o ir directo a operar migrando sus datos y cargando sus parámetros.
+- **Se pueden crear organizaciones y usuarios nuevos:** la organización de la plataforma (tipo
+  `platform`) crea organizaciones de cualquier tipo con su administrador. La ONG crea las de sus
+  operadores por el traspaso. El usuario puede ser un nombre (p. ej. `asesor01`), no solo un
+  correo.
+- **Carga después del taller** desde una plantilla Excel o un archivo plano CSV, con vista previa
+  antes de grabar.
 
 **Talleres:**
 - Fecha, lugar, guías que cubre, facilitadores y operadores que asisten.
@@ -900,18 +900,65 @@ organización.
 
 | Sprint | Entrega | Para el 22-oct |
 |---|---|---|
-| **E1** | Organización `advisor` + rol asesor + menú filtrado; registrar operador → crea su organización + acuerdo de asesoría; talleres con asistencia; llenar las guías de un operador desde la ONG; tipos de formulario **ficha** y **tabla**; **G1 completa** cargada (ficha territorial con ubicación, usuarios, tipo de suministro y saneamiento; percepción; tarjeta de diagnóstico; priorización; causas; primeras acciones) | **Sí, imprescindible** |
-| **E2** | Tablero de la ONG con la matriz operador × guía y el mapa temático por capas | Deseable |
+| **E1** | Organización `advisor` + rol asesor + menú filtrado; operadores como registros de la ONG y traspaso a organización propia a solicitud; talleres con asistencia; llenar las guías de un operador desde la ONG; tipos de formulario **ficha** y **tabla**; **G1 completa** y tablas de G2; carga por Excel/CSV; alta de organizaciones y usuarios | ✅ Construido 19-oct (§12.5) |
+| **E2** | Tablero de la ONG con la matriz operador × guía y el mapa temático por capas | ✅ Adelantado dentro de E1 |
 | **E3** | Módulo Guías en la organización del operador: absorbe "Ruta y revisiones"; las definiciones dispersas pasan a su guía; los módulos operativos las leen; estados vacíos guiados; "qué habilita" | Después |
 | **E4** | Formularios que faltan: G2 (7A, 7D-7G, 7I), G6 (matrices 7A-7E y 7G), G4 7A-7I si llega la versión nueva; G1-O a G6-O y T-01/T-03 en la ONG; mover CAP/T-06/T-08/T-10 de la junta a la ONG | Después |
 | **E5** | Entrega de la cuenta al operador, revocar o ampliar el permiso, avisos al asesor cuando el operador llena algo | Después |
 
-**Decisiones pendientes del usuario:**
-- Qué guías se verán en el taller del 22-oct. Define qué se carga primero en E1.
-- Nombre de la ONG y usuarios asesores a crear.
-- Confirmar la creación de la organización al registrar al operador, con su consentimiento en el
-  taller.
-- Si en el lugar del taller habrá internet. Si no, el asesor necesita llenar sin conexión, como la
-  app del operador (D1.3), y eso agrega trabajo a E1.
+**Respuestas del usuario (19-oct):**
+- Guías del taller del 22-oct: **G1, G2 y G3**.
+- ONG: **APT**, con los usuarios **asesor01** y **asesor02**.
+- Organización del operador: solo cuando lo solicite (ver arriba).
+- Internet en el taller: **sí**. Lo que se llene en papel se carga después por Excel o CSV.
 
-Estado: **propuesto 2026-10-19, esperando confirmación del usuario.**
+### 12.5 E1 construido (2026-10-19, migración 0047)
+
+**Modelo:**
+- `tenant.kind` suma `advisor` (ONG) y `platform`.
+- `advised_operator`, `workshop`, `workshop_operator` y `workshop_attendee`, todas con RLS.
+- `checklist_run` suma `advised_operator_id` y `workshop_id`.
+- `form_entry` y `form_entry_version`: fichas y tablas como documento vivo con versiones.
+- `checklist_template` suma `form_spec`, `sort_order` y los tipos `record` y `table`.
+- `process_stage.audience`: la etapa INT es de la persona facilitadora y no aparece en las guías
+  de un operador.
+- `advisory_map_layer`: qué campo de qué ficha da la ubicación, el tamaño, el color y la forma
+  del mapa.
+- Permisos `advisory.manage`, `advisory.record`, `advisory.transfer` y `organizations.manage`.
+  Roles nuevos: `advisor` y `platform`.
+
+**Formularios cargados:**
+- **G1 completa** (antes no tenía nada): percepción, ficha básica (con ubicación, usuarios, agua
+  que entrega y saneamiento), mapa parlante, tarjeta de diagnóstico integral (51 aspectos en 8
+  áreas), priorización, árbol de problemas, primeras acciones, compromiso y productos.
+- **G2:** tablas 7A, 7D, 7E, 7F y 7I.
+- **G3:** sus listas, que ya existían.
+
+**Servicios:** `form_engine.py` (puro), `form_service.py`, `organization_service.py`,
+`advisory_service.py`, `import_service.py` (openpyxl) y `bootstrap_organization.py` (CLI).
+
+**Portal:**
+- Menú por tipo de organización. La ONG ve Tablero de asesoría, Operadores, Talleres y
+  Usuarios; la plataforma ve Organizaciones y Usuarios. Una ruta ajena redirige a su inicio.
+- "Ruta y revisiones" pasa a ser **Guías**, primer ítem del menú del prestador, con fichas y
+  tablas. Es la misma pantalla para la organización y para un operador asesorado.
+- Tablero de la ONG con indicadores, mapa temático con capas que se prenden y apagan y filtro
+  por guía vista en taller, y matriz operador × guía.
+- Carga de Excel o CSV con vista previa.
+- Traspaso a organización propia.
+- El login acepta un nombre de usuario.
+
+**Pruebas:**
+- `verify_advisory_end_to_end.py` (HTTP + Postgres con RLS).
+- `tests/test_form_engine.py`.
+- Regresión de las suites de D0, D12, roles y facilitación, todas en verde. Se ajustaron los
+  conteos fijos (42 formularios; G1 = 9).
+
+**Queda para E2–E5:**
+- Las definiciones dispersas de G3 (plan de emergencia, muestreo, puntos…) siguen en sus
+  módulos (E3).
+- Faltan formatos de G4–G6 y las herramientas T-01/T-03 y G1-O…G6-O en la ONG (E4).
+- La CAP, T-06, T-08 y T-10 siguen en la junta (E4).
+- Falta la PWA sin conexión para el asesor (no hace falta para el 22-oct).
+
+Estado: **E1 construido y verificado en local; despliegue a producción en curso.**

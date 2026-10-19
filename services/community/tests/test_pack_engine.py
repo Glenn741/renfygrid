@@ -353,7 +353,7 @@ class ChecklistStatusTests(unittest.TestCase):
 
     def test_stage_summary_counts(self):
         lists = [{"status": "never"}, {"status": "ok"}, {"status": "overdue"}, {"status": "done"}]
-        self.assertEqual(stage_summary(lists), {"total": 4, "never": 1, "done": 1, "ok": 1, "overdue": 1, "applied": 3})
+        self.assertEqual(stage_summary(lists), {"total": 4, "never": 1, "draft": 0, "done": 1, "ok": 1, "overdue": 1, "applied": 3})
 
 
 class InstrumentationTests(unittest.TestCase):

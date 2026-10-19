@@ -2,15 +2,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ApiError,
-  getChecklistRun,
-  getChecklistRuns,
+  OWN_SCOPE,
   getChecklistTemplates,
-  getProcessRoute,
   getQuestionnaireAnalysis,
   itemScale,
-  submitChecklistRun,
   type ChecklistAnswerInput,
   type ChecklistTemplate,
+  type GuideScope,
   type RunField,
   type RouteList,
   type RouteStageInfo,
@@ -21,8 +19,17 @@ import { StagePage, EmptyState } from "../components/StagePage";
 import { ROUTE_QUERY_KEY, STAGE_STATE_STYLE, stageState } from "../components/routeStatus";
 import { PassportView, StageProducts, passportText } from "../components/Passport";
 import { FollowUpPanel } from "../components/FollowUpPanel";
+import { FormEditor } from "../components/FormEditor";
 import { Icon } from "../components/Icon";
 import { appLocale } from "../catalog";
+
+// Track E (2026-10-19, migracion 0047): "Guias" es el punto de partida de un
+// acueducto sin guia de operacion. La misma pantalla sirve a la organizacion
+// (sus propias guias) y a la ONG que asesora (las guias de cada operador): lo
+// que cambia es el alcance (`GuideScope`), no la pantalla. Las guias tienen,
+// ademas de listas, fichas y tablas (FormEditor).
+
+const FORM_KINDS: ChecklistTemplate["kind"][] = ["record", "table"];
 
 // Ruta y revisiones -- rediseno de usabilidad (2026-10-05, a pedido del
 // usuario: "un usuario no logra percibir que debe hacer click" y "la vision
@@ -47,6 +54,8 @@ const KIND_LABEL: Record<ChecklistTemplate["kind"], string> = {
   self_assessment: "Autoevaluación",
   products: "Productos",
   questionnaire: "Cuestionario",
+  record: "Ficha",
+  table: "Tabla",
 };
 
 /** Texto corto de los datos de una aplicacion (momento, participante...) con las etiquetas de la plantilla. */
@@ -60,6 +69,7 @@ function contextText(fields: RunField[] | undefined, context: Record<string, str
 
 const STATUS_STYLE: Record<RouteList["status"], { label: string; pill: string; dot: string }> = {
   never: { label: "Sin aplicar", pill: "bg-slate-100 text-slate-700", dot: "bg-slate-400" },
+  draft: { label: "En borrador", pill: "bg-amber-50 text-amber-800", dot: "bg-amber-500" },
   done: { label: "Aplicada", pill: "bg-emerald-50 text-emerald-700", dot: "bg-emerald-500" },
   ok: { label: "Al día", pill: "bg-emerald-50 text-emerald-700", dot: "bg-emerald-500" },
   overdue: { label: "Vencida", pill: "bg-red-50 text-red-700", dot: "bg-red-500" },
@@ -126,7 +136,43 @@ function RouteStepper({ stages, selected, onSelect }: { stages: RouteStageInfo[]
   );
 }
 
-function ListCard({ item, onApply, onViewLast, onAnalysis }: { item: RouteList; onApply: () => void; onViewLast: () => void; onAnalysis?: () => void }) {
+function FormCard({ item, onOpen, readOnly }: { item: RouteList; onOpen: () => void; readOnly: boolean }) {
+  const st = item.status === "never"
+    ? { ...STATUS_STYLE.never, label: "Sin llenar" }
+    : item.status === "done" ? { ...STATUS_STYLE.done, label: "Completa" } : STATUS_STYLE[item.status];
+  const p = item.progress;
+  const progress = !p ? "—" : item.kind === "record" ? `${p.filled ?? 0} de ${p.total ?? item.item_count} datos` : `${p.rows ?? 0} fila${p.rows === 1 ? "" : "s"}`;
+  return (
+    <article className="flex flex-col rounded-xl border border-slate-200 bg-white p-4">
+      <div className="flex items-start justify-between gap-2">
+        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">{KIND_LABEL[item.kind]}</span>
+        <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold ${st.pill}`}>
+          <span className={`h-1.5 w-1.5 rounded-full ${st.dot}`} />{st.label}
+        </span>
+      </div>
+      <h3 className="mt-2 text-sm font-semibold text-slate-900">{item.title}</h3>
+      <p className="mt-1 text-xs text-slate-500 line-clamp-2">{item.purpose}</p>
+      <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+        <dt className="text-slate-500">Avance</dt>
+        <dd className="text-slate-800 tabular-nums">{progress}</dd>
+        <dt className="text-slate-500">Actualizada</dt>
+        <dd className="text-slate-800 tabular-nums">{formatDate(item.last_run_at)}</dd>
+      </dl>
+      {p && !p.complete && p.missing_required.length > 0 && (
+        <p className="mt-2 text-[11px] text-amber-800 line-clamp-2">Falta: {p.missing_required.join(", ")}</p>
+      )}
+      <div className="mt-4 flex flex-wrap gap-2 pt-1">
+        <button onClick={onOpen} className={readOnly
+          ? "rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          : "rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-indigo-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1"}>
+          {readOnly ? "Ver ›" : item.status === "never" ? (item.kind === "record" ? "Llenar ficha" : "Llenar tabla") : item.status === "draft" ? "Continuar" : "Ver o actualizar"}
+        </button>
+      </div>
+    </article>
+  );
+}
+
+function ListCard({ item, onApply, onViewLast, onAnalysis, readOnly = false }: { item: RouteList; onApply: () => void; onViewLast: () => void; onAnalysis?: () => void; readOnly?: boolean }) {
   const st = STATUS_STYLE[item.status];
   return (
     <article className={`flex flex-col rounded-xl border bg-white p-4 ${item.status === "overdue" ? "border-red-200" : "border-slate-200"}`}>
@@ -147,12 +193,14 @@ function ListCard({ item, onApply, onViewLast, onAnalysis }: { item: RouteList; 
         <dd className="text-slate-800 tabular-nums">{item.item_count}</dd>
       </dl>
       <div className="mt-4 flex flex-wrap gap-2 pt-1">
-        <button
-          onClick={onApply}
-          className="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-indigo-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1"
-        >
-          {item.status === "never" ? "Aplicar revisión" : "Aplicar de nuevo"}
-        </button>
+        {!readOnly && (
+          <button
+            onClick={onApply}
+            className="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-indigo-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1"
+          >
+            {item.status === "never" ? "Aplicar revisión" : "Aplicar de nuevo"}
+          </button>
+        )}
         {item.last_run_id && (
           <button onClick={onViewLast} className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50">
             Ver la última ›
@@ -168,13 +216,16 @@ function ListCard({ item, onApply, onViewLast, onAnalysis }: { item: RouteList; 
   );
 }
 
-function StagePanel({ stage, onApply, onView, onAnalysis, withAnalysis }: {
+function StagePanel({ stage, onApply, onView, onAnalysis, onOpenForm, withAnalysis, scope }: {
   stage: RouteStageInfo;
   onApply: (id: string) => void;
   onView: (runId: string) => void;
   onAnalysis: (id: string) => void;
+  onOpenForm: (id: string) => void;
   withAnalysis: Set<string>;
+  scope: GuideScope;
 }) {
+  const readOnly = scope.readOnly !== null;
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-5">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -190,10 +241,13 @@ function StagePanel({ stage, onApply, onView, onAnalysis, withAnalysis }: {
         </div>
       ) : (
         <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {stage.lists.map((item) => (
+          {stage.lists.map((item) => FORM_KINDS.includes(item.kind) ? (
+            <FormCard key={item.template_id} item={item} readOnly={readOnly} onOpen={() => onOpenForm(item.template_id)} />
+          ) : (
             <ListCard
               key={item.template_id}
               item={item}
+              readOnly={readOnly}
               onApply={() => onApply(item.template_id)}
               onViewLast={() => item.last_run_id && onView(item.last_run_id)}
               onAnalysis={withAnalysis.has(item.template_id) ? () => onAnalysis(item.template_id) : undefined}
@@ -201,8 +255,8 @@ function StagePanel({ stage, onApply, onView, onAnalysis, withAnalysis }: {
           ))}
         </div>
       )}
-      <StageProducts products={stage.products} summary={stage.products_summary} />
-      {stage.has_follow_up && <FollowUpPanel />}
+      {scope.ownOrganization && <StageProducts products={stage.products} summary={stage.products_summary} />}
+      {scope.ownOrganization && stage.has_follow_up && <FollowUpPanel />}
     </section>
   );
 }
@@ -211,7 +265,7 @@ function StagePanel({ stage, onApply, onView, onAnalysis, withAnalysis }: {
 
 type Draft = Record<string, ChecklistAnswerInput>;
 
-function RunForm({ template, onCancel, onDone }: { template: ChecklistTemplate; onCancel: () => void; onDone: (message: string) => void }) {
+function RunForm({ template, scope, onCancel, onDone }: { template: ChecklistTemplate; scope: GuideScope; onCancel: () => void; onDone: (message: string) => void }) {
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState<Draft>({});
   const [notes, setNotes] = useState("");
@@ -245,7 +299,7 @@ function RunForm({ template, onCancel, onDone }: { template: ChecklistTemplate; 
   };
 
   const mutation = useMutation({
-    mutationFn: () => submitChecklistRun({
+    mutationFn: () => scope.submitRun({
       template_id: template.id,
       answers: template.items.map((i) => {
         const a = draft[i.key];
@@ -263,7 +317,12 @@ function RunForm({ template, onCancel, onDone }: { template: ChecklistTemplate; 
         queryClient.invalidateQueries({ queryKey: [key] });
       }
       queryClient.invalidateQueries({ queryKey: ROUTE_QUERY_KEY });
+      queryClient.invalidateQueries({ queryKey: scope.key });
       const created = result.findings_created.length;
+      if (!scope.ownOrganization) {
+        onDone(`"${template.title}" guardada. Puntaje ${result.score.score} de ${result.score.max_score}. Los hallazgos se crean en la organización del operador cuando se traspase.`);
+        return;
+      }
       if (isQuestionnaire) {
         queryClient.invalidateQueries({ queryKey: ["questionnaire-analysis", template.id] });
         onDone(`Cuestionario "${template.title}" guardado (${contextText(template.run_fields, context)}). Puntaje ${result.score.score} de ${result.score.max_score}. El resultado del grupo está en "Ver análisis".`);
@@ -277,7 +336,7 @@ function RunForm({ template, onCancel, onDone }: { template: ChecklistTemplate; 
   return (
     <section className="rounded-xl border border-slate-200 bg-white">
       <div className="border-b border-slate-200 p-5">
-        <button onClick={onCancel} className="mb-2 text-sm font-medium text-indigo-700 hover:underline">← Volver a la ruta</button>
+        <button onClick={onCancel} className="mb-2 text-sm font-medium text-indigo-700 hover:underline">← Volver a la guía</button>
         <div className="flex flex-wrap items-center gap-2">
           <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">{KIND_LABEL[template.kind]}</span>
           <h2 className="text-base font-semibold text-slate-900">{template.title}</h2>
@@ -286,7 +345,9 @@ function RunForm({ template, onCancel, onDone }: { template: ChecklistTemplate; 
         <p className="mt-2 text-xs text-slate-500">
           {isQuestionnaire
             ? "Marque una sola opción por pregunta. Se puede leer en voz alta. El puntaje del grupo se ve en \"Ver análisis\", no al responder."
-            : <>Responda cada ítem tocando una opción. Si la respuesta indica un problema, se abre un recuadro para anotar qué se hará: esa información queda como hallazgo en <strong>Mi sistema</strong>.</>}
+            : scope.ownOrganization
+              ? <>Responda cada ítem tocando una opción. Si la respuesta indica un problema, se abre un recuadro para anotar qué se hará: esa información queda como hallazgo en <strong>Mi sistema</strong>.</>
+              : <>Responda cada ítem tocando una opción. Si la respuesta indica un problema, anote qué se acordó: se convertirá en hallazgo cuando se cree la organización del operador.</>}
         </p>
       </div>
 
@@ -322,14 +383,16 @@ function RunForm({ template, onCancel, onDone }: { template: ChecklistTemplate; 
 
       <ol className="divide-y divide-slate-100">
         {template.items.map((item, idx) => {
+          const groupHeader = item.group && item.group !== template.items[idx - 1]?.group ? item.group : null;
           const current = draft[item.key];
           const scale = scales[item.key];
           const options = itemScale(template, item);
           const entry = current?.answer_code ? scale[current.answer_code] : undefined;
           const isMissing = showMissing && !entry;
           return (
-            <li key={item.key} ref={(el) => { itemRefs.current[item.key] = el; }} className={`p-5 ${isMissing ? "bg-amber-50" : ""}`}>
-              <fieldset>
+            <li key={item.key} ref={(el) => { itemRefs.current[item.key] = el; }} className={`${groupHeader ? "pb-5" : "p-5"} ${isMissing ? "bg-amber-50" : ""}`}>
+              {groupHeader && <h3 className="mb-4 bg-slate-50 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500">{groupHeader}</h3>}
+              <fieldset className={groupHeader ? "px-5" : undefined}>
                 <legend className="flex gap-3 text-sm text-slate-900">
                   <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${entry ? "bg-indigo-600 text-white" : "bg-slate-200 text-slate-600"}`}>{idx + 1}</span>
                   <span className="pt-0.5">
@@ -412,12 +475,12 @@ function RunForm({ template, onCancel, onDone }: { template: ChecklistTemplate; 
 
 // ── Detalle e historial ───────────────────────────────────────────────
 
-function RunDetail({ runId, templates, onClose }: { runId: string; templates: Record<string, ChecklistTemplate>; onClose: () => void }) {
-  const { data } = useQuery({ queryKey: ["checklist-run", runId], queryFn: () => getChecklistRun(runId) });
+function RunDetail({ runId, templates, scope, onClose }: { runId: string; templates: Record<string, ChecklistTemplate>; scope: GuideScope; onClose: () => void }) {
+  const { data } = useQuery({ queryKey: [...scope.key, "checklist-run", runId], queryFn: () => scope.getRun(runId) });
   const ctx = data ? contextText(templates[data.template_id]?.run_fields, data.context) : "";
   return (
     <section className="rounded-xl border border-indigo-200 bg-white p-5">
-      <button onClick={onClose} className="mb-2 text-sm font-medium text-indigo-700 hover:underline">← Volver a la ruta</button>
+      <button onClick={onClose} className="mb-2 text-sm font-medium text-indigo-700 hover:underline">← Volver a la guía</button>
       {!data ? <p className="text-sm text-slate-500">Cargando…</p> : (
         <>
           <h2 className="text-base font-semibold text-slate-900">{data.title}</h2>
@@ -451,8 +514,8 @@ function RunDetail({ runId, templates, onClose }: { runId: string; templates: Re
   );
 }
 
-function History({ templates, onView }: { templates: Record<string, ChecklistTemplate>; onView: (runId: string) => void }) {
-  const { data } = useQuery({ queryKey: ["checklist-runs"], queryFn: () => getChecklistRuns() });
+function History({ templates, scope, onView }: { templates: Record<string, ChecklistTemplate>; scope: GuideScope; onView: (runId: string) => void }) {
+  const { data } = useQuery({ queryKey: [...scope.key, "checklist-runs"], queryFn: () => scope.getRuns() });
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-5">
       <h2 className="mb-1 text-base font-semibold text-slate-900">Historial de revisiones</h2>
@@ -542,7 +605,7 @@ function AnalysisView({ template, onClose }: { template: ChecklistTemplate; onCl
   return (
     <section className="space-y-4 rounded-xl border border-indigo-200 bg-white p-5">
       <div>
-        <button onClick={onClose} className="mb-2 text-sm font-medium text-indigo-700 hover:underline">← Volver a la ruta</button>
+        <button onClick={onClose} className="mb-2 text-sm font-medium text-indigo-700 hover:underline">← Volver a la guía</button>
         <h2 className="text-base font-semibold text-slate-900">Análisis · {template.title}</h2>
         {template.analysis?.source && <p className="text-xs text-slate-500">{template.analysis.source}</p>}
       </div>
@@ -580,21 +643,33 @@ type View =
   | { mode: "apply"; templateId: string }
   | { mode: "detail"; runId: string }
   | { mode: "analysis"; templateId: string }
+  | { mode: "form"; templateId: string }
   | { mode: "passport" };
 
 function defaultStage(stages: RouteStageInfo[]): string | undefined {
   return (
     stages.find((s) => s.summary.overdue > 0)?.code
-    ?? stages.find((s) => s.summary.never > 0)?.code
+    ?? stages.find((s) => s.summary.never + s.summary.draft > 0)?.code
     ?? stages.find((s) => s.summary.total > 0)?.code
     ?? stages[0]?.code
   );
 }
 
 export function InspectionsPage() {
-  const { data: route, isLoading } = useQuery({ queryKey: ROUTE_QUERY_KEY, queryFn: getProcessRoute });
-  const { data: templates } = useQuery({ queryKey: ["checklist-templates"], queryFn: getChecklistTemplates });
   const params = useParams<{ stageCode?: string }>();
+  return (
+    <StagePage title="Guías">
+      <GuidesWorkspace scope={OWN_SCOPE} basePath="/inspections" stageParam={params.stageCode} />
+    </StagePage>
+  );
+}
+
+/** Las guias de un alcance: etapas, listas, fichas y tablas. La etapa vive en
+ * la direccion (`basePath/G3`). */
+export function GuidesWorkspace({ scope, basePath, stageParam, intro }: { scope: GuideScope; basePath: string; stageParam?: string; intro?: string }) {
+  const routeKey = scope.ownOrganization ? ROUTE_QUERY_KEY : [...scope.key, "route"];
+  const { data: route, isLoading } = useQuery({ queryKey: routeKey, queryFn: scope.getRoute });
+  const { data: templates } = useQuery({ queryKey: ["checklist-templates"], queryFn: getChecklistTemplates });
   const navigate = useNavigate();
   const [view, setView] = useState<View>({ mode: "route" });
   const [message, setMessage] = useState<string | null>(null);
@@ -602,12 +677,13 @@ export function InspectionsPage() {
   // La etapa vive en la direccion (/inspections/G3): el submenu lateral, el
   // boton Atras y los marcadores llevan a la misma etapa. Sin etapa en la
   // direccion, se abre la que mas pide atencion (vencida, luego sin aplicar).
-  const validParam = route?.stages.some((s) => s.code === params.stageCode) ? params.stageCode : undefined;
+  const validParam = route?.stages.some((s) => s.code === stageParam) ? stageParam : undefined;
   const stageCode = validParam ?? (route ? defaultStage(route.stages) : undefined);
   useEffect(() => {
-    if (route && stageCode && params.stageCode !== stageCode) navigate(`/inspections/${stageCode}`, { replace: true });
-  }, [route, stageCode, params.stageCode, navigate]);
-  const setStageCode = (code: string) => { setView({ mode: "route" }); navigate(`/inspections/${code}`); };
+    if (route && stageCode && stageParam !== stageCode) navigate(`${basePath}/${stageCode}`, { replace: true });
+  }, [route, stageCode, stageParam, navigate, basePath]);
+  const setStageCode = (code: string) => { setView({ mode: "route" }); navigate(`${basePath}/${code}`); };
+  const params = { stageCode: stageParam };
   // Volver a la ruta si se elige una etapa desde el menu mientras se aplica una lista.
   const [lastStage, setLastStage] = useState(params.stageCode);
   if (params.stageCode !== lastStage) {
@@ -634,7 +710,7 @@ export function InspectionsPage() {
   const totals = route?.stages.reduce((acc, s) => ({ applied: acc.applied + s.summary.applied, total: acc.total + s.summary.total, overdue: acc.overdue + s.summary.overdue }), { applied: 0, total: 0, overdue: 0 });
 
   return (
-    <StagePage title="Ruta y revisiones">
+    <>
       {isLoading && <p className="text-sm text-slate-500">Cargando…</p>}
       {route && route.stages.length === 0 && route.other_lists.length === 0 && (
         <EmptyState message="No hay listas disponibles. Active el paquete de su programa en Configuración → Paquetes." />
@@ -650,15 +726,15 @@ export function InspectionsPage() {
         <div className="space-y-5">
           <div className="flex flex-wrap items-end justify-between gap-2">
             <p className="max-w-3xl text-sm text-slate-600">
-              La ruta del programa en orden. Elija una etapa para ver sus revisiones y aplicar la que corresponda. Las etapas con revisiones vencidas se marcan en rojo.
+              {intro ?? "Las guías son el punto de partida para operar: cada una tiene fichas, tablas y listas que forman el marco de su organización. Elija una guía para ver sus formularios; las que tienen revisiones vencidas se marcan en rojo."}
             </p>
             <div className="flex flex-wrap items-center gap-3">
               {totals && totals.total > 0 && (
                 <span className="text-xs text-slate-600 tabular-nums">
-                  {totals.applied} de {totals.total} revisiones aplicadas{totals.overdue > 0 && <span className="font-semibold text-red-600"> · {totals.overdue} vencida{totals.overdue === 1 ? "" : "s"}</span>}
+                  {totals.applied} de {totals.total} formularios completos{totals.overdue > 0 && <span className="font-semibold text-red-600"> · {totals.overdue} vencida{totals.overdue === 1 ? "" : "s"}</span>}
                 </span>
               )}
-              {productTotals && productTotals.total > 0 && (
+              {scope.ownOrganization && productTotals && productTotals.total > 0 && (
                 <button
                   onClick={() => setView({ mode: "passport" })}
                   className="rounded-lg border border-indigo-300 px-3 py-1.5 text-sm font-medium text-indigo-700 hover:bg-indigo-50"
@@ -675,7 +751,9 @@ export function InspectionsPage() {
               onApply={(id) => { setMessage(null); setView({ mode: "apply", templateId: id }); }}
               onView={(runId) => setView({ mode: "detail", runId })}
               onAnalysis={(id) => setView({ mode: "analysis", templateId: id })}
+              onOpenForm={(id) => { setMessage(null); setView({ mode: "form", templateId: id }); }}
               withAnalysis={withAnalysis}
+              scope={scope}
             />
           )}
           {route.other_lists.length > 0 && (
@@ -686,6 +764,7 @@ export function InspectionsPage() {
                   <ListCard
                     key={item.template_id}
                     item={item}
+                    readOnly={scope.readOnly !== null}
                     onApply={() => setView({ mode: "apply", templateId: item.template_id })}
                     onViewLast={() => item.last_run_id && setView({ mode: "detail", runId: item.last_run_id })}
                     onAnalysis={withAnalysis.has(item.template_id) ? () => setView({ mode: "analysis", templateId: item.template_id }) : undefined}
@@ -694,21 +773,31 @@ export function InspectionsPage() {
               </div>
             </section>
           )}
-          <History templates={byId} onView={(runId) => setView({ mode: "detail", runId })} />
+          <History templates={byId} scope={scope} onView={(runId) => setView({ mode: "detail", runId })} />
         </div>
       )}
 
       {view.mode === "passport" && <PassportView onClose={() => setView({ mode: "route" })} />}
       {view.mode === "analysis" && template &&<AnalysisView template={template} onClose={() => setView({ mode: "route" })} />}
-      {view.mode === "apply" && template && (
+      {view.mode === "apply" && template && scope.readOnly === null && (
         <RunForm
           key={template.id}
           template={template}
+          scope={scope}
           onCancel={() => setView({ mode: "route" })}
           onDone={(m) => { setMessage(m); setView({ mode: "route" }); }}
         />
       )}
-      {view.mode === "detail" && <RunDetail runId={view.runId} templates={byId} onClose={() => setView({ mode: "route" })} />}
-    </StagePage>
+      {view.mode === "form" && (
+        <FormEditor
+          key={view.templateId}
+          scope={scope}
+          templateId={view.templateId}
+          onClose={() => setView({ mode: "route" })}
+          onSaved={(m) => { setMessage(m); setView({ mode: "route" }); }}
+        />
+      )}
+      {view.mode === "detail" && <RunDetail runId={view.runId} templates={byId} scope={scope} onClose={() => setView({ mode: "route" })} />}
+    </>
   );
 }
