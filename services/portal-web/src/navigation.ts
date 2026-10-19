@@ -93,6 +93,7 @@ export const NAV_GROUPS: { title: string | null; items: NavItemDef[] }[] = [
     title: "Asesoría",
     items: [
       { to: "/advisory", label: "Tablero de asesoría", icon: "overview", kinds: ["advisor"], description: "Operadores capacitados, guías cubiertas con cada uno y mapa temático" },
+      { to: "/advisory/guides", label: "Guías", icon: "guides", kinds: ["advisor"], description: "Las guías y sus formularios; elija el operador con el que los va a llenar" },
       { to: "/advisory/operators", label: "Operadores", icon: "organization", kinds: ["advisor"], description: "Operadores asesorados, sus guías y la carga por archivo" },
       { to: "/advisory/workshops", label: "Talleres", icon: "workshop", kinds: ["advisor"], description: "Talleres, guías que cubren, operadores y asistencia" },
     ],

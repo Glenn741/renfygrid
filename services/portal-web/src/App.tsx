@@ -27,7 +27,7 @@ import { GroupPage } from "./pages/Group";
 import { ComplianceReportsPage } from "./pages/ComplianceReports";
 import { ProgramObservationsPage } from "./pages/ProgramObservations";
 import { InspectionsPage } from "./pages/Inspections";
-import { AdvisoryDashboardPage, AdvisoryOperatorPage, AdvisoryOperatorsPage, WorkshopsPage } from "./pages/Advisory";
+import { AdvisoryDashboardPage, AdvisoryGuidesPage, AdvisoryOperatorPage, AdvisoryOperatorsPage, WorkshopsPage } from "./pages/Advisory";
 import { OrganizationsPage, TeamPage } from "./pages/Organizations";
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -55,6 +55,8 @@ function AppRoutes() {
       <Route path="/inspections" element={<RequireAuth><InspectionsPage /></RequireAuth>} />
       <Route path="/inspections/:stageCode" element={<RequireAuth><InspectionsPage /></RequireAuth>} />
       <Route path="/advisory" element={<RequireAuth><AdvisoryDashboardPage /></RequireAuth>} />
+      <Route path="/advisory/guides" element={<RequireAuth><AdvisoryGuidesPage /></RequireAuth>} />
+      <Route path="/advisory/guides/:stageCode" element={<RequireAuth><AdvisoryGuidesPage /></RequireAuth>} />
       <Route path="/advisory/operators" element={<RequireAuth><AdvisoryOperatorsPage /></RequireAuth>} />
       <Route path="/advisory/operators/:operatorId" element={<RequireAuth><AdvisoryOperatorPage /></RequireAuth>} />
       <Route path="/advisory/operators/:operatorId/:stageCode" element={<RequireAuth><AdvisoryOperatorPage /></RequireAuth>} />

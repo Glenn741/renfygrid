@@ -193,7 +193,11 @@ function ListCard({ item, onApply, onViewLast, onAnalysis, readOnly = false }: {
         <dd className="text-slate-800 tabular-nums">{item.item_count}</dd>
       </dl>
       <div className="mt-4 flex flex-wrap gap-2 pt-1">
-        {!readOnly && (
+        {readOnly ? (
+          <button onClick={onApply} className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50">
+            Ver preguntas ›
+          </button>
+        ) : (
           <button
             onClick={onApply}
             className="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-indigo-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1"
@@ -445,6 +449,12 @@ function RunForm({ template, scope, onCancel, onDone }: { template: ChecklistTem
         {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
       </div>
 
+      {scope.readOnly !== null ? (
+        <div className="sticky bottom-0 z-20 flex flex-wrap items-center gap-3 rounded-b-xl border-t border-amber-200 bg-amber-50/95 px-5 py-3 backdrop-blur">
+          <p className="flex-1 text-sm text-amber-900">{scope.readOnly}</p>
+          <button onClick={onCancel} className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700">← Volver a la guía</button>
+        </div>
+      ) : (
       <div className="sticky bottom-0 z-20 flex flex-wrap items-center gap-3 rounded-b-xl border-t border-slate-200 bg-white/95 px-5 py-3 backdrop-blur">
         <div className="min-w-[10rem] flex-1">
           <div className="flex justify-between text-xs text-slate-600 tabular-nums">
@@ -469,6 +479,7 @@ function RunForm({ template, scope, onCancel, onDone }: { template: ChecklistTem
           {mutation.isPending ? "Guardando…" : pending > 0 ? `Faltan ${pending}` : isQuestionnaire ? "Guardar cuestionario" : "Guardar revisión"}
         </button>
       </div>
+      )}
     </section>
   );
 }
@@ -779,7 +790,7 @@ export function GuidesWorkspace({ scope, basePath, stageParam, intro }: { scope:
 
       {view.mode === "passport" && <PassportView onClose={() => setView({ mode: "route" })} />}
       {view.mode === "analysis" && template &&<AnalysisView template={template} onClose={() => setView({ mode: "route" })} />}
-      {view.mode === "apply" && template && scope.readOnly === null && (
+      {view.mode === "apply" && template && (
         <RunForm
           key={template.id}
           template={template}

@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ApiError,
   addWorkshopAttendee,
+  catalogScope,
   createAdvisedOperator,
   createWorkshop,
   downloadImportTemplate,
@@ -88,6 +89,87 @@ function CoverageCell({ cov, seen }: { cov: StageCoverage | undefined; seen: boo
         <div className={`h-full rounded-full ${pct === 100 ? "bg-emerald-500" : "bg-indigo-500"}`} style={{ width: `${pct ?? 0}%` }} />
       </div>
     </div>
+  );
+}
+
+// ── Como empezar (sin datos todavia) ──────────────────────────────────
+
+/** Primeros pasos de la ONG: se muestra mientras no haya operadores. */
+export function StartSteps() {
+  const steps: [string, string, string, string][] = [
+    ["1", "Cree el taller", "Fecha, lugar y las guías que se verán (p. ej. G1, G2 y G3).", "/advisory/workshops"],
+    ["2", "Registre a los operadores", "Nombre, ubicación y número de usuarios de cada junta o sistema que asiste.", "/advisory/operators"],
+    ["3", "Llene las guías con cada uno", "En Guías elija el operador y llene sus fichas, tablas y listas. Se puede guardar a medias.", "/advisory/guides"],
+  ];
+  return (
+    <section className="rounded-xl border border-indigo-200 bg-indigo-50/60 p-5">
+      <h2 className="text-base font-semibold text-slate-900">Cómo empezar</h2>
+      <p className="mb-4 text-sm text-slate-600">Todavía no hay operadores registrados. Las guías ya están disponibles: puede revisarlas en <Link className="font-medium text-indigo-700 underline" to="/advisory/guides">Guías</Link> antes del taller.</p>
+      <ol className="grid gap-3 md:grid-cols-3">
+        {steps.map(([n, title, text, to]) => (
+          <li key={n}>
+            <Link to={to} className="flex h-full gap-3 rounded-xl border border-slate-200 bg-white p-4 hover:border-indigo-300 hover:shadow-sm">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-indigo-600 text-sm font-bold text-white">{n}</span>
+              <span>
+                <span className="block text-sm font-semibold text-slate-900">{title} ›</span>
+                <span className="mt-0.5 block text-xs text-slate-600">{text}</span>
+              </span>
+            </Link>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
+// ── Guias: elegir operador y llenar ───────────────────────────────────
+
+const PICK_KEY = "renfygrid.advisory.operator";
+
+export function AdvisoryGuidesPage() {
+  const { stageCode } = useParams<{ stageCode?: string }>();
+  const { data: operators } = useQuery({ queryKey: ["advisory", "operators"], queryFn: getAdvisedOperators });
+  const [picked, setPicked] = useState<string>(() => {
+    try { return window.sessionStorage.getItem(PICK_KEY) ?? ""; } catch { return ""; }
+  });
+  const pick = (id: string) => {
+    setPicked(id);
+    try { window.sessionStorage.setItem(PICK_KEY, id); } catch { /* preferencia de vista */ }
+  };
+  const op = (operators ?? []).find((o) => o.operator_id === picked);
+  const readOnly = !op ? "Está viendo las guías en modo consulta. Para llenarlas, elija arriba el operador con el que está trabajando."
+    : op.status === "transferred" ? `Los datos de ${op.name} ya se traspasaron a su organización (${op.transferred_tenant_name ?? "propia"}): se actualizan allá.`
+    : op.status === "inactive" ? `${op.name} está inactivo: actívelo en Operadores para registrar información.` : null;
+  const scope = useMemo(() => (op ? operatorScope(op.operator_id, null, readOnly) : catalogScope(readOnly ?? "")), [op, readOnly]);
+  const active = (operators ?? []).filter((o) => o.status !== "inactive");
+  return (
+    <AppShell title="Guías">
+      <div className="space-y-5">
+        <section className={`${CARD} ${op ? "" : "border-amber-300"}`}>
+          <div className="flex flex-wrap items-center gap-3">
+            <label htmlFor="pick-op" className="text-sm font-semibold text-slate-800">Llenar las guías de:</label>
+            <select id="pick-op" className={`${INPUT} max-w-md`} value={op ? picked : ""} onChange={(e) => pick(e.target.value)}>
+              <option value="">— Elija un operador —</option>
+              {active.map((o) => <option key={o.operator_id} value={o.operator_id}>{o.name}{o.community ? ` · ${o.community}` : ""}</option>)}
+            </select>
+            {op && <Link to={`/advisory/operators/${op.operator_id}`} className="text-sm font-medium text-indigo-700 hover:underline">Ficha del operador y talleres ›</Link>}
+            <Link to="/advisory/operators" className={`${BTN2} ml-auto`}>+ Registrar operador</Link>
+          </div>
+          {operators && operators.length === 0 && (
+            <p className="mt-3 text-sm text-amber-800">Todavía no hay operadores. Regístrelos en <Link className="underline" to="/advisory/operators">Operadores</Link> (o en el taller) y vuelva aquí para llenar sus guías.</p>
+          )}
+        </section>
+        <GuidesWorkspace
+          key={op?.operator_id ?? "catalogo"}
+          scope={scope}
+          basePath="/advisory/guides"
+          stageParam={stageCode}
+          intro={op
+            ? `Guías de ${op.name}. Elija una guía y llene con el operador sus fichas, tablas y listas; se puede guardar a medias y seguir otro día.`
+            : "Las guías del programa con todos sus formularios. Recórralas para preparar el taller; para llenarlas elija arriba un operador."}
+        />
+      </div>
+    </AppShell>
   );
 }
 
@@ -176,6 +258,7 @@ export function AdvisoryDashboardPage() {
       {error && <EmptyState message={errorText(error, "No se pudo cargar el tablero.")} />}
       {data && (
         <div className="space-y-5">
+          {data.operators.length === 0 && <StartSteps />}
           <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
             {([
               ["Operadores", data.kpis.operators, "acompañados", "/advisory/operators"],
@@ -462,7 +545,7 @@ export function AdvisoryOperatorsPage() {
         {panel === "register" && <RegisterOperator onDone={(m) => { setMessage(m); setPanel("none"); }} />}
         {panel === "import" && <ImportPanel onDone={(m) => { setMessage(m); setPanel("none"); }} />}
         {isLoading && <p className="text-sm text-slate-500">Cargando…</p>}
-        {operators && operators.length === 0 && <EmptyState message="Todavía no hay operadores registrados." />}
+        {operators && operators.length === 0 && panel === "none" && <StartSteps />}
         {shown.length > 0 && (
           <section className={CARD}>
             <div className="overflow-x-auto">

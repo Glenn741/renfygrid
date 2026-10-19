@@ -2583,6 +2583,13 @@ export const OWN_SCOPE: GuideScope = {
   readOnly: null,
 };
 
+/** Las guias del programa sin operador elegido: se recorren y se ven sus
+ * preguntas y campos, pero no se graba nada (la ONG llena siempre PARA un
+ * operador). */
+export function catalogScope(reason: string): GuideScope {
+  return { ...OWN_SCOPE, key: ["guides", "catalog"], ownOrganization: false, readOnly: reason };
+}
+
 export function operatorScope(operatorId: string, workshopId: string | null, readOnly: string | null): GuideScope {
   const base = `/advisory/operators/${operatorId}`;
   return {
