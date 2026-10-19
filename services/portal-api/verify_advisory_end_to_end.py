@@ -23,14 +23,20 @@ Al final borra SOLO las organizaciones de prueba y lo que crearon.
 
 Uso:
     python verify_advisory_end_to_end.py "postgresql://renfygrid_app:renfygrid_app_dev_only@localhost:5455/renfygrid"
+
+Contra un servicio ya corriendo (p. ej. produccion, sin httpx en su venv):
+    E2E_BASE_URL=http://10.12.200.27:8105 python verify_advisory_end_to_end.py "<dsn del servicio>"
 """
 
 from __future__ import annotations
 
 import base64
 import io
+import json as _json
 import os
 import sys
+import urllib.error
+import urllib.request
 import uuid
 from pathlib import Path
 
@@ -56,16 +62,61 @@ def check(condition: bool, message: str) -> None:
     print(f"  OK  {message}")
 
 
-def run(dsn: str) -> None:
-    os.environ["RENFYGRID_DSN"] = dsn
-    os.environ["RENFYGRID_JWT_SECRET"] = JWT_SECRET
-    os.environ["RENFYGRID_ORDER_SIGNING_SECRET"] = ORDER_SIGNING_SECRET
+class _Response:
+    def __init__(self, status: int, content: bytes):
+        self.status_code = status
+        self.content = content
+        self.text = content.decode("utf-8", errors="replace")
 
-    import main  # despues de fijar el entorno
-    from fastapi.testclient import TestClient
+    def json(self):
+        return _json.loads(self.content or b"null")
+
+
+class _HttpClient:
+    """Lo mismo que se usa de TestClient, contra un servidor real."""
+
+    def __init__(self, base: str):
+        self.base = base.rstrip("/")
+
+    def _call(self, method: str, path: str, headers: dict | None = None, json: object = None) -> _Response:
+        data = None if json is None else _json.dumps(json).encode()
+        req = urllib.request.Request(self.base + path, method=method, data=data,
+                                     headers={"Content-Type": "application/json", **(headers or {})})
+        try:
+            with urllib.request.urlopen(req, timeout=120) as r:
+                return _Response(r.status, r.read())
+        except urllib.error.HTTPError as e:
+            return _Response(e.code, e.read())
+
+    def get(self, path, headers=None):
+        return self._call("GET", path, headers)
+
+    def post(self, path, headers=None, json=None):
+        return self._call("POST", path, headers, json)
+
+    def put(self, path, headers=None, json=None):
+        return self._call("PUT", path, headers, json)
+
+    def patch(self, path, headers=None, json=None):
+        return self._call("PATCH", path, headers, json)
+
+    def delete(self, path, headers=None):
+        return self._call("DELETE", path, headers)
+
+
+def run(dsn: str) -> None:
     from openpyxl import load_workbook
 
-    client = TestClient(main.app)
+    base = os.environ.get("E2E_BASE_URL")
+    if base:
+        client = _HttpClient(base)
+    else:
+        os.environ["RENFYGRID_DSN"] = dsn
+        os.environ["RENFYGRID_JWT_SECRET"] = JWT_SECRET
+        os.environ["RENFYGRID_ORDER_SIGNING_SECRET"] = ORDER_SIGNING_SECRET
+        import main  # despues de fijar el entorno
+        from fastapi.testclient import TestClient
+        client = TestClient(main.app)
     created: list[str] = []
 
     def login(org: str, user: str, password: str) -> dict:

@@ -2841,3 +2841,50 @@ iguales para todas; lo que cambia es el contenido de cada país o programa, que 
   hallazgo de prueba se borró por su ID.
 
 **Verificación:** regresión completa de 34 E2E en verde.
+
+### E1 Módulo Guías y asesoría de la ONG (2026-10-19)
+
+Plan: `04-plan-sprints.md` §12 (concepto, decisiones del usuario y §12.5 detalle de lo construido).
+Hito: taller de APT del 22-oct-2026 con 10 operadores (G1-G3).
+
+**Construido (commit `2235f80`):**
+- Migración 0047.
+- Servicios `form_engine`/`form_service`/`organization_service`/`advisory_service`/`import_service`
+  y la CLI `bootstrap_organization`.
+- Endpoints `/forms/*`, `/advisory/*` y `/organizations`.
+- Portal: "Guías" como punto de partida del prestador; pantallas de la ONG (tablero con mapa
+  temático, operadores, detalle con sus guías, talleres) y Organizaciones de la plataforma.
+- Menú por tipo de organización. El login acepta nombre de usuario.
+
+**Verificación local:**
+- `verify_advisory_end_to_end.py`: 52 verificaciones, en modo TestClient y por HTTP real.
+- 83 pruebas puras, también en Python 3.9.
+- Regresión de D0.1, D0.2, C2, D7, D12.1-D12.3, D1.4b y login en verde (conteos ajustados a 42
+  formularios).
+- Revisión visual con Playwright, que encontró y corrigió:
+  - doble resaltado en el menú;
+  - la etapa INT del facilitador aparecía en las guías del operador (se agregó
+    `process_stage.audience`);
+  - un aviso engañoso mientras cargaba la pantalla de Talleres.
+
+**Despliegue a producción (mismo día):**
+- Respaldo del código reemplazado en `essmarplapp02:/tmp/renfygrid_e1_backup_20261019/`.
+- `pg_dump` previo (100 tablas con datos), borrado con `shred` después de verificar.
+- `openpyxl 3.1.5` instalado en el venv del Portal (nueva dependencia en `requirements.txt`).
+- Migración 0047 en una transacción.
+- 9 módulos de `community` y 4 de `portal-api` compilados con Nuitka, más `main.py` (MD5
+  verificado) y `e2e_packs` (antes no estaba en el servidor).
+- `systemctl restart renfygrid-portal-api`: `active`, `/health` 200, endpoints nuevos 401 sin
+  token.
+- **E2E completo por HTTP real contra el servicio vivo** (`E2E_BASE_URL`, sin `httpx` en el venv
+  de producción): todo OK y 0 organizaciones `e2e-%` restantes.
+- Portal Web a `essmarplpxy03:/var/www/renfygrid` (bundle `index-wHyr4EG7.js`), con respaldo en
+  `/var/www/renfygrid.bak_before_e1_20261019`. Se conservaron los bundles anteriores por la PWA
+  sin conexión.
+- Revisión visual en vivo: APT entra a su tablero y `/vee` redirige; la plataforma ve
+  Organizaciones; jaas001 ve "Guías" con la G1; sin errores de consola.
+
+**Cuentas creadas en producción** (claves entregadas al usuario, no van al repo):
+- `rensoftlabs` (plataforma, usuario `admin`, rol `platform`).
+- `apt` (ONG, `admin` + `asesor01` y `asesor02` con rol `advisor`; paquetes EC-ARCA y Municipios
+  Azules, USD, America/Guayaquil, sesión de 12 h).

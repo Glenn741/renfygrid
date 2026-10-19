@@ -961,4 +961,4 @@ organización.
 - La CAP, T-06, T-08 y T-10 siguen en la junta (E4).
 - Falta la PWA sin conexión para el asesor (no hace falta para el 22-oct).
 
-Estado: **E1 construido y verificado en local; despliegue a producción en curso.**
+Estado: **E1 en producción desde 2026-10-19** (bitácora en `05-ejecucion.md`). Cuentas reales: `apt` (asesor01, asesor02) y `rensoftlabs` (plataforma).
