@@ -785,3 +785,133 @@ cuentas generada por la herramienta, no en papel.
   contraportada. Revisarlas visualmente.
 
 Estado: **aprobado, plan revisado 2026-10-05, D0 en producción** (ver §11.4); siguiente: D1.
+
+## 12. Track E — Módulo Guías y asesoría de la ONG (propuesto 2026-10-19)
+
+**Pedido del usuario (2026-10-19):** las guías son el punto de partida de un acueducto que no
+tiene guía de operación. Sus formularios dan el marco referencial para operar. Hoy están
+dispersos en varios módulos. Se piden dos enfoques que conviven:
+1. **Operador:** un solo módulo Guías con todo lo que define su marco de operación.
+2. **ONG que asesora:** el asesor entra con su usuario y solo ve Guías. Registra a los operadores
+   de un taller (p. ej., 10 operadores el **22-oct-2026**), crea de una vez su organización y llena
+   o actualiza sus formularios durante semanas. Tiene un tablero con métricas y un mapa temático.
+
+El operador puede usar su organización desde el primer día. Cada formulario lo llena el asesor
+(desde la gestión de asesorías) o el operador (desde su organización): es el mismo registro.
+
+### 12.1 Revisión del concepto: dónde vive hoy cada formulario
+
+| Guía | En "Ruta y revisiones" | En otros módulos | Sin cargar |
+|---|---|---|---|
+| G1 Diagnóstico | — | (el recorrido de "Mi sistema" es el mapa técnico de G3, no el mapa parlante) | **Todo:** percepción (6 preguntas), ficha territorial, mapa parlante, tarjeta de diagnóstico integral (~50 aspectos en 8 áreas), priorización de problemas, árbol causa-efecto, primeras acciones |
+| G2 Gobernanza | verificación inicial, 7B, 7C, 7H | — | 7A roles, 7D trámites, 7E alianza, 7F transparencia, 7G actores, 7I padrón |
+| G3 Operación | verificación inicial, semáforo, 7A, 7E, 7G.1 | Mi sistema (mapa técnico, tren), Operación diaria (puntos, 7B, 7C, productos químicos), Calidad (plan de muestreo), Mantenimiento (7D, calendario 7G), Emergencias (plan y contactos), Bodega (artículos, EPP por tarea), Saneamiento (7F), Plan mínimo y mejora (7G.2, 7H) | — |
+| G4 Administración | verificación inicial, 4A, 4B | — | 7A-7I y plan mínimo financiero (posible versión nueva de la G4; padrón, caja y tarifa son D8–D11) |
+| G5 Ambiente/WASH | todas sus listas | Saneamiento (descargas) | mapa de microcuenca, plan de campaña |
+| G6 Plan de Mejora | verificación inicial, 7F, 7H, Anexo A | Plan mínimo y mejora (7G.2) | 7A-7E y 7G (matrices) |
+| G7 Facilitación | CAP, T-06, T-08, pasaporte T-07, 7-30-90 | Observaciones del programa (T-10) | T-01 preparación, T-02 asistencia, T-03 caracterización, G1-O a G6-O |
+
+**Hallazgos:**
+1. **La G1 no tiene nada cargado,** y es la base del tablero de la ONG: la ficha territorial trae
+   el número de usuarios, los sectores y la población, y la tarjeta de diagnóstico dice si hay
+   cloración y alcantarillado.
+2. **Las herramientas del facilitador (G7) viven dentro de la junta.** En el modelo nuevo son de
+   la ONG: el T-02 de un taller reúne personas de 10 operadores. Lo que sí es de la junta (el
+   pasaporte T-07, sus formularios y sus compromisos 7-30-90) se queda en la junta.
+3. **Hay tres clases de formularios mezcladas,** y por eso se ven dispersos:
+   - **Definición (marco referencial):** se llenan una vez y se actualizan. Ficha territorial,
+     roles, plan de emergencia, plan de muestreo, puntos de medición, productos químicos,
+     calendario anual, EPP por tarea, plan mínimo, plan de mejora. **Van al módulo Guías.**
+   - **Revisión periódica:** 7A, 7E, 7G.1, semáforo, 4A/4B. **Van al módulo Guías** (absorbe
+     "Ruta y revisiones").
+   - **Registro de operación:** 7B, 7C, 7D, 7F. Son trabajo diario y se quedan en su módulo
+     operativo, pero la guía los muestra con su estado ("se registra en Operación diaria ·
+     último registro hace 2 días").
+4. **Faltan dos tipos de formulario en el motor:** la ficha (campos tipados, con "dato estimado,
+   por verificar" y "dónde verificarlo", como pide la G1) y la tabla o matriz (filas con
+   columnas: priorización, 7A roles, 7I padrón, matrices de la G6). Se agregan al motor como
+   tipos genéricos; ningún formato se programa como pantalla propia (regla de §11.3).
+
+### 12.2 Enfoque 1 — Módulo Guías en la organización del operador
+
+- **Primer ítem del menú**, en un grupo propio ("Punto de partida"), y reemplaza "Ruta y
+  revisiones".
+- **Una tarjeta por guía** con el código visible (G1…G6), su avance (completo / por verificar /
+  pendiente) y **qué habilita**. Ejemplo: "con los puntos de medición de la G3 se habilita
+  Operación diaria".
+- **Dentro de cada guía, sus formularios** con código (G3 · 7A) y estado. Los de definición se
+  editan ahí mismo. Los módulos operativos dejan de editarlos y los leen, con un enlace "Definido
+  en Guía 3 › Plan de emergencia".
+- **Los módulos operativos no se bloquean.** Si falta la definición, muestran un estado vacío que
+  lleva al formulario de la guía que la completa.
+- **El código de formulario se ve igual en todas partes** (ya existe `formSuffix`/`formLink` en
+  `catalog.tsx`), así la guía se reconoce en cualquier módulo.
+- **Cada registro guarda quién lo llenó y desde dónde** (operador o asesor, y en qué taller).
+
+### 12.3 Enfoque 2 — Asesoría de la ONG
+
+**Organización de tipo `advisor`** (nuevo valor de `tenant.kind`; hoy existen `provider` y
+`group`). No es una agrupación: la agrupación lee indicadores compartidos, la ONG llena
+formularios. Su menú: Tablero de asesoría, Operadores, Talleres, Guías (por operador),
+Herramientas del facilitador (T-01…T-10, CAP) y Configuración (solo usuarios). **No ve** VEE,
+Balance Hídrico, Modelación, Gemelo ni los módulos operativos. El menú se filtra por tipo de
+organización.
+
+**Decisión de diseño (recomendada): la organización del operador se crea al registrarlo.**
+- En el taller, el asesor registra al operador con lo mínimo (nombre, cantón/parroquia, ubicación
+  en el mapa, contacto) y el sistema crea su organización (`provider`) en estado "en
+  acompañamiento", más un **acuerdo de asesoría** ONG ↔ operador.
+- Todo lo que el asesor llena queda **en la organización del operador** desde el primer día. No
+  hay migración posterior, y se respeta que cada junta es dueña de sus datos.
+- El acuerdo da a la ONG permiso de **escribir solo los formularios de las guías** de ese
+  operador. El permiso se valida en cada petición y se ejecuta con el alcance (RLS) del operador,
+  igual que el tablero de la agrupación (`group_service`).
+- El consentimiento del operador se registra en el taller (quién, cuándo). El operador puede
+  revocarlo o ampliarlo desde su organización.
+- Cuando el operador esté listo, el asesor le entrega su cuenta (usuario administrador de su
+  organización) y los dos siguen llenando el mismo registro.
+- Alternativa descartada: guardar los formularios en la ONG y migrarlos al crear la
+  organización. Duplica datos, rompe la propiedad de la junta y obliga a una migración por
+  operador.
+
+**Talleres:**
+- Fecha, lugar, guías que cubre, facilitadores y operadores que asisten.
+- Asistencia T-02 por persona y operador, y caracterización T-03 (sin datos de salud, como pide
+  la G7).
+- Los formularios llenados en el taller quedan marcados con el taller. Así se sabe qué guía se
+  vio con cada operador y cuál se completó después.
+
+**Tablero de la ONG:**
+- Indicadores: operadores acompañados, capacitados (al menos un taller), talleres realizados y
+  avance promedio por guía.
+- **Matriz operador × guía:** vista en taller (sí/no y fecha) y formularios completos (%).
+- CAP inicial frente a final, por guía; compromisos 7-30-90 vencidos.
+- **Mapa temático por capas:**
+  - tamaño del círculo según el número de usuarios (de la ficha territorial G1);
+  - color según el tipo de suministro: agua potable (tratada y desinfectada), agua cruda
+    (entubada sin tratamiento) o sin servicio;
+  - forma o anillo según el saneamiento: alcantarillado, saneamiento en sitio (pozo séptico,
+    letrina) o ninguno;
+  - capas que se prenden y apagan, y filtro por guía cubierta.
+  - Los tipos de suministro y de saneamiento son catálogos (`code_label`), no valores fijos
+    (directiva "nada hardcodeado"). Salen de la ficha del operador y se actualizan al llenarla.
+
+### 12.4 Sprints propuestos (hito: taller del 22-oct-2026)
+
+| Sprint | Entrega | Para el 22-oct |
+|---|---|---|
+| **E1** | Organización `advisor` + rol asesor + menú filtrado; registrar operador → crea su organización + acuerdo de asesoría; talleres con asistencia; llenar las guías de un operador desde la ONG; tipos de formulario **ficha** y **tabla**; **G1 completa** cargada (ficha territorial con ubicación, usuarios, tipo de suministro y saneamiento; percepción; tarjeta de diagnóstico; priorización; causas; primeras acciones) | **Sí, imprescindible** |
+| **E2** | Tablero de la ONG con la matriz operador × guía y el mapa temático por capas | Deseable |
+| **E3** | Módulo Guías en la organización del operador: absorbe "Ruta y revisiones"; las definiciones dispersas pasan a su guía; los módulos operativos las leen; estados vacíos guiados; "qué habilita" | Después |
+| **E4** | Formularios que faltan: G2 (7A, 7D-7G, 7I), G6 (matrices 7A-7E y 7G), G4 7A-7I si llega la versión nueva; G1-O a G6-O y T-01/T-03 en la ONG; mover CAP/T-06/T-08/T-10 de la junta a la ONG | Después |
+| **E5** | Entrega de la cuenta al operador, revocar o ampliar el permiso, avisos al asesor cuando el operador llena algo | Después |
+
+**Decisiones pendientes del usuario:**
+- Qué guías se verán en el taller del 22-oct. Define qué se carga primero en E1.
+- Nombre de la ONG y usuarios asesores a crear.
+- Confirmar la creación de la organización al registrar al operador, con su consentimiento en el
+  taller.
+- Si en el lugar del taller habrá internet. Si no, el asesor necesita llenar sin conexión, como la
+  app del operador (D1.3), y eso agrega trabajo a E1.
+
+Estado: **propuesto 2026-10-19, esperando confirmación del usuario.**
