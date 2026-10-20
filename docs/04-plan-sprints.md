@@ -962,3 +962,19 @@ organización.
 - Falta la PWA sin conexión para el asesor (no hace falta para el 22-oct).
 
 Estado: **E1 en producción desde 2026-10-19** (bitácora en `05-ejecucion.md`). Cuentas reales: `apt` (asesor01, asesor02) y `rensoftlabs` (plataforma).
+
+## 13. Track F — Producto estándar para energía, gas y agua (propuesto 2026-10-20)
+
+Pedido del usuario: RenfyGrid debe ser un producto estándar para tres industrias. Lo propio de
+cada sector va en un módulo con su nombre (Agua, Energía, Gas); el MDM, el gemelo, el
+mantenimiento y los motores son transversales; nada fijo en el código. La evaluación completa,
+con la auditoría de valores fijos, el diseño de catálogos (`sector`, `tenant_sector`, `unit`,
+`product_module`/`tenant_module`) y el menú propuesto, está en **`09-multi-industria.md`**.
+
+| Sprint | Alcance | Estado |
+|---|---|---|
+| F0 | Sitio rensoftlabs.com: tarjeta multi-industria (6 idiomas) y **un brief por industria** generado desde datos (`rnsftlbs/com/marketing/renfygrid/briefs.json` + `build_briefs.py`) | Construido 2026-10-20, **sin publicar** (espera visto bueno) |
+| F1 | Sector y módulos como datos; menú desde `/modules`; tenants actuales = `water`, sin cambio visible | Propuesto, después del taller del 22-oct |
+| F2 | Grupo "Agua" en el menú; `sector_code` en paquetes, etapas y tipos; corregir `"unit": "kWh"` fijo de `billing_export.py` | Propuesto |
+| F3 | MDM multimedio: sector por medidor desde OBIS, unidades por canal, VEE por sector, catálogo de métodos de balance y simuladores | Propuesto |
+| F4 / F5 | Módulos Energía y Gas (MVP) | Esperan un piloto real de cada industria |
