@@ -30,11 +30,13 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "common"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "portal-api"))
 
 import psycopg  # noqa: E402
 
 from form_engine import field_value, guide_coverage  # noqa: E402
 from form_service import entries_for, form_template, get_form, merge_record, save_form  # noqa: E402
+from product_modules import tenant_sectors  # noqa: E402
 from organization_service import (  # noqa: E402
     OrganizationConflictError,
     config_from,
@@ -592,8 +594,10 @@ def transfer_operator(conn: psycopg.Connection, tenant_id: str, operator_id: str
     runs = list(reversed(list_checklist_runs(conn, tenant_id, advised_operator_id=op["operator_id"])))
     entries = entries_for(conn, tenant_id, op["operator_id"])
     with conn.transaction():
+        # El operador opera los mismos sectores que la ONG que lo asesora (0048).
         org = create_organization(conn, code, "provider", admin_username, admin_password, actor,
-                                  config=config_from(conn, tenant_id), packs=packs, display_name=op["name"])
+                                  config=config_from(conn, tenant_id), packs=packs, display_name=op["name"],
+                                  sectors=tenant_sectors(conn, tenant_id))
         new_id = org["tenant_id"]
         copied_runs = findings = 0
         for r in runs:

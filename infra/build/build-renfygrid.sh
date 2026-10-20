@@ -29,6 +29,8 @@ declare -A SKIP=(
   # Track D (D0, 2026-10-05). seed_demo_junta y verify_* se compilan tambien:
   # en el servidor se corren como modulo (`python -c "import ..."`), sin .py.
   [community]=''
+  # Track F (2026-10-20): fronteras, equipos y su hoja de vida.
+  [assets]=''
 )
 
 declare -A SRC_SUBDIR=(
@@ -42,7 +44,7 @@ declare -A SRC_SUBDIR=(
 # esto se salta el archivo por completo). Un archivo "fuente" (SKIP) se
 # copia solo si cambio o no existe en destino, mismo criterio.
 
-for svc in common hes-adapter-dlms vee-engine consumption control portal-api network-balance network-model digital-twin maintenance community; do
+for svc in common hes-adapter-dlms vee-engine consumption control portal-api network-balance network-model digital-twin maintenance community assets; do
   subdir="${SRC_SUBDIR[$svc]:-}"
   src="$REPO/$svc"
   [[ -n "$subdir" ]] && src="$src/$subdir"

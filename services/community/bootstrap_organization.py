@@ -52,6 +52,7 @@ def main() -> None:
     parser.add_argument("--display-name")
     parser.add_argument("--admin", required=True, help="Usuario administrador")
     parser.add_argument("--packs", default="")
+    parser.add_argument("--sectors", default="", help="Sectores que opera: electricity, gas, water (separados por coma)")
     parser.add_argument("--timezone")
     parser.add_argument("--ttl-hours", type=float, required=True)
     parser.add_argument("--currency")
@@ -66,7 +67,8 @@ def main() -> None:
     with psycopg.connect(args.dsn, autocommit=True) as conn:
         with conn.transaction():
             org = create_organization(conn, args.name, args.kind, args.admin, _password(args.admin), "cli:bootstrap",
-                                      config=config, packs=packs, display_name=args.display_name)
+                                      config=config, packs=packs, display_name=args.display_name,
+                                      sectors=[x.strip() for x in args.sectors.split(",") if x.strip()])
             if args.currency and args.locale:
                 set_region(conn, org["tenant_id"], args.currency, args.locale)
             for spec in args.user:

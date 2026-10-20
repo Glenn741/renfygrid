@@ -38,6 +38,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "network-model"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "digital-twin"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "maintenance"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "community"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "assets"))
 
 import psycopg  # noqa: E402
 from fastapi import Depends, FastAPI, HTTPException, Request  # noqa: E402
@@ -49,6 +50,9 @@ from pydantic import BaseModel  # noqa: E402
 from approval_levels_admin import create_approval_level, list_approval_levels  # noqa: E402
 from approval_levels_cache import fetch_active_approval_levels  # noqa: E402
 from auth_dependency import get_actor, get_session_claims, get_tenant_id, requested_by_label  # noqa: E402
+import metering_asset_import  # noqa: E402
+import metering_asset_service  # noqa: E402
+import product_modules  # noqa: E402
 from billing_export import billing_ready_consumption, to_csv  # noqa: E402
 from config import Settings  # noqa: E402
 from consumption_anomaly_rules_admin import (  # noqa: E402
@@ -463,6 +467,10 @@ def session_me(claims: dict = Depends(get_session_claims)) -> dict:
             cur.execute("SELECT label FROM app_role WHERE code = %s", (role,))
             label_row = cur.fetchone()
         role_label = label_row[0] if label_row else role
+        # Track F (0048): el menu sale de los modulos que le tocan a la
+        # organizacion por su tipo y sus sectores (energia, gas, agua).
+        sectors = product_modules.tenant_sectors(conn, claims["tenant_id"])
+        modules = product_modules.modules_for(conn, claims["tenant_id"], row[1] if row else None)
     return {
         "tenant_id": claims["tenant_id"],
         "tenant_name": row[0] if row else None,
@@ -470,6 +478,8 @@ def session_me(claims: dict = Depends(get_session_claims)) -> dict:
         # ONG solo ve las guias; la plataforma, las organizaciones).
         "tenant_kind": row[1] if row else None,
         "tenant_display_name": row[2] if row else None,
+        "sectors": sectors,
+        "modules": modules,
         "email": claims.get("email") or claims.get("user_id"),
         "role": role,
         "role_label": role_label,
@@ -1280,7 +1290,7 @@ class AssetConnectivityRequest(BaseModel):
 def create_asset_connectivity_endpoint(body: AssetConnectivityRequest, tenant_id: str = Depends(get_tenant_id)) -> dict:
     """Conecta dos activos reales -- `404` si alguno no existe PARA ESTE
     TENANT (verificacion explicita vía `network_asset`, `asset_connectivity`
-    no tiene RLS propio -- ver `asset_service.py`)."""
+    no tiene RLS propio -- ver `metering_asset_service.py`)."""
     with db_conn() as conn:
         try:
             return connect_assets(conn, tenant_id, body.source_asset_id, body.target_asset_id, body.connection_type)
@@ -3370,6 +3380,7 @@ class OrganizationRequest(BaseModel):
     currency: str | None = None
     locale: str | None = None
     packs: list[str] = []
+    sectors: list[str] = []
 
 
 def _require_platform(conn: psycopg.Connection, tenant_id: str) -> None:
@@ -3393,5 +3404,245 @@ def create_organization_endpoint(body: OrganizationRequest, actor: dict = Depend
                                           "currency": body.currency, "locale": body.locale}.items() if v is not None})
         return organization_service.create_organization(
             conn, body.name, body.kind, body.admin_username, body.admin_password, requested_by_label(actor),
-            config=config, packs=body.packs, display_name=body.display_name,
+            config=config, packs=body.packs, display_name=body.display_name, sectors=body.sectors,
         )
+
+
+# ── Track F (0048-0050): sectores, fronteras, equipos y su hoja de vida ──
+# docs/09-multi-industria.md y docs/10-caso-energia-fronteras.md.
+
+@app.get("/sectors")
+def sectors_endpoint(tenant_id: str = Depends(get_tenant_id)) -> list[dict]:
+    """Catalogo de sectores (energia, gas, agua) para el alta de organizaciones."""
+    with db_conn() as conn:
+        return product_modules.list_sectors(conn)
+
+
+@contextmanager
+def _asset_errors() -> Iterator[None]:
+    try:
+        yield
+    except metering_asset_service.AssetNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except metering_asset_service.AssetConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except (InvalidFormError, metering_asset_import.AssetImportError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/assets/catalog")
+def assets_catalog_endpoint(tenant_id: str = Depends(get_tenant_id)) -> dict:
+    with db_conn() as conn, _asset_errors():
+        return metering_asset_service.catalog(conn, tenant_id)
+
+
+@app.get("/assets/summary")
+def assets_summary_endpoint(tenant_id: str = Depends(get_tenant_id)) -> dict:
+    with db_conn() as conn, _asset_errors():
+        return metering_asset_service.summary(conn, tenant_id)
+
+
+class MeteringPointRequest(BaseModel):
+    code: str | None = None
+    export_code: str | None = None
+    niu: str | None = None
+    name: str | None = None
+    customer_name: str | None = None
+    address: str | None = None
+    city: str | None = None
+    region: str | None = None
+    lat: float | None = None
+    lon: float | None = None
+    point_class: str | None = None
+    voltage_kv: float | None = None
+    capacity_kva: float | None = None
+    consumption_mwh_month: float | None = None
+    status: str | None = None
+    registered_on: date | None = None
+    verified_on: date | None = None
+
+
+@app.get("/metering-points")
+def metering_points_endpoint(tenant_id: str = Depends(get_tenant_id), q: str | None = None, status: str | None = None,
+                             point_class: str | None = None, periodic: str | None = None) -> dict:
+    with db_conn() as conn, _asset_errors():
+        return metering_asset_service.list_points(conn, tenant_id, q=q, status=status, point_class=point_class, periodic=periodic)
+
+
+@app.post("/metering-points", status_code=201)
+def create_metering_point_endpoint(body: MeteringPointRequest, actor: dict = Depends(get_actor)) -> dict:
+    with db_conn() as conn, _asset_errors():
+        return metering_asset_service.create_point(conn, actor["tenant_id"], body.model_dump(exclude_unset=True), requested_by_label(actor))
+
+
+@app.get("/metering-points/{point_id}")
+def metering_point_endpoint(point_id: str, tenant_id: str = Depends(get_tenant_id)) -> dict:
+    with db_conn() as conn, _asset_errors():
+        return metering_asset_service.get_point(conn, tenant_id, point_id)
+
+
+@app.patch("/metering-points/{point_id}")
+def update_metering_point_endpoint(point_id: str, body: MeteringPointRequest, tenant_id: str = Depends(get_tenant_id)) -> dict:
+    with db_conn() as conn, _asset_errors():
+        return metering_asset_service.update_point(conn, tenant_id, point_id, body.model_dump(exclude_unset=True))
+
+
+class SectionSaveRequest(BaseModel):
+    data: dict
+
+
+@app.put("/metering-points/{point_id}/sections/{form_id}")
+def save_point_section_endpoint(point_id: str, form_id: str, body: SectionSaveRequest, actor: dict = Depends(get_actor)) -> dict:
+    with db_conn() as conn, _asset_errors():
+        return metering_asset_service.save_point_section(conn, actor["tenant_id"], point_id, form_id, body.data, requested_by_label(actor))
+
+
+class EquipmentRequest(BaseModel):
+    class_code: str | None = None
+    serial: str | None = None
+    brand: str | None = None
+    model: str | None = None
+    manufacturer: str | None = None
+    year: int | None = None
+    ownership: str | None = None
+    status: str | None = None
+    attributes: dict | None = None
+
+
+@app.get("/equipment")
+def equipment_list_endpoint(tenant_id: str = Depends(get_tenant_id), q: str | None = None, class_code: str | None = None,
+                            status: str | None = None, periodic: str | None = None) -> dict:
+    with db_conn() as conn, _asset_errors():
+        return metering_asset_service.list_equipment(conn, tenant_id, q=q, class_code=class_code, status=status, periodic=periodic)
+
+
+@app.post("/equipment", status_code=201)
+def create_equipment_endpoint(body: EquipmentRequest, actor: dict = Depends(get_actor)) -> dict:
+    with db_conn() as conn, _asset_errors():
+        return metering_asset_service.create_equipment(conn, actor["tenant_id"], body.model_dump(exclude_unset=True), requested_by_label(actor))
+
+
+@app.get("/equipment/{equipment_id}")
+def equipment_endpoint(equipment_id: str, tenant_id: str = Depends(get_tenant_id)) -> dict:
+    with db_conn() as conn, _asset_errors():
+        return metering_asset_service.get_equipment(conn, tenant_id, equipment_id)
+
+
+@app.patch("/equipment/{equipment_id}")
+def update_equipment_endpoint(equipment_id: str, body: EquipmentRequest, tenant_id: str = Depends(get_tenant_id)) -> dict:
+    with db_conn() as conn, _asset_errors():
+        return metering_asset_service.update_equipment(conn, tenant_id, equipment_id, body.model_dump(exclude_unset=True))
+
+
+class InstallRequest(BaseModel):
+    point_id: str
+    position_code: str
+    installed_on: date
+    notes: str | None = None
+    external_ref: str | None = None
+
+
+@app.post("/equipment/{equipment_id}/install", status_code=201)
+def install_equipment_endpoint(equipment_id: str, body: InstallRequest, actor: dict = Depends(get_actor)) -> dict:
+    with db_conn() as conn, _asset_errors():
+        return metering_asset_service.install(conn, actor["tenant_id"], equipment_id, body.point_id, body.position_code, body.installed_on,
+                                     requested_by_label(actor), notes=body.notes, external_ref=body.external_ref)
+
+
+class RemoveRequest(BaseModel):
+    removed_on: date
+    reason: str | None = None
+    new_status: str = "stock"
+    external_ref: str | None = None
+
+
+@app.post("/equipment/{equipment_id}/remove")
+def remove_equipment_endpoint(equipment_id: str, body: RemoveRequest, actor: dict = Depends(get_actor)) -> dict:
+    with db_conn() as conn, _asset_errors():
+        return metering_asset_service.remove(conn, actor["tenant_id"], equipment_id, body.removed_on, requested_by_label(actor),
+                                    reason=body.reason, new_status=body.new_status, external_ref=body.external_ref)
+
+
+class MeteringEventRequest(BaseModel):
+    type_code: str
+    occurred_on: date
+    point_id: str | None = None
+    equipment_id: str | None = None
+    data: dict | None = None
+    notes: str | None = None
+    external_ref: str | None = None
+
+
+@app.post("/metering-events", status_code=201)
+def record_metering_event_endpoint(body: MeteringEventRequest, actor: dict = Depends(get_actor)) -> dict:
+    """Un registro de la bitacora (calibracion, prueba, sello, acceso, visita...).
+    Quien lo registra sale del token; el registro no se edita despues."""
+    with db_conn() as conn, _asset_errors():
+        return metering_asset_service.record_event(conn, actor["tenant_id"], type_code=body.type_code, occurred_on=body.occurred_on,
+                                          recorded_by=requested_by_label(actor), point_id=body.point_id,
+                                          equipment_id=body.equipment_id, data=body.data, notes=body.notes,
+                                          external_ref=body.external_ref)
+
+
+@app.get("/metering-events/xm-pending")
+def xm_pending_endpoint(tenant_id: str = Depends(get_tenant_id)) -> list[dict]:
+    with db_conn() as conn, _asset_errors():
+        return metering_asset_service.pending_xm(conn, tenant_id)
+
+
+class XmReportRequest(BaseModel):
+    event_ids: list[str]
+    reported_on: date
+
+
+@app.post("/metering-events/xm-report")
+def xm_report_endpoint(body: XmReportRequest, actor: dict = Depends(get_actor)) -> dict:
+    with db_conn() as conn, _asset_errors():
+        return metering_asset_service.mark_reported(conn, actor["tenant_id"], body.event_ids, body.reported_on, requested_by_label(actor))
+
+
+@app.get("/assets/import/template")
+def assets_import_template_endpoint(tenant_id: str = Depends(get_tenant_id)) -> Response:
+    with db_conn() as conn, _asset_errors():
+        content = metering_asset_import.build_template(conn, tenant_id)
+    return Response(content=content, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": 'attachment; filename="plantilla-fronteras-y-equipos.xlsx"'})
+
+
+class AssetImportRequest(BaseModel):
+    filename: str
+    content_base64: str
+    dry_run: bool = True
+
+
+@app.post("/assets/import")
+def assets_import_endpoint(body: AssetImportRequest, actor: dict = Depends(get_actor)) -> dict:
+    """Carga fronteras y equipos desde la plantilla o un archivo plano. Con
+    `dry_run` (por defecto) dice lo que grabaria sin grabar nada."""
+    try:
+        content = base64.b64decode(body.content_base64, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise HTTPException(status_code=422, detail="El archivo no llegó completo; vuelva a cargarlo") from exc
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="El archivo supera 10 MB")
+    with db_conn() as conn, _asset_errors():
+        return metering_asset_import.import_file(conn, actor["tenant_id"], requested_by_label(actor), body.filename, content,
+                                        dry_run=body.dry_run)
+
+
+class AssetSettingsRequest(BaseModel):
+    due_soon_days: int
+
+
+@app.get("/settings/assets")
+def asset_settings_endpoint(tenant_id: str = Depends(get_tenant_id)) -> dict:
+    with db_conn() as conn:
+        return {"due_soon_days": metering_asset_service.due_soon_days(conn, tenant_id)}
+
+
+@app.put("/settings/assets")
+def update_asset_settings_endpoint(body: AssetSettingsRequest, tenant_id: str = Depends(get_tenant_id)) -> dict:
+    """Con cuantos dias de anticipacion una calibracion o prueba se marca
+    "por vencer" (parametro de la organizacion, nunca un valor fijo)."""
+    with db_conn() as conn, _asset_errors():
+        return metering_asset_service.set_due_soon_days(conn, tenant_id, body.due_soon_days)

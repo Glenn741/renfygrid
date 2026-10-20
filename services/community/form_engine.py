@@ -85,7 +85,9 @@ def coerce_value(defn: dict, raw: Any) -> Any:
         value = float(raw)
         if math.isnan(value) or math.isinf(value):
             raise InvalidFormError(f"{label}: número inválido")
-        if value < 0:
+        # Por defecto una cantidad no es negativa; el campo que si puede serlo
+        # (p. ej. el error de un medidor en su calibracion) lo declara.
+        if value < 0 and not defn.get("signed"):
             raise InvalidFormError(f"{label}: no puede ser negativo")
         if kind == "integer":
             if not value.is_integer():

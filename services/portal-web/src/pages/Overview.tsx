@@ -20,7 +20,7 @@ import { NetworkMap, nrwColorForMap } from "../components/NetworkMap";
 import { TrendBars } from "../components/TrendBars";
 import { SectionNav } from "../components/SectionNav";
 
-import { NAV_GROUPS, sectionsFor, visibleFor } from "../navigation";
+import { navGroupsFor, sectionsFor } from "../navigation";
 import { useSessionInfo } from "../components/SessionMenu";
 import { Icon } from "../components/Icon";
 // Nivel 1 (F48, Sprint C1) -- rediseñada 2026-09-14 a pedido directo del
@@ -265,11 +265,11 @@ export function OverviewPage() {
 
       <div id="modules" className="scroll-mt-24">
         <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-2">Todos los módulos</h2>
-        {NAV_GROUPS.filter((g) => g.title && g.items.some((m) => visibleFor(m, session?.tenant_kind))).map((g) => (
+        {navGroupsFor(session?.modules).filter((g) => g.title).map((g) => (
           <div key={g.title} className="mb-5">
             <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">{g.title}</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {g.items.filter((m) => visibleFor(m, session?.tenant_kind)).map((m) => (
+              {g.items.map((m) => (
                 <Link
                   key={m.to}
                   to={m.to}

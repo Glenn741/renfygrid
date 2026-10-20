@@ -49,6 +49,12 @@ ROUTE_RULES: list[tuple[frozenset[str] | None, re.Pattern, str | None]] = [
     (None, re.compile(r"^/advisory/import$"), "advisory.record"),
     (None, re.compile(r"^/advisory/(operators|workshops)(/.*)?$"), "advisory.manage"),
     (None, re.compile(r"^/organizations$"), "organizations.manage"),
+    # Track F (0049): fronteras, equipos y su bitacora.
+    (None, re.compile(r"^/metering-events/xm-report$"), "assets.report"),
+    (None, re.compile(r"^/metering-events$"), "assets.record"),
+    (None, re.compile(rf"^/metering-points/{_ID}/sections/{_ID}$"), "assets.record"),
+    (None, re.compile(r"^/(metering-points|equipment)(/.*)?$"), "assets.manage"),
+    (None, re.compile(r"^/assets/import$"), "assets.manage"),
     (frozenset({"POST"}), re.compile(r"^/findings$"), "findings.report"),
     (None, re.compile(rf"^/findings/{_ID}$"), "findings.manage"),
     (None, re.compile(r"^/(passport|follow-up)(/.*)?$"), "program.manage"),

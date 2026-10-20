@@ -109,12 +109,16 @@ def create_organization(
     config: dict[str, Any] | None = None,
     packs: list[str] | None = None,
     display_name: str | None = None,
+    sectors: list[str] | None = None,
 ) -> dict:
-    """Crea la organizacion, adopta sus paquetes y crea su administrador, todo
-    en una transaccion: si algo falla no queda una organizacion a medias."""
-    # Import tardio: permissions vive en portal-api y valida usuario/clave
-    # con las mismas reglas de Configuracion -> Usuarios.
+    """Crea la organizacion, sus sectores (Track F, 0048: energia, gas, agua;
+    una multiservicio tiene varios), adopta sus paquetes y crea su
+    administrador, todo en una transaccion: si algo falla no queda una
+    organizacion a medias."""
+    # Import tardio: permissions y product_modules viven en portal-api;
+    # usuario y clave se validan con las mismas reglas de Configuracion -> Usuarios.
     from permissions import create_user
+    from product_modules import UnknownSectorError, set_tenant_sectors
 
     code = validate_code(name)
     if kind not in KINDS:
@@ -133,6 +137,13 @@ def create_organization(
                         (code, Json(clean_config), kind))
             tenant_id, created_at = cur.fetchone()
         tenant_id = str(tenant_id)
+        if kind != "platform":
+            if not sectors:
+                raise InvalidRecordError("Indique el sector o los sectores que opera la organización (energía, gas, agua)")
+            try:
+                set_tenant_sectors(conn, tenant_id, sectors)
+            except UnknownSectorError as exc:
+                raise InvalidRecordError(str(exc)) from None
         for pack_id in packs or []:
             try:
                 adopt_pack(conn, tenant_id, pack_id)
@@ -141,7 +152,8 @@ def create_organization(
         # En la organizacion de la plataforma su administrador es el rol que crea organizaciones.
         admin = create_user(conn, tenant_id, admin_username, admin_password, "platform" if kind == "platform" else ADMIN_ROLE)
     return {"tenant_id": tenant_id, "name": code, "kind": kind, "display_name": clean_config.get("display_name"),
-            "created_at": created_at.isoformat(), "admin": admin, "packs": packs or []}
+            "created_at": created_at.isoformat(), "admin": admin, "packs": packs or [],
+            "sectors": list(dict.fromkeys(sectors or [])) if kind != "platform" else []}
 
 
 def list_organizations(conn: psycopg.Connection) -> list[dict]:

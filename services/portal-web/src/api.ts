@@ -1101,6 +1101,21 @@ export interface SessionInfo {
   /** Tipo de organizacion (0047): el menu se arma segun este tipo. */
   tenant_kind: TenantKind | null;
   tenant_display_name: string | null;
+  /** Sectores que opera la organizacion (0048): electricity, gas, water. */
+  sectors: string[];
+  /** Modulos del menu que le tocan, en orden (0048): el menu sale de aqui. */
+  modules: ProductModule[];
+}
+
+export interface ProductModule {
+  code: string;
+  path: string;
+  label: string;
+  icon: string;
+  description: string | null;
+  group: { code: string; label: string | null; sort_order: number };
+  sort_order: number;
+  sectors: string[] | null;
 }
 
 export type TenantKind = "provider" | "group" | "advisor" | "platform";
@@ -1304,6 +1319,8 @@ export interface FormFieldDef {
   verify?: string;
   group?: string;
   platform_note?: string;
+  /** La cantidad puede ser negativa (p. ej. el error de un medidor). */
+  signed?: boolean;
 }
 
 export interface FormSpec {
@@ -2551,7 +2568,8 @@ export function getOrganizations(): Promise<Organization[]> {
 export function createOrganization(body: {
   name: string; kind: TenantKind; admin_username: string; admin_password: string; display_name?: string | null;
   timezone?: string | null; session_ttl_seconds?: number | null; currency?: string | null; locale?: string | null; packs: string[];
-}): Promise<Organization & { admin: AppUser; packs: string[] }> {
+  sectors: string[];
+}): Promise<Organization & { admin: AppUser; packs: string[]; sectors: string[] }> {
   return request("/organizations", { method: "POST", body: JSON.stringify(body) });
 }
 
@@ -2630,4 +2648,308 @@ export function setRegion(body: { currency: string; locale: string }) {
 
 export function setTerms(changes: Record<string, { label: string; plural: string } | null>) {
   return request("/settings/terms", { method: "PUT", body: JSON.stringify({ changes }) });
+}
+
+// ── Track F (0048-0050): sectores, fronteras, equipos y su hoja de vida ──
+
+export interface Sector {
+  code: string;
+  label: string;
+  icon: string;
+  billing_unit: string;
+  description: string;
+}
+
+export function getSectors(): Promise<Sector[]> {
+  return request("/sectors");
+}
+
+export type PeriodicStatus = "ok" | "due_soon" | "overdue" | "missing" | "not_required";
+
+export interface Periodic {
+  status: PeriodicStatus;
+  activity: "calibration" | "routine_test" | null;
+  last_done: string | null;
+  due_on: string | null;
+  reason?: "invalidated";
+}
+
+export interface PointClass { code: string; label: string; sort_order: number; min_mwh_month: number; min_mva: number }
+export interface EquipmentClass { code: string; label: string; plural: string; periodic_activity: "calibration" | "routine_test" | null }
+export interface InstallationPosition { code: string; equipment_class: string; label: string; novelty_type: string | null; sort_order: number }
+export interface MeteringEventType {
+  code: string;
+  label: string;
+  scope: "point" | "equipment" | "any";
+  activity: "calibration" | "routine_test" | null;
+  requires_xm_update: boolean;
+  invalidates_calibration: string | null;
+  manual: boolean;
+  data_spec: FormSpec;
+  source_ref: string | null;
+}
+export interface AssetForm { id: string; scope: "point" | "equipment"; equipment_class: string | null; title: string; form_spec: FormSpec; source_ref: string }
+
+export interface AssetCatalog {
+  pack_id: string | null;
+  point_classes: PointClass[];
+  frequencies: { point_class: string; equipment_class: string; activity: string; every_months: number; citation: string }[];
+  equipment_classes: EquipmentClass[];
+  positions: InstallationPosition[];
+  event_types: MeteringEventType[];
+  forms: AssetForm[];
+  due_soon_days: number | null;
+}
+
+export function getAssetCatalog(): Promise<AssetCatalog> {
+  return request("/assets/catalog");
+}
+
+export interface MeteringPoint {
+  id: string;
+  code: string;
+  export_code: string | null;
+  niu: string | null;
+  name: string;
+  customer_name: string;
+  address: string | null;
+  city: string | null;
+  region: string | null;
+  lat: number | null;
+  lon: number | null;
+  point_class: string | null;
+  voltage_kv: number | null;
+  capacity_kva: number | null;
+  consumption_mwh_month: number | null;
+  status: string;
+  registered_on: string | null;
+  verified_on: string | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MeteringPointRow extends MeteringPoint {
+  periodic_status: PeriodicStatus;
+  main_meter: { id: string; serial: string; brand: string | null } | null;
+  equipment_count: number;
+  xm_pending: number;
+  next_due: string | null;
+}
+
+export interface MeteringEvent {
+  id: string;
+  point_id: string | null;
+  equipment_id: string | null;
+  type_code: string;
+  type_label: string;
+  occurred_on: string;
+  data: FormData;
+  notes: string | null;
+  source: string;
+  external_ref: string | null;
+  recorded_by: string;
+  recorded_at: string;
+  xm_status: "pending" | "reported" | null;
+  xm_reported_on: string | null;
+  xm_reported_by: string | null;
+  equipment_serial: string | null;
+  equipment_class: string | null;
+  point_code: string | null;
+  data_spec: FormSpec | null;
+}
+
+export interface InstalledEquipment {
+  installation_id: string;
+  point_id: string;
+  position_code: string;
+  position_label: string;
+  installed_on: string;
+  id: string;
+  class_code: string;
+  serial: string;
+  brand: string | null;
+  model: string | null;
+  periodic: Periodic;
+}
+
+export interface PointSection extends AssetForm {
+  data: FormData;
+  version: number;
+  updated_by: string | null;
+  updated_at: string | null;
+  progress: FormProgress;
+}
+
+export interface MeteringPointDetail extends MeteringPoint {
+  suggested_point_class: string | null;
+  equipment: InstalledEquipment[];
+  installation_history: {
+    installation_id: string; position_code: string; installed_on: string; removed_on: string | null; installed_by: string;
+    removed_by: string | null; removal_reason: string | null; equipment_id: string; class_code: string; serial: string;
+    brand: string | null; model: string | null;
+  }[];
+  sections: PointSection[];
+  events: MeteringEvent[];
+  periodic_status: PeriodicStatus;
+  xm_pending: number;
+  due_soon_days: number | null;
+}
+
+export type MeteringPointInput = Partial<Omit<MeteringPoint, "id" | "created_by" | "created_at" | "updated_at">>;
+
+export function getMeteringPoints(filters: { q?: string; status?: string; point_class?: string; periodic?: string } = {}): Promise<{
+  points: MeteringPointRow[]; total: number; due_soon_days: number | null;
+}> {
+  const params = new URLSearchParams(Object.entries(filters).filter(([, v]) => v) as [string, string][]);
+  return request(`/metering-points${params.toString() ? `?${params}` : ""}`);
+}
+
+export function getMeteringPoint(id: string): Promise<MeteringPointDetail> {
+  return request(`/metering-points/${id}`);
+}
+
+export function createMeteringPoint(body: MeteringPointInput): Promise<MeteringPointDetail> {
+  return request("/metering-points", { method: "POST", body: JSON.stringify(body) });
+}
+
+export function updateMeteringPoint(id: string, body: MeteringPointInput): Promise<MeteringPointDetail> {
+  return request(`/metering-points/${id}`, { method: "PATCH", body: JSON.stringify(body) });
+}
+
+export function savePointSection(pointId: string, formId: string, data: FormData): Promise<{ form_id: string; version: number; data: FormData; progress: FormProgress }> {
+  return request(`/metering-points/${pointId}/sections/${formId}`, { method: "PUT", body: JSON.stringify({ data }) });
+}
+
+export interface EquipmentRow {
+  id: string;
+  class_code: string;
+  serial: string;
+  brand: string | null;
+  model: string | null;
+  manufacturer: string | null;
+  year: number | null;
+  ownership: string | null;
+  status: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  location: { point_id: string; point_code: string; point_name: string; position_code: string; position_label: string; installed_on: string } | null;
+  periodic: Periodic;
+}
+
+export interface EquipmentDetail extends Omit<EquipmentRow, "location"> {
+  class_label: string;
+  attributes: FormData;
+  location: { point_id: string; point_code: string; point_name: string; point_class: string | null; position_code: string; position_label: string; installed_on: string } | null;
+  installation_history: {
+    installation_id: string; point_id: string; point_code: string; point_name: string; position_code: string; position_label: string;
+    installed_on: string; removed_on: string | null; installed_by: string; removed_by: string | null; removal_reason: string | null;
+  }[];
+  events: MeteringEvent[];
+  attributes_form: AssetForm | null;
+  attributes_progress: FormProgress | null;
+}
+
+export interface EquipmentInput {
+  class_code?: string; serial?: string; brand?: string | null; model?: string | null; manufacturer?: string | null;
+  year?: number | null; ownership?: string | null; status?: string; attributes?: FormData;
+}
+
+export function getEquipmentList(filters: { q?: string; class_code?: string; status?: string; periodic?: string } = {}): Promise<{
+  equipment: EquipmentRow[]; total: number; due_soon_days: number | null;
+}> {
+  const params = new URLSearchParams(Object.entries(filters).filter(([, v]) => v) as [string, string][]);
+  return request(`/equipment${params.toString() ? `?${params}` : ""}`);
+}
+
+export function getEquipment(id: string): Promise<EquipmentDetail> {
+  return request(`/equipment/${id}`);
+}
+
+export function createEquipment(body: EquipmentInput): Promise<EquipmentDetail> {
+  return request("/equipment", { method: "POST", body: JSON.stringify(body) });
+}
+
+export function updateEquipment(id: string, body: EquipmentInput): Promise<EquipmentDetail> {
+  return request(`/equipment/${id}`, { method: "PATCH", body: JSON.stringify(body) });
+}
+
+export function installEquipment(id: string, body: { point_id: string; position_code: string; installed_on: string; notes?: string | null; external_ref?: string | null }): Promise<{ installation_id: string; novelty: boolean }> {
+  return request(`/equipment/${id}/install`, { method: "POST", body: JSON.stringify(body) });
+}
+
+export function removeEquipment(id: string, body: { removed_on: string; reason?: string | null; new_status: string; external_ref?: string | null }): Promise<{ installation_id: string; status: string }> {
+  return request(`/equipment/${id}/remove`, { method: "POST", body: JSON.stringify(body) });
+}
+
+export function recordMeteringEvent(body: { type_code: string; occurred_on: string; point_id?: string | null; equipment_id?: string | null; data?: FormData; notes?: string | null; external_ref?: string | null }): Promise<{ id: string; xm_status: string | null }> {
+  return request("/metering-events", { method: "POST", body: JSON.stringify(body) });
+}
+
+export function getXmPending(): Promise<MeteringEvent[]> {
+  return request("/metering-events/xm-pending");
+}
+
+export function reportToXm(eventIds: string[], reportedOn: string): Promise<{ reported: number }> {
+  return request("/metering-events/xm-report", { method: "POST", body: JSON.stringify({ event_ids: eventIds, reported_on: reportedOn }) });
+}
+
+export interface AssetSummary {
+  points_total: number;
+  points_by_class: Record<string, number>;
+  points_by_status: Record<string, number>;
+  points_by_periodic: Record<string, number>;
+  points_without_main_meter: number;
+  equipment_total: number;
+  equipment_by_status: Record<string, number>;
+  equipment_periodic_by_class: Record<string, Record<string, number>>;
+  xm_pending: number;
+  upcoming: EquipmentRow[];
+  recent_events: MeteringEvent[];
+  due_soon_days: number | null;
+  map: { id: string; code: string; name: string; lat: number; lon: number; point_class: string | null; periodic_status: PeriodicStatus }[];
+}
+
+export function getAssetSummary(): Promise<AssetSummary> {
+  return request("/assets/summary");
+}
+
+export interface AssetImportResult {
+  dry_run: boolean;
+  points_created: number;
+  points_updated: number;
+  equipment_created: number;
+  equipment_existing: number;
+  installed: number;
+  calibrations: number;
+  routine_tests: number;
+  errors: { sheet: string; row: number; message: string }[];
+}
+
+export function importAssetsFile(body: { filename: string; content_base64: string; dry_run: boolean }): Promise<AssetImportResult> {
+  return request("/assets/import", { method: "POST", body: JSON.stringify(body) });
+}
+
+export async function downloadAssetsTemplate(): Promise<void> {
+  const token = getToken();
+  const response = await fetch(`${API_BASE}/assets/import/template`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new ApiError(response.status, body.detail ?? `Error ${response.status}`);
+  }
+  const url = URL.createObjectURL(await response.blob());
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "plantilla-fronteras-y-equipos.xlsx";
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+export function getAssetSettings(): Promise<{ due_soon_days: number | null }> {
+  return request("/settings/assets");
+}
+
+export function updateAssetSettings(dueSoonDays: number): Promise<{ due_soon_days: number }> {
+  return request("/settings/assets", { method: "PUT", body: JSON.stringify({ due_soon_days: dueSoonDays }) });
 }

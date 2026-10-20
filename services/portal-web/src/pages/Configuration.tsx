@@ -34,6 +34,8 @@ import {
   getCrews,
   getFailureCodes,
   getHesSettings,
+  getAssetSettings,
+  updateAssetSettings,
   getProtectedMeters,
   getProtocolMappings,
   getSlaPolicies,
@@ -1303,6 +1305,46 @@ function SessionSettingsSection() {
   );
 }
 
+// Track F (0049): con cuantos dias de anticipacion una calibracion o una
+// prueba de rutina se marca "por vencer". Parametro de la organizacion; sin
+// definir, el Portal solo dice "al dia" o "vencida" (nunca una ventana fija).
+function AssetSettingsSection() {
+  const queryClient = useQueryClient();
+  const { data } = useQuery({ queryKey: ["asset-settings"], queryFn: getAssetSettings });
+  const [days, setDays] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const saveMutation = useMutation({
+    mutationFn: () => updateAssetSettings(Math.round(Number(days))),
+    onSuccess: () => {
+      setError(null);
+      queryClient.invalidateQueries({ queryKey: ["asset-settings"] });
+      queryClient.invalidateQueries({ queryKey: ["assets"] });
+    },
+    onError: (err) => setError(err instanceof ApiError ? err.message : "No se pudo guardar."),
+  });
+  return (
+    <SectionCard
+      title="Activos — aviso de vencimientos"
+      description="Con cuántos días de anticipación una calibración de medidor o una prueba de rutina de transformadores se marca 'por vencer' en el tablero y en la hoja de vida. Las frecuencias las fija el paquete regulatorio (en Colombia, el Código de Medida); esto es solo el aviso."
+    >
+      <div className="flex flex-wrap items-end gap-3 mb-3">
+        <div>
+          <label className="block text-xs font-medium text-slate-500 mb-1">Días de anticipación</label>
+          <input type="number" min="1" className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm w-32" value={days} onChange={(e) => setDays(e.target.value)} />
+        </div>
+        <button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || !days}
+          className="rounded-lg bg-indigo-600 text-white text-sm font-semibold px-4 py-1.5 hover:bg-indigo-700 disabled:opacity-50">
+          Guardar
+        </button>
+      </div>
+      {error && <p className="text-sm text-red-600 mb-2">{error}</p>}
+      <p className="text-xs text-slate-500">
+        Valor actual: {data?.due_soon_days != null ? <strong className="text-slate-700">{data.due_soon_days} días</strong> : <span className="text-amber-700 font-semibold">sin configurar todavía</span>}
+      </p>
+    </SectionCard>
+  );
+}
+
 export function ConfigurationPage() {
   return (
     <StagePage title="Configuración">
@@ -1313,6 +1355,7 @@ export function ConfigurationPage() {
       <NavSection id="region"><RegionSettingsSection /></NavSection>
       <NavSection id="terms"><TermsSettingsSection /></NavSection>
       <NavSection id="packs"><PacksSection /></NavSection>
+      <NavSection id="assets"><AssetSettingsSection /></NavSection>
       <NavSection id="instrumentation"><InstrumentationSection /></NavSection>
       <NavSection id="hes-settings"><HesSettingsSection /></NavSection>
       <NavSection id="vee-rules"><VeeRulesSection /></NavSection>

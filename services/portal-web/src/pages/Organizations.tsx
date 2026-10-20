@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ApiError, createOrganization, getOrganizations, getPacks, type TenantKind } from "../api";
+import { ApiError, createOrganization, getOrganizations, getPacks, getSectors, type TenantKind } from "../api";
 import { AppShell } from "../components/AppShell";
 import { EmptyState } from "../components/StagePage";
+import { Icon } from "../components/Icon";
 import { UsersRolesSection } from "./Configuration";
 import { appLocale } from "../catalog";
 
@@ -13,7 +14,7 @@ import { appLocale } from "../catalog";
 // configura ella misma.
 
 const KIND_LABEL: Record<TenantKind, string> = {
-  provider: "Prestador (junta / acueducto)",
+  provider: "Prestador (empresa, junta o comercializadora)",
   group: "Agrupación de prestadores",
   advisor: "ONG o entidad que asesora",
   platform: "Plataforma",
@@ -27,12 +28,16 @@ export function OrganizationsPage() {
   const { data: packs } = useQuery({ queryKey: ["packs"], queryFn: getPacks });
   const [form, setForm] = useState({ name: "", display_name: "", kind: "provider" as TenantKind, admin_username: "admin", admin_password: "", timezone: "", hours: "12" });
   const [chosen, setChosen] = useState<string[]>([]);
+  // Track F (0048): energia, gas o agua (una multiservicio elige varios); el menu sale de aqui.
+  const { data: sectorList } = useQuery({ queryKey: ["sectors"], queryFn: getSectors });
+  const [sectors, setSectors] = useState<string[]>([]);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const mutation = useMutation({
     mutationFn: () => createOrganization({
       name: form.name.trim().toLowerCase(), display_name: form.display_name || null, kind: form.kind,
       admin_username: form.admin_username.trim().toLowerCase(), admin_password: form.admin_password,
       timezone: form.timezone.trim() || null, session_ttl_seconds: Math.round(Number(form.hours) * 3600) || null, packs: chosen,
+      sectors: form.kind === "platform" ? [] : sectors,
     }),
     onSuccess: (org) => {
       queryClient.invalidateQueries({ queryKey: ["organizations"] });
@@ -75,6 +80,19 @@ export function OrganizationsPage() {
               </label>
             </div>
           </div>
+          {form.kind !== "platform" && (
+            <fieldset className="mt-3">
+              <legend className="mb-1 text-sm font-medium text-slate-800">Sector que opera * <span className="font-normal text-slate-500">(define su menú; una empresa multiservicio elige varios)</span></legend>
+              <div className="flex flex-wrap gap-2">
+                {(sectorList ?? []).map((sc) => (
+                  <label key={sc.code} title={sc.description} className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm ${sectors.includes(sc.code) ? "border-indigo-600 bg-indigo-50 font-semibold text-indigo-800" : "border-slate-300 text-slate-700"}`}>
+                    <input type="checkbox" className="sr-only" checked={sectors.includes(sc.code)} onChange={() => setSectors(sectors.includes(sc.code) ? sectors.filter((c) => c !== sc.code) : [...sectors, sc.code])} />
+                    <Icon name={sc.icon} className="h-4 w-4" />{sc.label}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          )}
           {optional.length > 0 && (
             <fieldset className="mt-3">
               <legend className="mb-1 text-sm font-medium text-slate-800">Paquetes (país y programa)</legend>
@@ -91,7 +109,7 @@ export function OrganizationsPage() {
           {message && <p className={`mt-3 text-sm ${message.ok ? "text-emerald-700" : "text-red-600"}`}>{message.text}</p>}
           <div className="mt-4 flex justify-end">
             <button className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:bg-indigo-300"
-              disabled={!form.name.trim() || !form.admin_username.trim() || form.admin_password.length < 8 || mutation.isPending} onClick={() => mutation.mutate()}>
+              disabled={!form.name.trim() || !form.admin_username.trim() || form.admin_password.length < 8 || (form.kind !== "platform" && sectors.length === 0) || mutation.isPending} onClick={() => mutation.mutate()}>
               {mutation.isPending ? "Creando…" : "Crear organización"}
             </button>
           </div>

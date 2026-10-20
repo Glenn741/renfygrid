@@ -140,8 +140,12 @@ def run(dsn: str) -> None:
             print("1. Organizaciones y usuarios")
             ong = f"e2e-apt-{SUFFIX}"
             body = {"name": ong, "kind": "advisor", "admin_username": "admin", "admin_password": "clave-admin-apt",
-                    "display_name": "APT (prueba)", "packs": ["EC-ARCA", "EC-MUNICIPIOS-AZULES"]}
+                    "display_name": "APT (prueba)", "packs": ["EC-ARCA", "EC-MUNICIPIOS-AZULES"], "sectors": ["water"]}
             check(client.post("/organizations", headers=hj, json=body).status_code == 403, "una junta no crea organizaciones")
+            check(client.post("/organizations", headers=hp, json={**body, "sectors": []}).status_code == 422,
+                  "sin sector -> 422 (Track F, 0048)")
+            check(client.post("/organizations", headers=hp, json={**body, "sectors": ["mineria"]}).status_code == 422,
+                  "sector desconocido -> 422")
             check(client.post("/organizations", headers=hp, json={**body, "name": "Con Espacios"}).status_code == 422,
                   "código con espacios -> 422")
             r = client.post("/organizations", headers=hp, json=body)
@@ -154,6 +158,9 @@ def run(dsn: str) -> None:
             ha = login(ong, "admin", "clave-admin-apt")
             me = client.get("/auth/me", headers=ha).json()
             check(me["tenant_kind"] == "advisor" and me["tenant_display_name"] == "APT (prueba)", "la sesión dice que es una ONG")
+            check([m["path"] for m in me["modules"]] == ["/advisory", "/advisory/guides", "/advisory/operators",
+                                                         "/advisory/workshops", "/team"],
+                  "el menú de la ONG sale de los datos y es el mismo de antes (0048)")
             for user, role in (("asesor01", "advisor"), ("asesor02", "advisor"), ("apoyo", "operator")):
                 r = client.post("/users", headers=ha, json={"email": user, "password": f"clave-{user}", "role": role})
                 check(r.status_code == 201, f"la ONG crea el usuario {user} ({role}) sin correo")
@@ -309,6 +316,8 @@ def run(dsn: str) -> None:
             check(r.status_code == 200 and r.json()["progress"]["complete"], "el operador sigue llenando desde su organización")
             me = client.get("/auth/me", headers=hn).json()
             check(me["tenant_kind"] == "provider" and me["tenant_display_name"] == "Junta San Juan", "nace como prestador con su nombre")
+            check(me["sectors"] == ["water"] and any(m["path"] == "/inspections" for m in me["modules"]),
+                  "hereda el sector de la ONG y ve sus Guías en el menú (0048)")
             check(client.put(f"/advisory/operators/{sj}/forms/MA-G1-PROFILE", headers=h1,
                              json={"data": {"fields": {}}}).status_code == 409, "el registro de la ONG queda de solo lectura")
             check(client.post(f"/advisory/operators/{sj}/transfer", headers=h1,

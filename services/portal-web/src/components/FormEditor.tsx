@@ -92,7 +92,7 @@ export function FieldInput({ def, value, onChange, disabled = false, id }: { def
     case "integer":
     case "number":
       return (
-        <input id={id} type="number" inputMode={def.type === "integer" ? "numeric" : "decimal"} min={0} step={def.type === "integer" ? 1 : "any"}
+        <input id={id} type="number" inputMode={def.type === "integer" ? "numeric" : "decimal"} min={def.signed ? undefined : 0} step={def.type === "integer" ? 1 : "any"}
           className={`${INPUT} max-w-[12rem]`} value={typeof value === "number" ? value : typeof value === "string" ? value : ""} disabled={disabled}
           onChange={(e) => onChange(e.target.value === "" ? null : Number(e.target.value))} />
       );

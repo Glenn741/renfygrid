@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Link, Navigate, useLocation } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { getProcessRoute } from "../api";
-import { NAV_GROUPS, homeFor, pathAllowed, visibleFor, type NavBadge, type NavItemDef } from "../navigation";
+import { homeFor, navGroupsFor, pathAllowed, type NavBadge, type NavGroup, type NavItemDef } from "../navigation";
 import { ActiveSectionProvider, scrollToSection, useActiveSection } from "./activeSection";
 import { SessionMenu, useSessionInfo } from "./SessionMenu";
 import { ROUTE_QUERY_KEY, STAGE_STATE_STYLE, stageState } from "./routeStatus";
@@ -19,7 +19,8 @@ import { Icon } from "./Icon";
 //     de la pagina) y lleva directo a cualquier seccion desde otro modulo;
 //   - las secciones que piden atencion muestran un contador.
 // "Ruta y revisiones" muestra en cambio las etapas de la ruta del paquete de
-// la organizacion. La estructura vive en src/navigation.ts.
+// la organizacion. Las secciones viven en src/navigation.ts; que modulos se
+// ven, en la sesion (0048).
 
 const OPEN_KEY = "renfygrid.nav.open";
 
@@ -47,9 +48,9 @@ function matches(pathname: string, to: string): boolean {
 
 /** Activo = el modulo que mejor coincide con la ruta (/advisory/operators no
  * marca tambien /advisory). */
-function isActive(pathname: string, to: string): boolean {
+function isActive(pathname: string, to: string, groups: NavGroup[]): boolean {
   if (!matches(pathname, to)) return false;
-  return !NAV_GROUPS.some((g) => g.items.some((i) => i.to.length > to.length && matches(pathname, i.to)));
+  return !groups.some((g) => g.items.some((i) => i.to.length > to.length && matches(pathname, i.to)));
 }
 
 const SUBITEM_CLASS = "flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px] transition-colors";
@@ -130,6 +131,8 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const location = useLocation();
   const { data: session } = useSessionInfo();
   const [open, setOpen] = useState<Record<string, boolean>>(readOpen);
+  // Track F (0048): los modulos de la organizacion llegan en la sesion.
+  const groups = navGroupsFor(session?.modules);
   const toggle = (to: string) => {
     setOpen((current) => {
       const next = { ...current, [to]: !current[to] };
@@ -153,15 +156,14 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
       </div>
 
       <nav className="flex-1 px-3 pb-4 overflow-y-auto" aria-label="Menú principal">
-        {NAV_GROUPS.map((group) => ({ ...group, items: group.items.filter((item) => session && visibleFor(item, session.tenant_kind)) }))
-          .filter((group) => group.items.length > 0).map((group) => (
-          <div key={group.title ?? "inicio"} className="mb-3">
+        {groups.map((group) => (
+          <div key={group.code} className="mb-3">
             {group.title && (
               <div className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wider text-slate-500">{group.title}</div>
             )}
             <div className="space-y-0.5">
               {group.items.map((item) => {
-                const active = isActive(location.pathname, item.to);
+                const active = isActive(location.pathname, item.to, groups);
                 const hasSubmenu = Boolean(item.dynamic || (item.sections && item.sections.length > 1));
                 const expanded = hasSubmenu && (active || Boolean(open[item.to]));
                 return (
@@ -240,10 +242,11 @@ function ShellLayout({ title, children }: AppShellProps) {
   const { data: session } = useSessionInfo();
   useScrollToHash();
 
-  // Track E (0047): cada tipo de organizacion ve solo sus modulos; una ONG
-  // que entra a /vee (o a la Vista general) va a su tablero.
-  if (session && !pathAllowed(pathname, session.tenant_kind)) {
-    return <Navigate to={homeFor(session.tenant_kind)} replace />;
+  // Cada organizacion ve solo sus modulos (por tipo, 0047, y por sector,
+  // 0048): una ONG que entra a /vee, o una comercializadora de energia que
+  // entra a la Vista general del acueducto, va a su primera pantalla.
+  if (session && !pathAllowed(pathname, session.modules)) {
+    return <Navigate to={homeFor(session.modules)} replace />;
   }
 
   return (
