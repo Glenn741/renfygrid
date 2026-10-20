@@ -978,3 +978,9 @@ con la auditoría de valores fijos, el diseño de catálogos (`sector`, `tenant_
 | F2 | Grupo "Agua" en el menú; `sector_code` en paquetes, etapas y tipos; corregir `"unit": "kWh"` fijo de `billing_export.py` | Propuesto |
 | F3 | MDM multimedio: sector por medidor desde OBIS, unidades por canal, VEE por sector, catálogo de métodos de balance y simuladores | Propuesto |
 | F4 / F5 | Módulos Energía y Gas (MVP) | Esperan un piloto real de cada industria |
+
+**Primer caso del Track F (2026-10-20):** comercializador de energía con unos 2.000 medidores de
+clientes no regulados, que necesita la hoja de vida, la calibración y el mantenimiento de cada
+frontera según el Código de Medida de la CREG, con BayForce como bitácora de campo. La revisión de
+la industria, la brecha, el workspace, el modelo de datos, las opciones para BayForce y los
+sprints Q1–Q4 están en **`10-caso-energia-fronteras.md`**.
