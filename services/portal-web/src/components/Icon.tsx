@@ -30,6 +30,7 @@ const ICONS: Record<string, LucideIcon> = {
   control: Power,
   balance: Droplets,
   twin: Map,
+  map: Map,
   model: Waves,
   group: Users,
   observations: NotebookPen,

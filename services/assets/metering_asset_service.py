@@ -92,10 +92,15 @@ def _context(conn: psycopg.Connection, tenant_id: str) -> dict[str, Any]:
                     "WHERE pack_id = ANY(%s) ORDER BY scope, sort_order", (packs,))
         forms = {r[0]: {"id": r[0], "scope": r[1], "equipment_class": r[2], "title": r[4], "form_spec": r[5],
                         "source_ref": r[6]} for r in cur.fetchall()}
+        cur.execute("SELECT domain, code, label FROM code_label WHERE domain = ANY(%s) AND pack_id = ANY(%s)",
+                    (list(POINT_CODED.values()), packs))
+        coded: dict[str, dict[str, str]] = {}
+        for domain, code, lbl in cur.fetchall():
+            coded.setdefault(domain, {})[code] = lbl
     regulatory = classes[0]["pack_id"] if classes else None
     return {"packs": packs, "pack_id": regulatory, "classes": [c for c in classes if c["pack_id"] == regulatory],
             "frequencies": frequencies, "equipment_classes": eq_classes, "positions": positions,
-            "event_types": event_types, "forms": forms, "due_soon_days": due_soon_days(conn, tenant_id)}
+            "event_types": event_types, "forms": forms, "due_soon_days": due_soon_days(conn, tenant_id), "coded": coded}
 
 
 def catalog(conn: psycopg.Connection, tenant_id: str) -> dict:
@@ -151,7 +156,10 @@ def _periodic_map(cur: psycopg.Cursor, ctx: dict, equipment: list[dict], today: 
 # ── Fronteras ─────────────────────────────────────────────────────────
 
 POINT_COLUMNS = ("code", "export_code", "niu", "name", "customer_name", "address", "city", "region", "lat", "lon",
-                 "point_class", "voltage_kv", "capacity_kva", "consumption_mwh_month", "status", "registered_on", "verified_on")
+                 "point_class", "voltage_kv", "capacity_kva", "consumption_mwh_month", "status", "registered_on", "verified_on",
+                 "customer_class", "market", "commercial_status")
+# Columnas cuyo valor debe ser un codigo de su catalogo (code_label), 0051.
+POINT_CODED = {"customer_class": "customer.class", "market": "market", "commercial_status": "commercial.status"}
 _POINT_SELECT = ("SELECT id, " + ", ".join(POINT_COLUMNS) + ", created_by, created_at, updated_at FROM metering_point")
 
 
@@ -181,6 +189,14 @@ def _clean_point(ctx: dict, data: dict, partial: bool = False) -> dict:
         if (not partial or col in clean) and not clean.get(col):
             raise InvalidFormError({"code": "El código de la frontera es obligatorio", "name": "El nombre de la frontera es obligatorio",
                                     "customer_name": "El nombre del usuario (cliente) es obligatorio"}[col])
+    for col, domain in POINT_CODED.items():
+        if clean.get(col) is not None:
+            options = ctx["coded"].get(domain, {})
+            value = str(clean[col]).strip()
+            code = value if value in options else next((c for c, lbl in options.items() if lbl.lower() == value.lower()), None)
+            if code is None:
+                raise InvalidFormError(f"Valor desconocido para {col}: {value!r}")
+            clean[col] = code
     if "status" in clean and clean["status"] is None:
         clean.pop("status")
     if clean.get("status") and clean["status"] not in POINT_STATUSES:

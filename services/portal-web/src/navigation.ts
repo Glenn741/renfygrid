@@ -92,6 +92,7 @@ export const SCREENS: Record<string, { sections?: NavSectionDef[]; dynamic?: "ro
       { id: "recent", label: "Últimos registros" },
     ],
   },
+  "/energy/map": {},
   "/energy/points": {},
   "/energy/equipment": {},
   "/operations": {

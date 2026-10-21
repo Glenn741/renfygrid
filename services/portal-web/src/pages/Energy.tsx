@@ -5,11 +5,14 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import {
   ApiError,
+  createCustomerRequest,
   createEquipment,
   createMeteringPoint,
   downloadAssetsTemplate,
   getAssetCatalog,
   getAssetSummary,
+  getCustomerRequests,
+  getPqrCatalog,
   getEquipment,
   getEquipmentList,
   getMeteringPoint,
@@ -21,6 +24,7 @@ import {
   removeEquipment,
   reportToXm,
   savePointSection,
+  updateCustomerRequest,
   updateEquipment,
   updateMeteringPoint,
   type AssetCatalog,
@@ -357,6 +361,7 @@ export function EnergyDashboardPage() {
               <h2 className="mb-2 text-base font-semibold text-slate-900">Mapa de fronteras</h2>
               <p className="mb-3 text-xs text-slate-500">El color es el estado de calibración de la frontera (el peor de sus equipos). {data.points_total - data.map.length > 0 ? `${data.points_total - data.map.length} frontera(s) sin coordenadas.` : ""}</p>
               <PointsMap points={data.map} />
+              <p className="mt-2 text-sm"><Link className="font-semibold text-indigo-700 hover:underline" to="/energy/map">Abrir el mapa temático: pintar y filtrar por estado técnico, comercial, cliente, PQRS y equipos →</Link></p>
             </div>
           </NavSection>
           <NavSection id="xm">
@@ -449,6 +454,15 @@ function PointForm({ initial, cat, onSubmit, submitLabel, busy, error }: {
             {options("metering_point.status").map((o) => <option key={o.code} value={o.code}>{o.label}</option>)}
           </select>
         </label>
+        {([["customer_class", "customer.class", "Tipo de cliente"], ["market", "market", "Mercado"],
+           ["commercial_status", "commercial.status", "Estado comercial"]] as const).map(([key, domain, title]) => (
+          <label key={key} className="text-sm font-medium text-slate-800">{title}
+            <select className={`${INPUT} mt-1`} value={(v[key] as string | null | undefined) ?? ""} onChange={(e) => setV({ ...v, [key]: e.target.value || null })}>
+              <option value="">— Sin definir —</option>
+              {options(domain).map((o) => <option key={o.code} value={o.code}>{o.label}</option>)}
+            </select>
+          </label>
+        ))}
       </div>
       {error && <p className="text-sm text-red-700">{error}</p>}
       <button className={BTN} disabled={busy}>{submitLabel}</button>
@@ -479,7 +493,7 @@ function AssetImportPanel() {
       else {
         setPreview(null); setFile(null);
         queryClient.invalidateQueries({ queryKey: ["assets"] });
-        setDone(`Cargado: ${r.points_created} frontera(s) nuevas, ${r.points_updated} actualizadas, ${r.equipment_created} equipo(s), ${r.installed} instalación(es), ${r.calibrations} calibración(es) y ${r.routine_tests} prueba(s) de rutina.${r.errors.length ? ` ${r.errors.length} fila(s) no se cargaron.` : ""}`);
+        setDone(`Cargado: ${r.points_created} frontera(s) nuevas, ${r.points_updated} actualizadas, ${r.equipment_created} equipo(s), ${r.installed} instalación(es), ${r.calibrations} calibración(es), ${r.routine_tests} prueba(s) de rutina y ${r.requests_created} PQR${r.requests_unlinked ? ` (${r.requests_unlinked} sin frontera encontrada)` : ""}.${r.errors.length ? ` ${r.errors.length} fila(s) no se cargaron.` : ""}`);
       }
     } catch (err) {
       setError(errorText(err, "No se pudo leer el archivo."));
@@ -491,7 +505,7 @@ function AssetImportPanel() {
     <section className={CARD}>
       <h2 className="text-base font-semibold text-slate-900">Cargar fronteras y equipos desde Excel</h2>
       <p className="mb-3 text-xs text-slate-500">
-        1) Descargue la plantilla: trae una hoja de fronteras, una de equipos y los códigos válidos. 2) Llénela con su inventario (cada equipo con la frontera
+        1) Descargue la plantilla: trae hojas de fronteras, equipos y PQR (los mismos datos del reporte al SUI) y los códigos válidos. 2) Llénela con su inventario (cada equipo con la frontera
         y la posición donde está, y su última calibración). 3) Cárguela: primero verá lo que se va a grabar. Volver a cargar el mismo archivo no duplica nada.
       </p>
       <div className="flex flex-wrap items-end gap-3">
@@ -512,6 +526,9 @@ function AssetImportPanel() {
             <li>{preview.points_created} frontera(s) nuevas y {preview.points_updated} que se actualizan</li>
             <li>{preview.equipment_created} equipo(s) nuevos ({preview.equipment_existing} ya existían) y {preview.installed} instalación(es)</li>
             <li>{preview.calibrations} calibración(es) y {preview.routine_tests} prueba(s) de rutina para la bitácora</li>
+            {(preview.requests_created > 0 || preview.requests_existing > 0) && (
+              <li>{preview.requests_created} PQR nuevas ({preview.requests_existing} ya estaban){preview.requests_unlinked ? `; ${preview.requests_unlinked} sin frontera con ese NIU o código` : ""}</li>
+            )}
           </ul>
           {preview.errors.length > 0 && (
             <div className="mt-2">
@@ -755,6 +772,103 @@ function PointSectionEditor({ pointId, section }: { pointId: string; section: { 
   );
 }
 
+// ── PQR de la frontera (0051) ─────────────────────────────────────────
+
+function PqrSection({ pointId, account, onDone }: { pointId: string; account: string; onDone: (msg: string) => void }) {
+  const queryClient = useQueryClient();
+  const { data: list } = useQuery({ queryKey: ["assets", "pqr", pointId], queryFn: () => getCustomerRequests({ point_id: pointId }) });
+  const { data: cat } = useQuery({ queryKey: ["assets", "pqr-catalog"], queryFn: getPqrCatalog, staleTime: 5 * 60_000 });
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState({ filing_number: "", filed_on: todayIso(), request_type: "1", cause_code: "", notes: "" });
+  const [error, setError] = useState<string | null>(null);
+  const [answering, setAnswering] = useState<string | null>(null);
+  const [answer, setAnswer] = useState({ response_code: "", responded_on: todayIso(), status: "answered" });
+  const create = useMutation({
+    mutationFn: () => createCustomerRequest({ ...form, point_id: pointId, account, notes: form.notes || null }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["assets"] }); setOpen(false); setError(null); onDone("PQR registrada."); },
+    onError: (err) => setError(errorText(err, "No se pudo registrar la PQR.")),
+  });
+  const respond = useMutation({
+    mutationFn: (id: string) => updateCustomerRequest(id, { ...answer, response_code: answer.response_code || null }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["assets"] }); setAnswering(null); onDone("PQR actualizada."); },
+    onError: (err) => setError(errorText(err, "No se pudo actualizar la PQR.")),
+  });
+  const typeLabel = (code: string) => cat?.request_types.find((t) => t.code === code)?.label ?? code;
+  const responseLabel = (code: string | null) => (code ? cat?.responses.find((r) => r.code === code)?.label ?? code : "—");
+  const openCount = (list ?? []).filter((q) => q.status === "open" || q.status === "appealed").length;
+  return (
+    <Section title={`PQR del usuario${openCount ? ` · ${openCount} abierta(s)` : ""}`} right={<button className={BTN2} onClick={() => setOpen(!open)}>{open ? "Cerrar" : "Registrar PQR"}</button>}>
+      {open && (
+        <div className="mb-4 grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 sm:grid-cols-2 lg:grid-cols-4">
+          <label className="text-sm font-medium text-slate-800">Radicado
+            <input className={`${INPUT} mt-1`} value={form.filing_number} onChange={(e) => setForm({ ...form, filing_number: e.target.value })} />
+          </label>
+          <label className="text-sm font-medium text-slate-800">Fecha de radicación
+            <input type="date" className={`${INPUT} mt-1`} value={form.filed_on} max={todayIso()} onChange={(e) => setForm({ ...form, filed_on: e.target.value })} />
+          </label>
+          <label className="text-sm font-medium text-slate-800">Tipo de trámite
+            <select className={`${INPUT} mt-1`} value={form.request_type} onChange={(e) => setForm({ ...form, request_type: e.target.value })}>
+              {(cat?.request_types ?? []).map((t) => <option key={t.code} value={t.code}>{t.label}</option>)}
+            </select>
+          </label>
+          <label className="text-sm font-medium text-slate-800">Causal (Superservicios)
+            <select className={`${INPUT} mt-1`} value={form.cause_code} onChange={(e) => setForm({ ...form, cause_code: e.target.value })}>
+              <option value="">— Elija —</option>
+              {(["F", "P"] as const).map((g) => (
+                <optgroup key={g} label={g === "F" ? "Facturación" : "Prestación"}>
+                  {(cat?.causes ?? []).filter((c) => c.group_code === g).map((c) => <option key={c.code} value={c.code} title={c.description}>{c.code} · {c.label}</option>)}
+                </optgroup>
+              ))}
+            </select>
+          </label>
+          <label className="text-sm font-medium text-slate-800 sm:col-span-2 lg:col-span-4">Observaciones
+            <input className={`${INPUT} mt-1`} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
+          </label>
+          {error && <p className="text-sm text-red-700 sm:col-span-4">{error}</p>}
+          <div><button className={BTN} disabled={!form.filing_number || !form.cause_code || create.isPending} onClick={() => create.mutate()}>Registrar</button></div>
+        </div>
+      )}
+      {!list?.length ? <EmptyState message="Esta frontera no tiene PQR registradas." /> : (
+        <table className="w-full">
+          <thead><tr><th className={TH}>Radicado</th><th className={TH}>Fecha</th><th className={TH}>Trámite</th><th className={TH}>Causal</th>
+            <th className={TH}>Estado</th><th className={TH}>Respuesta</th><th className={TH}></th></tr></thead>
+          <tbody>
+            {list.map((q) => (
+              <tr key={q.id} className="border-t border-slate-100 align-top">
+                <td className={TD}>{q.filing_number}</td>
+                <td className={TD}>{formatDay(q.filed_on)}</td>
+                <td className={TD}>{typeLabel(q.request_type)}</td>
+                <td className={TD}><span className="font-medium">{q.cause_code}</span> {q.cause_label}<div className="text-xs text-slate-500">{q.cause_group === "F" ? "Facturación" : "Prestación"}</div></td>
+                <td className={TD}><StatusBadge domain="pqr.status" code={q.status} /></td>
+                <td className={TD}>{responseLabel(q.response_code)}{q.responded_on ? <div className="text-xs text-slate-500">{formatDay(q.responded_on)}</div> : null}</td>
+                <td className={TD}>
+                  {q.status !== "closed" && answering !== q.id && <button className={BTN2} onClick={() => { setAnswering(q.id); setError(null); }}>Actualizar</button>}
+                  {answering === q.id && (
+                    <div className="grid gap-2">
+                      <select className={INPUT} value={answer.status} onChange={(e) => setAnswer({ ...answer, status: e.target.value })} aria-label="Estado">
+                        {options("pqr.status").map((o) => <option key={o.code} value={o.code}>{o.label}</option>)}
+                      </select>
+                      <select className={INPUT} value={answer.response_code} onChange={(e) => setAnswer({ ...answer, response_code: e.target.value })} aria-label="Respuesta">
+                        <option value="">— Respuesta —</option>
+                        {(cat?.responses ?? []).map((r) => <option key={r.code} value={r.code}>{r.label}</option>)}
+                      </select>
+                      <input type="date" className={INPUT} value={answer.responded_on} max={todayIso()} onChange={(e) => setAnswer({ ...answer, responded_on: e.target.value })} aria-label="Fecha de respuesta" />
+                      <div className="flex gap-2">
+                        <button className={BTN} disabled={respond.isPending} onClick={() => respond.mutate(q.id)}>Guardar</button>
+                        <button className={BTN2} onClick={() => setAnswering(null)}>Cancelar</button>
+                      </div>
+                    </div>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </Section>
+  );
+}
+
 export function MeteringPointPage() {
   const { pointId = "" } = useParams();
   const queryClient = useQueryClient();
@@ -797,6 +911,9 @@ export function MeteringPointPage() {
                   ["Capacidad instalada", p.capacity_kva != null ? `${p.capacity_kva.toLocaleString(appLocale())} kVA` : "—"],
                   ["Consumo mensual", p.consumption_mwh_month != null ? `${p.consumption_mwh_month.toLocaleString(appLocale())} MWh` : "—"],
                   ["Registro ante el ASIC", formatDay(p.registered_on)], ["Verificación inicial", formatDay(p.verified_on)],
+                  ["Tipo de cliente", p.customer_class ? label("customer.class", p.customer_class) : "—"],
+                  ["Mercado", p.market ? label("market", p.market) : "—"],
+                  ["Estado comercial", p.commercial_status ? label("commercial.status", p.commercial_status) : "—"],
                 ].map(([k, v]) => (
                   <div key={k as string}><dt className="text-xs text-slate-500">{k}</dt><dd className="text-slate-900">{v ?? "—"}</dd></div>
                 ))}
@@ -833,6 +950,8 @@ export function MeteringPointPage() {
               </div>
             )}
           </Section>
+
+          <PqrSection pointId={p.id} account={p.niu ?? p.code} onDone={done} />
 
           <Section title="Bitácora de la frontera" right={<button className={BTN2} onClick={() => setRecording(!recording)}>{recording ? "Cerrar" : "Registrar"}</button>}>
             {recording && <div className="mb-4"><EventForm scope="point" pointId={p.id} onDone={done} /></div>}

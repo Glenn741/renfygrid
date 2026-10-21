@@ -55,6 +55,9 @@ ROUTE_RULES: list[tuple[frozenset[str] | None, re.Pattern, str | None]] = [
     (None, re.compile(rf"^/metering-points/{_ID}/sections/{_ID}$"), "assets.record"),
     (None, re.compile(r"^/(metering-points|equipment)(/.*)?$"), "assets.manage"),
     (None, re.compile(r"^/assets/import$"), "assets.manage"),
+    # Track F, Q2.5 (0051): PQR de los usuarios y vistas guardadas del mapa.
+    (None, re.compile(r"^/customer-requests(/.*)?$"), "requests.manage"),
+    (None, re.compile(r"^/assets/map-views(/.*)?$"), "assets.record"),
     (frozenset({"POST"}), re.compile(r"^/findings$"), "findings.report"),
     (None, re.compile(rf"^/findings/{_ID}$"), "findings.manage"),
     (None, re.compile(r"^/(passport|follow-up)(/.*)?$"), "program.manage"),

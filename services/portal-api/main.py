@@ -43,6 +43,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "assets"))
 import psycopg  # noqa: E402
 from fastapi import Depends, FastAPI, HTTPException, Request  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
+from fastapi.middleware.gzip import GZipMiddleware  # noqa: E402
 from fastapi.responses import JSONResponse, PlainTextResponse, Response  # noqa: E402
 from starlette.concurrency import run_in_threadpool  # noqa: E402
 from pydantic import BaseModel  # noqa: E402
@@ -50,7 +51,9 @@ from pydantic import BaseModel  # noqa: E402
 from approval_levels_admin import create_approval_level, list_approval_levels  # noqa: E402
 from approval_levels_cache import fetch_active_approval_levels  # noqa: E402
 from auth_dependency import get_actor, get_session_claims, get_tenant_id, requested_by_label  # noqa: E402
+import customer_request_service  # noqa: E402
 import metering_asset_import  # noqa: E402
+import metering_asset_map  # noqa: E402
 import metering_asset_service  # noqa: E402
 import product_modules  # noqa: E402
 from billing_export import billing_ready_consumption, to_csv  # noqa: E402
@@ -366,6 +369,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# Respuestas grandes comprimidas (el mapa de fronteras pesa ~900 KB sin
+# comprimir y ~125 KB comprimido con 2.000 fronteras; Track F, Q2.5).
+app.add_middleware(GZipMiddleware, minimum_size=4096)
 
 
 @contextmanager
@@ -3460,6 +3466,9 @@ class MeteringPointRequest(BaseModel):
     status: str | None = None
     registered_on: date | None = None
     verified_on: date | None = None
+    customer_class: str | None = None
+    market: str | None = None
+    commercial_status: str | None = None
 
 
 @app.get("/metering-points")
@@ -3646,3 +3655,77 @@ def update_asset_settings_endpoint(body: AssetSettingsRequest, tenant_id: str = 
     "por vencer" (parametro de la organizacion, nunca un valor fijo)."""
     with db_conn() as conn, _asset_errors():
         return metering_asset_service.set_due_soon_days(conn, tenant_id, body.due_soon_days)
+
+
+# ── Track F, Q2.5 (0051-0052): mapa tematico de fronteras y PQR ───────
+# docs/11-mapa-fronteras.md.
+
+@app.get("/assets/map")
+def assets_map_endpoint(tenant_id: str = Depends(get_tenant_id)) -> dict:
+    """Todas las fronteras con el valor de cada dimension del mapa
+    (`map_dimension`) y las categorias de cada una con su conteo."""
+    with db_conn() as conn, _asset_errors():
+        return metering_asset_map.build_map(conn, tenant_id)
+
+
+@app.get("/assets/map-views")
+def map_views_endpoint(tenant_id: str = Depends(get_tenant_id)) -> list[dict]:
+    with db_conn() as conn, _asset_errors():
+        return metering_asset_map.list_views(conn, tenant_id)
+
+
+class MapViewRequest(BaseModel):
+    name: str
+    config: dict
+
+
+@app.post("/assets/map-views", status_code=201)
+def save_map_view_endpoint(body: MapViewRequest, actor: dict = Depends(get_actor)) -> dict:
+    with db_conn() as conn, _asset_errors():
+        return metering_asset_map.save_view(conn, actor["tenant_id"], body.name, body.config, requested_by_label(actor))
+
+
+@app.delete("/assets/map-views/{view_id}")
+def delete_map_view_endpoint(view_id: str, tenant_id: str = Depends(get_tenant_id)) -> dict:
+    with db_conn() as conn, _asset_errors():
+        return metering_asset_map.delete_view(conn, tenant_id, view_id)
+
+
+@app.get("/customer-requests/catalog")
+def customer_requests_catalog_endpoint(tenant_id: str = Depends(get_tenant_id)) -> dict:
+    with db_conn() as conn, _asset_errors():
+        return customer_request_service.catalog(conn, tenant_id)
+
+
+@app.get("/customer-requests")
+def customer_requests_endpoint(tenant_id: str = Depends(get_tenant_id), point_id: str | None = None, status: str | None = None,
+                               unlinked: bool = False) -> list[dict]:
+    with db_conn() as conn, _asset_errors():
+        return customer_request_service.list_requests(conn, tenant_id, point_id=point_id, status=status, unlinked=unlinked)
+
+
+class CustomerRequestBody(BaseModel):
+    point_id: str | None = None
+    account: str | None = None
+    filing_number: str | None = None
+    filed_on: date | None = None
+    request_type: str | None = None
+    cause_code: str | None = None
+    status: str | None = None
+    response_code: str | None = None
+    responded_on: date | None = None
+    invoice_number: str | None = None
+    notes: str | None = None
+
+
+@app.post("/customer-requests", status_code=201)
+def create_customer_request_endpoint(body: CustomerRequestBody, actor: dict = Depends(get_actor)) -> dict:
+    with db_conn() as conn, _asset_errors():
+        return customer_request_service.create_request(conn, actor["tenant_id"], body.model_dump(exclude_unset=True),
+                                                       requested_by_label(actor))
+
+
+@app.patch("/customer-requests/{request_id}")
+def update_customer_request_endpoint(request_id: str, body: CustomerRequestBody, tenant_id: str = Depends(get_tenant_id)) -> dict:
+    with db_conn() as conn, _asset_errors():
+        return customer_request_service.update_request(conn, tenant_id, request_id, body.model_dump(exclude_unset=True))

@@ -30,6 +30,7 @@ import { InspectionsPage } from "./pages/Inspections";
 import { AdvisoryDashboardPage, AdvisoryGuidesPage, AdvisoryOperatorPage, AdvisoryOperatorsPage, WorkshopsPage } from "./pages/Advisory";
 import { OrganizationsPage, TeamPage } from "./pages/Organizations";
 import { EnergyDashboardPage, EquipmentListPage, EquipmentPage, MeteringPointPage, MeteringPointsPage } from "./pages/Energy";
+import { EnergyMapPage } from "./pages/EnergyMap";
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuth();
@@ -65,6 +66,7 @@ function AppRoutes() {
       <Route path="/organizations" element={<RequireAuth><OrganizationsPage /></RequireAuth>} />
       <Route path="/team" element={<RequireAuth><TeamPage /></RequireAuth>} />
       <Route path="/energy" element={<RequireAuth><EnergyDashboardPage /></RequireAuth>} />
+      <Route path="/energy/map" element={<RequireAuth><EnergyMapPage /></RequireAuth>} />
       <Route path="/energy/points" element={<RequireAuth><MeteringPointsPage /></RequireAuth>} />
       <Route path="/energy/points/:pointId" element={<RequireAuth><MeteringPointPage /></RequireAuth>} />
       <Route path="/energy/equipment" element={<RequireAuth><EquipmentListPage /></RequireAuth>} />

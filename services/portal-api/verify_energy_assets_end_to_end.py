@@ -25,6 +25,10 @@ Que prueba, en espanol llano:
      grabar; carga real; volver a cargar no duplica.
   9. Permisos y aislamiento: un operador registra en la bitacora pero no
      crea fronteras; un acueducto no ve las fronteras ni el modulo.
+ 10. Mapa tematico (Q2.5): tipo de cliente, mercado y estado comercial con
+     su catalogo; PQR con la taxonomia de la Superservicios (ligada por NIU,
+     causales por sector); el mapa refleja cada dimension con su conteo; vistas
+     guardadas; carga de PQR por archivo idempotente; permisos.
 Al final borra SOLO las organizaciones de prueba y lo que crearon.
 
 Uso:
@@ -97,7 +101,7 @@ def run(dsn: str) -> None:
             print("1. Comercializadora de energía y su menú")
             org = f"e2e-energia-{SUFFIX}"
             body = {"name": org, "kind": "provider", "admin_username": "admin", "admin_password": "clave-admin-energia",
-                    "display_name": "Comercializadora (prueba)", "packs": ["CO-CREG-038"], "sectors": ["electricity"]}
+                    "display_name": "Comercializadora (prueba)", "packs": ["CO-CREG-038", "CO-SSPD"], "sectors": ["electricity"]}
             check(client.post("/organizations", headers=hp, json={**body, "sectors": []}).status_code == 422, "sin sector -> 422")
             r = client.post("/organizations", headers=hp, json=body)
             check(r.status_code == 201 and r.json()["sectors"] == ["electricity"], "la plataforma crea la comercializadora")
@@ -107,7 +111,7 @@ def run(dsn: str) -> None:
             me = client.get("/auth/me", headers=ha).json()
             paths = [m["path"] for m in me["modules"]]
             check(me["sectors"] == ["electricity"], "la sesión dice que opera energía")
-            check(paths[:3] == ["/energy", "/energy/points", "/energy/equipment"], "el menú empieza por el módulo Energía")
+            check(paths[:4] == ["/energy", "/energy/map", "/energy/points", "/energy/equipment"], "el menú empieza por el módulo Energía (con el mapa)")
             check({"/maintenance", "/meters", "/vee", "/consumption", "/control", "/configuration"} <= set(paths),
                   "ve los módulos transversales (mantenimiento, MDM, configuración)")
             check(not {"/", "/quality", "/sanitation", "/inspections", "/network-balance", "/operations"} & set(paths),
@@ -254,7 +258,7 @@ def run(dsn: str) -> None:
             print("8. Carga por archivo")
             r = client.get("/assets/import/template", headers=ha)
             wb = load_workbook(io.BytesIO(r.content))
-            check(r.status_code == 200 and wb.sheetnames == ["Fronteras", "Equipos", "Códigos"], "plantilla con fronteras, equipos y códigos")
+            check(r.status_code == 200 and wb.sheetnames == ["Fronteras", "Equipos", "PQR", "Códigos"], "plantilla con fronteras, equipos, PQR y códigos")
             codes = [row[1] for row in wb["Códigos"].iter_rows(min_row=2, values_only=True) if row[0] == "Posición"]
             check("main_active" in codes and "ct_1" in codes, "los códigos de la plantilla salen del catálogo")
             wb = Workbook()
@@ -304,6 +308,77 @@ def run(dsn: str) -> None:
                   "pero no crea fronteras")
             check(client.get("/metering-points", headers=hw).json()["total"] == 0, "el acueducto no ve las fronteras")
             check(client.get(f"/metering-points/{pid}", headers=hw).status_code == 404, "ni su hoja de vida")
+
+            print("10. Mapa temático y PQR (Q2.5)")
+            r = client.patch(f"/metering-points/{pid}", headers=ha, json={"customer_class": "Industrial", "market": "non_regulated",
+                                                                            "commercial_status": "arrears", "niu": f"NIU{SUFFIX}"})
+            check(r.status_code == 200 and r.json()["customer_class"] == "industrial" and r.json()["commercial_status"] == "arrears",
+                  "tipo de cliente, mercado y estado comercial (por nombre o por código)")
+            check(client.patch(f"/metering-points/{pid}", headers=ha, json={"commercial_status": "inventado"}).status_code == 422,
+                  "estado comercial fuera del catálogo -> 422")
+            pcat = client.get("/customer-requests/catalog", headers=ha).json()
+            codes = {c["code"] for c in pcat["causes"]}
+            check({"101", "124", "200", "208"} <= codes and "207" not in codes and "130" not in codes,
+                  "causales de la Superservicios que aplican a energía (sin las de acueducto ni aseo)")
+            body_pqr = {"account": f"NIU{SUFFIX}", "filing_number": "RAD-E2E-1", "filed_on": "2026-09-01", "request_type": "1",
+                        "cause_code": "101"}
+            r = client.post("/customer-requests", headers=ha, json=body_pqr)
+            check(r.status_code == 201 and r.json()["linked"], "PQR registrada y ligada a la frontera por su NIU")
+            req_id = r.json()["id"]
+            check(client.post("/customer-requests", headers=ha, json=body_pqr).status_code == 409, "misma PQR con la misma causal -> 409")
+            check(client.post("/customer-requests", headers=ha, json={**body_pqr, "filing_number": "RAD-E2E-2", "cause_code": "207"}).status_code == 422,
+                  "causal que no aplica a energía -> 422")
+            r = client.post("/customer-requests", headers=ha, json={**body_pqr, "filing_number": "RAD-E2E-3", "cause_code": "200",
+                                                                      "request_type": "2", "account": "NO-EXISTE"})
+            check(r.status_code == 201 and not r.json()["linked"], "PQR de una cuenta desconocida queda sin frontera")
+            check(len(client.get("/customer-requests", headers=ha).json()) == 2, "lista de PQR de la organización")
+            m = client.get("/assets/map", headers=ha).json()
+            idx = {d["key"]: i for i, d in enumerate(m["dimensions"])}
+            check({"calibration", "comms", "commercial_status", "customer_class", "pqr_open", "pqr_cause", "meter_brand",
+                   "modem_medium", "consumption_range"} <= set(idx), "el mapa trae las dimensiones del catálogo")
+            mp = next(pt for pt in m["points"] if pt["id"] == pid)
+            check(mp["v"][idx["pqr_open"]] == "yes" and mp["v"][idx["pqr_cause"]] == ["101"] and mp["v"][idx["pqr_group"]] == ["F"],
+                  "la frontera aparece con PQR abierta de facturación, causal 101")
+            check(mp["v"][idx["commercial_status"]] == "arrears" and mp["v"][idx["customer_class"]] == "industrial"
+                  and mp["v"][idx["meter_brand"]] == "Marca X", "estado comercial, tipo de cliente y marca del medidor en el mapa")
+            check(mp["v"][idx["comms"]] == "no_link", "sin medidor vinculado en el HES: 'sin telemedida vinculada'")
+            cc = {c["code"]: c["count"] for c in m["dimensions"][idx["customer_class"]]["categories"]}
+            check(cc.get("industrial") == 1, "las categorías traen su conteo")
+            r = client.patch(f"/customer-requests/{req_id}", headers=ha, json={"status": "closed", "response_code": "1",
+                                                                                 "responded_on": "2026-09-10"})
+            check(r.status_code == 200, "PQR respondida y cerrada")
+            m = client.get("/assets/map", headers=ha).json()
+            mp = next(pt for pt in m["points"] if pt["id"] == pid)
+            check(mp["v"][idx["pqr_open"]] == "no", "al cerrarla deja de contar como abierta en el mapa")
+            view = {"paint": "commercial_status", "size": "size_consumption", "filters": {"customer_class": ["industrial"]},
+                    "layers": ["calibration"]}
+            r = client.post("/assets/map-views", headers=ha, json={"name": "Industriales en mora", "config": view})
+            check(r.status_code == 201, "vista guardada")
+            check(client.post("/assets/map-views", headers=ha, json={"name": "industriales en mora", "config": view}).status_code == 409,
+                  "nombre de vista repetido -> 409")
+            check(client.post("/assets/map-views", headers=ha, json={"name": "Mala", "config": {"x": 1}}).status_code == 422,
+                  "configuración de vista inválida -> 422")
+            views = client.get("/assets/map-views", headers=ha).json()
+            check(len(views) == 1 and views[0]["config"]["filters"] == {"customer_class": ["industrial"]}, "la vista se lee igual")
+            check(client.delete(f"/assets/map-views/{views[0]['id']}", headers=ha).status_code == 200, "vista borrada")
+            wb = Workbook()
+            ws = wb.active
+            ws.title = "PQR"
+            ws.append(["Radicado", "NIU o código de la frontera", "Fecha de radicación", "Tipo de trámite", "Causal (código de 3 dígitos)", "Estado"])
+            ws.append(["RAD-E2E-10", f"FRT{SUFFIX}02", "2026-08-15", "Reclamación", "124", "Abierta"])
+            ws.append(["RAD-E2E-11", f"FRT{SUFFIX}03", "2026-08-16", "Queja", 202, "open"])
+            ws.append(["RAD-E2E-12", f"FRT{SUFFIX}03", "2026-08-16", "Queja", "999", "open"])
+            out = io.BytesIO()
+            wb.save(out)
+            pqr_payload = {"filename": "pqr.xlsx", "content_base64": base64.b64encode(out.getvalue()).decode(), "dry_run": False}
+            res = client.post("/assets/import", headers=ha, json=pqr_payload).json()
+            check(res["requests_created"] == 2 and res["requests_unlinked"] == 0 and len(res["errors"]) == 1,
+                  "carga de PQR por archivo: 2 ligadas por código de frontera y 1 causal inválida")
+            res = client.post("/assets/import", headers=ha, json=pqr_payload).json()
+            check(res["requests_created"] == 0 and res["requests_existing"] == 2, "volver a cargar las PQR no las duplica")
+            check(client.post("/customer-requests", headers=ht, json={**body_pqr, "filing_number": "RAD-E2E-9"}).status_code == 403,
+                  "el técnico no registra PQR (permiso requests.manage)")
+            check(client.get("/assets/map", headers=hw).json()["total"] == 0, "el acueducto ve un mapa vacío")
         finally:
             for tid in reversed(created):
                 with conn.transaction():

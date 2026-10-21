@@ -8,6 +8,8 @@ calculo. La plantilla (`build_template`) tiene dos hojas:
 - Equipos: una fila por equipo (medidor, CT, PT o modem). Si trae frontera y
   posicion se instala; si trae fecha de ultima calibracion o de prueba de
   rutina queda en su bitacora con el certificado.
+- PQR (0051): una fila por PQR, con los mismos datos del reporte al SUI; se
+  liga a la frontera por su NIU o su codigo.
 
 Los codigos validos (tipos de punto, tipos de equipo, posiciones, estados)
 salen del catalogo del paquete y se escriben en la hoja "Códigos" de la
@@ -33,12 +35,14 @@ import openpyxl  # noqa: E402
 import psycopg  # noqa: E402
 from openpyxl.styles import Font, PatternFill  # noqa: E402
 
+import customer_request_service as crs  # noqa: E402
 import metering_asset_service as svc  # noqa: E402
 from form_engine import InvalidFormError, excel_serial_to_date  # noqa: E402
 from renmeter_common.db import tenant_scope  # noqa: E402
 
 POINT_SHEET = "Fronteras"
 EQUIPMENT_SHEET = "Equipos"
+PQR_SHEET = "PQR"
 CODES_SHEET = "Códigos"
 
 # (clave, encabezado, obligatorio). Las claves son las columnas del modelo.
@@ -50,7 +54,16 @@ POINT_COLUMNS = [
     ("capacity_kva", "Capacidad instalada (kVA)", False), ("consumption_mwh_month", "Consumo mensual (MWh)", False),
     ("status", "Estado", False), ("registered_on", "Fecha de registro ante el ASIC", False),
     ("verified_on", "Fecha de verificación inicial", False), ("export_code", "Código SIC de exportación", False),
-    ("niu", "NIU", False),
+    ("niu", "NIU", False), ("customer_class", "Tipo de cliente", False), ("market", "Mercado", False),
+    ("commercial_status", "Estado comercial", False),
+]
+# Mismos datos que el reporte de PQR al SUI (Superservicios): la frontera se
+# ubica por el NIU o por su codigo.
+PQR_COLUMNS = [
+    ("filing_number", "Radicado", True), ("account", "NIU o código de la frontera", True), ("filed_on", "Fecha de radicación", True),
+    ("request_type", "Tipo de trámite", True), ("cause_code", "Causal (código de 3 dígitos)", True), ("status", "Estado", False),
+    ("response_code", "Tipo de respuesta", False), ("responded_on", "Fecha de respuesta", False),
+    ("invoice_number", "Número de factura", False), ("notes", "Observaciones", False),
 ]
 EQUIPMENT_COLUMNS = [
     ("class_code", "Tipo de equipo", True), ("serial", "Número de serie", True), ("brand", "Marca", False),
@@ -76,7 +89,7 @@ def build_template(conn: psycopg.Connection, tenant_id: str) -> bytes:
     wb = openpyxl.Workbook()
     bold = Font(bold=True)
     required_fill = PatternFill("solid", fgColor="FDE68A")
-    for index, (title, columns) in enumerate(((POINT_SHEET, POINT_COLUMNS), (EQUIPMENT_SHEET, EQUIPMENT_COLUMNS))):
+    for index, (title, columns) in enumerate(((POINT_SHEET, POINT_COLUMNS), (EQUIPMENT_SHEET, EQUIPMENT_COLUMNS), (PQR_SHEET, PQR_COLUMNS))):
         ws = wb.active if index == 0 else wb.create_sheet()
         ws.title = title
         for col, (_, header, required) in enumerate(columns, start=1):
@@ -100,6 +113,17 @@ def build_template(conn: psycopg.Connection, tenant_id: str) -> bytes:
         codes.append(["Estado", code, label])
     for code, label in _labels(conn, "equipment.ownership"):
         codes.append(["Propiedad", code, label])
+    for domain, title in (("customer.class", "Tipo de cliente"), ("market", "Mercado"), ("commercial.status", "Estado comercial"),
+                          ("pqr.status", "Estado de PQR")):
+        for code, label in _labels(conn, domain):
+            codes.append([title, code, label])
+    pqr = crs.catalog(conn, tenant_id)
+    for t in pqr["request_types"]:
+        codes.append(["Tipo de trámite", t["code"], t["label"]])
+    for r in pqr["responses"]:
+        codes.append(["Tipo de respuesta", r["code"], r["label"]])
+    for c in pqr["causes"]:
+        codes.append(["Causal de PQR", c["code"], f"{c['label']} ({'facturación' if c['group_code'] == 'F' else 'prestación'})"])
     codes.column_dimensions["A"].width = 16
     codes.column_dimensions["B"].width = 16
     codes.column_dimensions["C"].width = 80
@@ -159,22 +183,27 @@ def parse_file(filename: str, content: bytes) -> dict[str, list[tuple[int, dict]
             wb = openpyxl.load_workbook(io.BytesIO(content), read_only=True, data_only=True)
         except Exception as exc:  # archivo dañado o que no es Excel
             raise AssetImportError("No se pudo leer el Excel; use la plantilla descargada") from exc
-        out: dict[str, list[tuple[int, dict]]] = {"points": [], "equipment": []}
+        out: dict[str, list[tuple[int, dict]]] = {"points": [], "equipment": [], "requests": []}
         if POINT_SHEET in wb.sheetnames:
             out["points"] = _rows([list(r) for r in wb[POINT_SHEET].iter_rows(values_only=True)], POINT_COLUMNS)
         if EQUIPMENT_SHEET in wb.sheetnames:
             out["equipment"] = _rows([list(r) for r in wb[EQUIPMENT_SHEET].iter_rows(values_only=True)], EQUIPMENT_COLUMNS)
-        if not out["points"] and not out["equipment"]:
-            raise AssetImportError(f"El Excel no tiene filas en las hojas «{POINT_SHEET}» ni «{EQUIPMENT_SHEET}»")
+        if PQR_SHEET in wb.sheetnames:
+            out["requests"] = _rows([list(r) for r in wb[PQR_SHEET].iter_rows(values_only=True)], PQR_COLUMNS)
+        if not out["points"] and not out["equipment"] and not out["requests"]:
+            raise AssetImportError(f"El Excel no tiene filas en las hojas «{POINT_SHEET}», «{EQUIPMENT_SHEET}» ni «{PQR_SHEET}»")
         return out
     if name.endswith((".csv", ".txt")):
         text = content.decode("utf-8-sig", errors="replace")
         dialect = csv.Sniffer().sniff(text[:2048], delimiters=",;\t")
         values = [list(r) for r in csv.reader(io.StringIO(text), dialect)]
         headers = {str(h).strip().lower() for h in (values[0] if values else [])}
+        if headers & {"filing_number", "radicado"}:
+            return {"points": [], "equipment": [], "requests": _rows(values, PQR_COLUMNS)}
         is_equipment = bool(headers & {"serial", "número de serie"})
         columns = EQUIPMENT_COLUMNS if is_equipment else POINT_COLUMNS
-        return {"points": [] if is_equipment else _rows(values, columns), "equipment": _rows(values, columns) if is_equipment else []}
+        return {"points": [] if is_equipment else _rows(values, columns), "equipment": _rows(values, columns) if is_equipment else [],
+                "requests": []}
     raise AssetImportError("Formato no soportado: use la plantilla Excel (.xlsx) o un archivo plano (.csv)")
 
 
@@ -214,7 +243,10 @@ def import_file(conn: psycopg.Connection, tenant_id: str, imported_by: str, file
     positions = list(ctx["positions"].values())
     point_classes = [{"code": c["code"], "label": c["label"]} for c in ctx["classes"]]
     result = {"dry_run": dry_run, "points_created": 0, "points_updated": 0, "equipment_created": 0, "equipment_existing": 0,
-              "installed": 0, "calibrations": 0, "routine_tests": 0, "errors": []}
+              "installed": 0, "calibrations": 0, "routine_tests": 0, "requests_created": 0, "requests_existing": 0,
+              "requests_unlinked": 0, "errors": []}
+    pqr_cat = crs.catalog(conn, tenant_id) if parsed.get("requests") else None
+    pqr_status = [{"code": c, "label": lbl} for c, lbl in _labels(conn, "pqr.status")]
 
     def fail(sheet: str, row: int, exc: Exception) -> None:
         result["errors"].append({"sheet": sheet, "row": row, "message": str(exc)})
@@ -262,6 +294,31 @@ def import_file(conn: psycopg.Connection, tenant_id: str, imported_by: str, file
                                 result[k] += v
                         except (InvalidFormError, svc.AssetConflictError, svc.AssetNotFoundError, psycopg.DataError) as exc:
                             fail(EQUIPMENT_SHEET, n, exc)
+                    for n, rec in parsed.get("requests", []):
+                        try:
+                            with conn.transaction():
+                                for col in ("filed_on", "responded_on"):
+                                    if col in rec:
+                                        rec[col] = _date(rec[col], col)
+                                if "status" in rec:
+                                    rec["status"] = _code(rec["status"], pqr_status, "Estado de PQR")
+                                for col in ("filing_number", "account", "cause_code", "request_type", "response_code"):
+                                    if isinstance(rec.get(col), float):
+                                        rec[col] = f"{rec[col]:.0f}"
+                                    elif rec.get(col) is not None:
+                                        rec[col] = str(rec[col])
+                                cur.execute("SELECT 1 FROM customer_request WHERE filing_number = %s AND coalesce(account, '') = "
+                                            "coalesce(%s, '') AND cause_code = %s",
+                                            (rec.get("filing_number"), rec.get("account"), str(rec.get("cause_code", "")).split(" ")[0]))
+                                if cur.fetchone():
+                                    result["requests_existing"] += 1
+                                    continue
+                                _, linked = crs._create(cur, tenant_id, pqr_cat, rec, imported_by, "import")
+                            result["requests_created"] += 1
+                            if not linked:
+                                result["requests_unlinked"] += 1
+                        except (InvalidFormError, svc.AssetConflictError, svc.AssetNotFoundError, psycopg.DataError) as exc:
+                            fail(PQR_SHEET, n, exc)
             if dry_run:
                 raise psycopg.Rollback()
     except psycopg.Rollback:

@@ -2724,6 +2724,9 @@ export interface MeteringPoint {
   status: string;
   registered_on: string | null;
   verified_on: string | null;
+  customer_class: string | null;
+  market: string | null;
+  commercial_status: string | null;
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -2924,6 +2927,9 @@ export interface AssetImportResult {
   installed: number;
   calibrations: number;
   routine_tests: number;
+  requests_created: number;
+  requests_existing: number;
+  requests_unlinked: number;
   errors: { sheet: string; row: number; message: string }[];
 }
 
@@ -2952,4 +2958,123 @@ export function getAssetSettings(): Promise<{ due_soon_days: number | null }> {
 
 export function updateAssetSettings(dueSoonDays: number): Promise<{ due_soon_days: number }> {
   return request("/settings/assets", { method: "PUT", body: JSON.stringify({ due_soon_days: dueSoonDays }) });
+}
+
+// ── Track F, Q2.5 (0051-0052): mapa tematico de fronteras y PQR ───────
+
+export interface MapCategory { code: string; label: string; tone: Tone | null; count: number }
+export type Tone = "success" | "warning" | "danger" | "info" | "neutral";
+
+export interface MapDimension {
+  key: string;
+  group: string;
+  label: string;
+  role: "category" | "size";
+  can_paint: boolean;
+  can_filter: boolean;
+  alert_codes: string[] | null;
+  alert_label: string | null;
+  description: string | null;
+  /** La frontera puede tener varios valores (p. ej. varias PQR abiertas). */
+  multi: boolean;
+  categories: MapCategory[];
+}
+
+export type MapValue = string | number | string[] | null;
+
+export interface MapPoint {
+  id: string;
+  code: string;
+  name: string;
+  customer: string;
+  city: string | null;
+  lat: number | null;
+  lon: number | null;
+  /** Valores en el orden de `dimensions`. */
+  v: MapValue[];
+}
+
+export interface FrontierMap {
+  dimensions: MapDimension[];
+  points: MapPoint[];
+  total: number;
+  comms_window_seconds: number | null;
+  due_soon_days: number | null;
+}
+
+export function getFrontierMap(): Promise<FrontierMap> {
+  return request("/assets/map");
+}
+
+export interface MapViewConfig {
+  paint: string;
+  size: string | null;
+  filters: Record<string, string[]>;
+  layers: string[];
+}
+
+export interface MapView { id: string; name: string; config: MapViewConfig; created_by: string; created_at: string }
+
+export function getMapViews(): Promise<MapView[]> {
+  return request("/assets/map-views");
+}
+
+export function saveMapView(name: string, config: MapViewConfig): Promise<MapView> {
+  return request("/assets/map-views", { method: "POST", body: JSON.stringify({ name, config }) });
+}
+
+export function deleteMapView(id: string): Promise<{ deleted: string }> {
+  return request(`/assets/map-views/${id}`, { method: "DELETE" });
+}
+
+export interface PqrCatalog {
+  causes: { pack_id: string; code: string; group_code: "F" | "P"; request_kind: "claim" | "complaint"; label: string; description: string }[];
+  request_types: { code: string; label: string }[];
+  responses: { code: string; label: string }[];
+}
+
+export function getPqrCatalog(): Promise<PqrCatalog> {
+  return request("/customer-requests/catalog");
+}
+
+export interface CustomerRequest {
+  id: string;
+  point_id: string | null;
+  point_code: string | null;
+  account: string | null;
+  filing_number: string;
+  filed_on: string;
+  request_type: string;
+  cause_code: string;
+  cause_label: string;
+  cause_group: "F" | "P";
+  status: "open" | "answered" | "appealed" | "closed";
+  response_code: string | null;
+  responded_on: string | null;
+  invoice_number: string | null;
+  notes: string | null;
+  source: string;
+  created_by: string;
+}
+
+export function getCustomerRequests(filters: { point_id?: string; status?: string; unlinked?: boolean } = {}): Promise<CustomerRequest[]> {
+  const params = new URLSearchParams();
+  if (filters.point_id) params.set("point_id", filters.point_id);
+  if (filters.status) params.set("status", filters.status);
+  if (filters.unlinked) params.set("unlinked", "true");
+  return request(`/customer-requests${params.toString() ? `?${params}` : ""}`);
+}
+
+export interface CustomerRequestInput {
+  point_id?: string | null; account?: string | null; filing_number?: string; filed_on?: string; request_type?: string;
+  cause_code?: string; status?: string; response_code?: string | null; responded_on?: string | null; invoice_number?: string | null;
+  notes?: string | null;
+}
+
+export function createCustomerRequest(body: CustomerRequestInput): Promise<{ id: string; linked: boolean }> {
+  return request("/customer-requests", { method: "POST", body: JSON.stringify(body) });
+}
+
+export function updateCustomerRequest(id: string, body: CustomerRequestInput): Promise<{ id: string }> {
+  return request(`/customer-requests/${id}`, { method: "PATCH", body: JSON.stringify(body) });
 }
