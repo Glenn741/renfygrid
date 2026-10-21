@@ -973,8 +973,8 @@ con la auditoría de valores fijos, el diseño de catálogos (`sector`, `tenant_
 
 | Sprint | Alcance | Estado |
 |---|---|---|
-| F0 | Sitio rensoftlabs.com: tarjeta multi-industria (6 idiomas) y **un brief por industria** generado desde datos (`rnsftlbs/com/marketing/renfygrid/briefs.json` + `build_briefs.py`) | Construido 2026-10-20, **sin publicar** (espera visto bueno) |
-| F1 | Sector y módulos como datos; menú desde `/modules`; tenants actuales = `water`, sin cambio visible | Propuesto, después del taller del 22-oct |
+| F0 | Sitio rensoftlabs.com: tarjeta multi-industria (6 idiomas) y **un brief por industria** generado desde datos (`rnsftlbs/com/marketing/renfygrid/briefs.json` + `build_briefs.py`) | **Publicado 2026-10-20** |
+| F1 | Sector y módulos como datos; menú desde `/auth/me`; tenants actuales = `water`, sin cambio visible | **En producción 2026-10-20** (como Q1, migración 0048) |
 | F2 | Grupo "Agua" en el menú; `sector_code` en paquetes, etapas y tipos; corregir `"unit": "kWh"` fijo de `billing_export.py` | Propuesto |
 | F3 | MDM multimedio: sector por medidor desde OBIS, unidades por canal, VEE por sector, catálogo de métodos de balance y simuladores | Propuesto |
 | F4 / F5 | Módulos Energía y Gas (MVP) | Esperan un piloto real de cada industria |
@@ -984,3 +984,10 @@ clientes no regulados, que necesita la hoja de vida, la calibración y el manten
 frontera según el Código de Medida de la CREG, con BayForce como bitácora de campo. La revisión de
 la industria, la brecha, el workspace, el modelo de datos, las opciones para BayForce y los
 sprints Q1–Q4 están en **`10-caso-energia-fronteras.md`**.
+
+**Estado al 2026-10-20 (decisiones del usuario: BayForce = opción B; construir Q1 y Q2 con demo):**
+- Q1 y Q2 **en producción**. Migraciones 0048 a 0050; bitácora en `05-ejecucion.md`.
+- Tenant demo `demoenergia` con 2.000 fronteras ficticias.
+- Sigue Q3: plan anual, exportación de la hoja de vida en el formato oficial y anexos o
+  certificados como archivos.
+- Q4 (BayForce, instancia dedicada con API de recepción) está decidido pero sin construir.

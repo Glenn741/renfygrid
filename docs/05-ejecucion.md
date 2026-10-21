@@ -2888,3 +2888,95 @@ Hito: taller de APT del 22-oct-2026 con 10 operadores (G1-G3).
 - `rensoftlabs` (plataforma, usuario `admin`, rol `platform`).
 - `apt` (ONG, `admin` + `asesor01` y `asesor02` con rol `advisor`; paquetes EC-ARCA y Municipios
   Azules, USD, America/Guayaquil, sesión de 12 h).
+
+### Track F, Q1 y Q2: sectores, menú como datos y hoja de vida de fronteras (2026-10-20)
+
+Plan: `04-plan-sprints.md` §13, `09-multi-industria.md` y `10-caso-energia-fronteras.md`.
+
+Pedido del usuario:
+- Opción B para BayForce (instancia dedicada con API de recepción; queda para Q4).
+- Construir Q1 y Q2 con un tenant de demostración de energía, para ver el workspace de un
+  comercializador que controla unos 2.000 medidores de clientes no regulados.
+
+**Construido (commit `bcd626f`):**
+- **Migración 0048.**
+  - Catálogos `sector`, `tenant_sector`, `nav_group`, `product_module` y `tenant_module`.
+  - Columna `pack.sector_code`.
+  - El menú sale de `/auth/me` (`modules`, `sectors`). Las organizaciones existentes quedan en
+    agua y ven el mismo menú que antes.
+  - El alta de una organización exige su sector.
+- **Migración 0049.**
+  - Paquete `CO-CREG-038`: tipos de punto (art. 6), frecuencias (art. 28 tabla 4 y Acuerdo CNO
+    981), tipos de equipo, posiciones y tipos de registro de la bitácora.
+  - Tablas `metering_point`, `equipment`, `equipment_installation`, `metering_event`,
+    `metering_point_section` (con versiones).
+  - Permisos `assets.manage`, `assets.record` y `assets.report`.
+  - Módulos del sector energía.
+  - Función `e2e_purge_metering_assets`, que solo purga organizaciones `e2e-…`.
+- **Migración 0050 (generada).**
+  - 9 fichas de la hoja de vida con 138 campos, cada uno con su numeral, salidas del formato
+    oficial de la Circular CREG 119 de 2014.
+  - Fuente en `docs/fuentes/creg/`; las genera `infra/db/tools/build_creg_hoja_vida.py`.
+- **Servicio `services/assets`.**
+  - `metering_asset_engine` (lógica pura): tipo de punto por consumo o capacidad, vencimiento
+    de calibración y prueba de rutina, e invalidación por retiro del sello de tapa
+    (art. 11) o por parametrización (art. 32).
+  - `metering_asset_service`, `metering_asset_import` (Excel y CSV con vista previa e
+    idempotencia) y `seed_demo_energy_tenant`.
+- **Portal: módulo Energía.**
+  - Tablero de fronteras: KPIs, por atender, mapa, novedades para XM y últimos registros.
+  - Fronteras comerciales: filtros y carga por Excel.
+  - Hoja de vida de la frontera: equipos instalados con su estado, bitácora, secciones de la
+    Circular 119 e historial de instalaciones.
+  - Equipos: ficha técnica, bitácora e historial.
+  - En Configuración, sección «Activos»: ventana de aviso de vencimiento, que es un parámetro
+    de la organización y no un valor fijo.
+- **Organizaciones:** selector de sector.
+
+**Hallazgos de esta ronda:**
+- En la BD local las tablas nuevas nacían con ALL para la aplicación (default privileges de
+  0002), así que el GRANT restrictivo de la bitácora no restringía. Se corrigió con un REVOKE
+  explícito. Lo encontró `verify_energy_assets_end_to_end`.
+- Novedades para XM: solo los cambios de medidor, CT o PT actualizan el registro ante el ASIC.
+  Las demás novedades (visitas, lecturas, hora, módem) actualizan solo la hoja de vida.
+- `form_engine`: un campo numérico puede declarar `"signed": true`. Un ejemplo es el error de
+  calibración; antes los negativos se rechazaban siempre.
+- Ya existía un `asset_service.py` en `digital-twin`. Los módulos nuevos llevan el prefijo
+  `metering_`.
+
+**Verificación local:**
+- `verify_energy_assets_end_to_end.py` en verde (catálogo, frontera, instalación, calibración,
+  invalidación por sello, cambio de medidor con novedad para XM, secciones, carga por Excel
+  idempotente, permisos y aislamiento).
+- Regresión completa de 37 suites E2E en verde. `verify_advisory` se ajustó: el alta exige
+  sector y el menú de la ONG sale de los datos y es el mismo.
+- 15 pruebas puras del motor nuevo (también en Python 3.9).
+- Tenant demo local: 2.000 fronteras y 6.184 equipos en 148 s. Tablero en 2,2 s; lista de
+  fronteras en 0,9 s.
+- Revisión visual con Playwright:
+  - el menú de energía no muestra nada de agua;
+  - `/` y `/quality` redirigen a `/energy`;
+  - el menú de APT no cambió;
+  - sin errores de consola.
+
+**Despliegue a producción (mismo día):**
+- Respaldo del código reemplazado en `essmarplapp02:/tmp/renfygrid_f_backup_20261020/`.
+- `pg_dump` previo, borrado con `shred` después de verificar.
+- Migraciones 0048 a 0050 en una sola transacción. Las 7 organizaciones que ya existían
+  quedaron en agua; la de la plataforma, sin sector.
+- 12 módulos compilados con Nuitka (`community`, `portal-api` y el servicio nuevo `assets` en
+  `/cdrs/renfygrid/assets`) y `main.py` (MD5 verificado).
+- `systemctl restart renfygrid-portal-api`: `active`. Los endpoints nuevos responden 401 sin
+  token.
+- **E2E por HTTP real contra el servicio vivo:** energía y ONG en verde; 0 organizaciones
+  `e2e-%` restantes.
+- **Tenant demo `demoenergia`:** 2.000 fronteras y 6.184 equipos ficticios, en 27 s. Usuarios
+  `admin` (Administración), `tecnico01` (Operador) y `gerencia` (Directiva); las claves se
+  entregaron al usuario y no van al repo.
+- Portal Web a `essmarplpxy03:/var/www/renfygrid` (bundle `index-BZe-Xxmg.js`), sin `--delete`.
+  Respaldo en `/var/www/renfygrid.bak_before_f_20261020`.
+- Revisión visual en vivo:
+  - `demoenergia` entra a su tablero de fronteras y no ve nada de agua;
+  - APT conserva sus 5 opciones;
+  - jaas001 conserva su menú de agua con Guías;
+  - sin errores de consola.
