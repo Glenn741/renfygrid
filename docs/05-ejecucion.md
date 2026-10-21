@@ -2980,3 +2980,50 @@ Pedido del usuario:
   - APT conserva sus 5 opciones;
   - jaas001 conserva su menú de agua con Guías;
   - sin errores de consola.
+
+### Track F, Q2.5: mapa temático de fronteras y PQR (2026-10-21)
+
+Pedido del usuario: "constrúyelo como está propuesto" (`docs/11-mapa-fronteras.md`).
+
+**Construido (commit `a325795`):**
+- **Migración 0051.**
+  - Columnas de la frontera `customer_class`, `market` y `commercial_status`, con sus catálogos
+    en `code_label`.
+  - Paquete `CO-SSPD` con tipos de trámite y de respuesta; tabla `customer_request` (PQR, ligada
+    por NIU o por código).
+  - `map_dimension`: 26 variables, cada una con su origen declarado como dato.
+  - `map_view`, el permiso `requests.manage` y el módulo "Mapa de fronteras".
+- **Migración 0052 (generada).** Las 46 causales de la Superservicios, salidas del documento
+  fuente (`docs/fuentes/sspd/`, proyecto de abril de 2026). Las genera
+  `infra/db/tools/build_sspd_pqr_causes.py` e indican a qué sector aplica cada una.
+- **Servicios.**
+  - `metering_asset_map` (resuelve cada dimensión): la telemedida sale de vincular el medidor
+    con el `meter` del HES por su serie; la ventana es la de Configuración → HES.
+  - `customer_request_service`.
+  - Carga de PQR por Excel en la hoja "PQR", con los mismos datos del reporte al SUI.
+  - Compresión gzip en la API: el mapa pasa de 900 KB a 125 KB.
+- **Portal: `/energy/map`.**
+  - Pintar por, con la leyenda y su conteo, que filtra al hacer clic.
+  - Tamaño por consumo o capacidad (quintiles).
+  - Facetas con conteo cruzado.
+  - 6 capas de alerta (anillo rojo y, en cada grupo, el número rojo de fronteras con alerta).
+  - Agrupamiento con la composición por color.
+  - Ficha al pasar el cursor y clic a la hoja de vida.
+  - Selección por área, KPIs y lista sincronizados, exportación a CSV y vistas guardadas.
+- **Hoja de vida:** sección de PQR (registrar y responder) y los datos comerciales de la
+  frontera.
+- **Demo:** `seed_demo_energy_map` completa `demoenergia` con tipo de cliente, estado comercial,
+  telemedida (1.464 medidores en el HES) y 299 PQR con causales reales.
+
+**Verificación local:**
+- Sección 10 de `verify_energy_assets_end_to_end` (24 verificaciones) y regresión completa de
+  38 suites en verde; 0 organizaciones de prueba restantes.
+- Revisión visual con Playwright: pintar, filtrar, capas, agrupamiento, acercamiento, ficha y
+  selección por área; sin errores de consola.
+
+**Despliegue: PENDIENTE.**
+- El 21-oct no había conexión SSH a `essmarplapp02` ni al proxy: la VPN Pritunl no estaba
+  conectada.
+- El paquete está listo en el scratchpad de la sesión (`upload_g`, con los scripts
+  `step_backup`, `step_migrate`, `step_install`, `step_e2e` y `step_seed`), más el bundle
+  `index-CXDlKadk.js`.
